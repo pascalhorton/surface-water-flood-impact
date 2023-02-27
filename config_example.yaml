@@ -1,0 +1,8 @@
+OUTPUT_DIR: ''
+
+# DEMs (with different resolutions)
+DEM_PATHS:
+  - ''
+  - ''
+  - ''
+  - ''
