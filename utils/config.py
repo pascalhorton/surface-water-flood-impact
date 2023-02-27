@@ -2,6 +2,11 @@ import os
 from pathlib import Path
 import yaml
 
+"""
+Class to handle the configuration, such as path to data and directories. It reads a 
+config.yaml file containing these options.
+"""
+
 
 class Config:
     def __init__(self, output_dir):
