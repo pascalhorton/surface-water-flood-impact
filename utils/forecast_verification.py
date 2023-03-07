@@ -20,11 +20,12 @@ def binary_detection(metric, a_obs1_mod1, b_obs0_mod1, c_obs1_mod0, d_obs0_mod0)
 
     Returns
     -------
-    The value of the desired score.
+    The value of the desired metric.
 
-    Author
+    Authors
     ------
-    Daniel Bernet (original R version, 2017)
+    Daniel Bernet: original R version, 2017
+    Pascal Horton: conversion to Python, 2023
     """
 
     # Sample size (n) = a + b + c + d
@@ -155,7 +156,8 @@ def binary_detection(metric, a_obs1_mod1, b_obs0_mod1, c_obs1_mod0, d_obs0_mod0)
         return lodr
 
     elif metric in ['odds_ratio_skill_score', 'ORSS']:
-        # Odds Ratio Skill Score (ORSS) = Yule's Q = (ad-bc) / (ad+bc) = (or - 1) / (or + 1) = (H - F) / (H(1-F) + F(1-H))
+        # Odds Ratio Skill Score (ORSS) = Yule's Q = (ad-bc) / (ad+bc) =
+        # (or - 1) / (or + 1) = (H - F) / (H(1-F) + F(1-H))
         # [-1,1]
         odr = a_obs1_mod1 * d_obs0_mod0 / (b_obs0_mod1 * c_obs1_mod0)
         if math.isinf(odr):  # orss has no skill when odr = Inf
