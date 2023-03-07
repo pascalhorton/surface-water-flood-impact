@@ -6,3 +6,7 @@ DEM_PATHS:
   - ''
   - ''
   - ''
+
+# Computation of the flow accumulation
+LAKES_PATH: ''
+FLOWACC_RIVER_THRESHOLD: 50000

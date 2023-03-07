@@ -10,6 +10,7 @@ config file. Save the results as tiff file.
 """
 
 config = Config(output_dir='prepare_flowacc')
+output_dir = config.output_dir
 
 # Get file paths
 DEM_PATHS = config.get('DEM_PATHS')
@@ -17,8 +18,9 @@ DEM_PATHS = config.get('DEM_PATHS')
 # Compute the flow accumulation for each file
 for dem_path in DEM_PATHS:
 
-    filepath_flowacc = f'{config.output_dir}/{Path(dem_path).stem}_flowacc.tif'
-    filepath_nolakes = f'{config.output_dir}/{Path(dem_path).stem}_flowacc_nolakes.tif'
+    filepath_flowacc = f'{output_dir}/{Path(dem_path).stem}_flowacc.tif'
+    filepath_nolakes = f'{output_dir}/{Path(dem_path).stem}_flowacc_nolakes.tif'
+    filepath_norivers = f'{output_dir}/{Path(dem_path).stem}_flowacc_norivers.tif'
 
     flowacc = None
 
@@ -51,4 +53,13 @@ for dem_path in DEM_PATHS:
     else:
         flowacc = rd.LoadGDAL(filepath_nolakes)
 
+    # Mask out rivers
+    if not Path(filepath_norivers).exists():
+        # Remove flow accumulation superior to the given threshold
+        flowacc[flowacc == config.get('FLOWACC_RIVER_THRESHOLD', 50000)] = np.nan
+
+        # Save to file
+        rd.SaveGDAL(filepath_norivers, flowacc)
+    else:
+        flowacc = rd.LoadGDAL(filepath_norivers)
 
