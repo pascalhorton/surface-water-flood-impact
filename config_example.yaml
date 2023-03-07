@@ -1,5 +1,9 @@
 OUTPUT_DIR: ''
 
+# Synthetic csv files v2019
+CSV_2019_TRIGGER: ''
+CSV_2019_ALL: ''
+
 # DEMs (with different resolutions)
 DEM_PATHS:
   - ''
