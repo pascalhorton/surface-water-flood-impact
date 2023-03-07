@@ -1,4 +1,3 @@
-from pathlib import Path
 from utils.config import Config
 import pandas as pd
 
@@ -33,8 +32,8 @@ The files header are:
   intensity at the beginning (beg; 2), in the middle (mid; 3) or at the end (end; 4) 
   of the rainfall event
 [only for event triggered:]
-- d_tr_imax: date of the maximum intensity of the triggering event ?
-- d_tr_s75: ?
+- d_tr_imax: date of highest peak of trigger event
+- d_tr_s75: index where 75% of the precipitation sum over a whole event is reached.
 - A: number of damage claims most likely due to SWF
 - B: number of damage claims likely due to SWF
 - C: number of damage claims due to fluvial flood or SWF
