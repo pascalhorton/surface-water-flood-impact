@@ -12,7 +12,15 @@ class Config:
     def __init__(self, output_dir):
         self.config = None
         self.output_dir = None
-        with open('../config.yaml') as f:
+        filepath = ''
+        if Path('../config.yaml').exists():
+            filepath = '../config.yaml'
+        elif Path('config.yaml').exists():
+            filepath = 'config.yaml'
+        else:
+            raise RuntimeError("The config.yaml file was not found.")
+
+        with open(filepath) as f:
             self.config = yaml.load(f, Loader=yaml.FullLoader)
             self.create_output_directory(output_dir)
 
