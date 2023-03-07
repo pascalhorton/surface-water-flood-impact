@@ -56,7 +56,7 @@ for dem_path in DEM_PATHS:
     # Mask out rivers
     if not Path(filepath_norivers).exists():
         # Remove flow accumulation superior to the given threshold
-        flowacc[flowacc == config.get('FLOWACC_RIVER_THRESHOLD', 50000)] = np.nan
+        flowacc[flowacc >= config.get('FLOWACC_RIVER_THRESHOLD', 50000)] = np.nan
 
         # Save to file
         rd.SaveGDAL(filepath_norivers, flowacc)
