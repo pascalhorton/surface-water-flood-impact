@@ -29,8 +29,10 @@ class Config:
             self.output_dir = Path(self.config['OUTPUT_DIR'])
         else:
             self.output_dir = Path(os.getcwd())
-        self.output_dir = self.output_dir / output_dir
-        self.output_dir.mkdir(parents=True, exist_ok=True)
+
+        if output_dir is not None:
+            self.output_dir = self.output_dir / output_dir
+            self.output_dir.mkdir(parents=True, exist_ok=True)
 
     def get(self, key, default=None):
         if not key in self.config:

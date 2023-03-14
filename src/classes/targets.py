@@ -3,6 +3,8 @@ Extract the annual contracts.
 """
 
 import glob
+import pickle
+from pathlib import Path
 
 import rasterio
 import numpy as np
@@ -13,7 +15,21 @@ config = Config()
 
 
 class Targets:
-    def __init__(self, year_start=None, year_end=None):
+    def __init__(self, year_start=None, year_end=None, use_dump=True):
+        """
+        The Targets class.
+
+        Parameters
+        ----------
+        year_start: int
+            The starting year of the data.
+        year_end: int
+            The ending year of the data.
+        use_dump: bool
+            Dump the content to the TMP_DIR and load if available
+        """
+        self.use_dump = use_dump
+
         self.crs = config.get('CRS', 'EPSG:2056')
         self.shape = None
         self.extent = None
@@ -47,6 +63,8 @@ class Targets:
 
         self.contracts = [np.zeros((1, 1, 1))] * len(self.tags)
 
+        self._load_from_dump()
+
     def load_contracts(self, directory=None):
         """
         Load the contract data from geotiff files.
@@ -56,6 +74,10 @@ class Targets:
         directory: str
             The path to the directory containing the files.
         """
+        if self.use_dump and self.shape is not None:
+            print("Contracts reloaded from pickle file.")
+            return
+
         if not directory:
             directory = config.get('DIR_CONTRACTS')
 
@@ -64,6 +86,22 @@ class Targets:
 
         for idx, contracts in enumerate(self.contracts):
             self.contracts[idx] = self._compress_data(contracts)
+
+        self._dump_object()
+
+    def load_damages(self, directory=None):
+        """
+        Load the damage data from geotiff files.
+
+        Parameters
+        ----------
+        directory: str
+            The path to the directory containing the files.
+        """
+        if not directory:
+            directory = config.get('DIR_DAMAGES')
+
+        self._dump_object()
 
     def _extract_contract_data(self, directory):
         contracts = glob.glob(directory + '/*.tif')
@@ -119,3 +157,24 @@ class Targets:
         for i in range(data.shape[0]):
             extracted[i, :] = np.extract(self.mask, data[i, :, :])
         return extracted
+
+    def _load_from_dump(self):
+        if not self.use_dump:
+            return
+        tmp_dir = config.get('TMP_DIR')
+        file_path = Path(tmp_dir + '/targets.pickle')
+        if file_path.is_file():
+            with open(file_path, 'rb') as f:
+                values = pickle.load(f)
+                self.shape = values.shape
+                self.extent = values.extent
+                self.mask = values.mask
+                self.contracts = values.contracts
+
+    def _dump_object(self):
+        if not self.use_dump:
+            return
+        tmp_dir = config.get('TMP_DIR')
+        file_path = Path(tmp_dir + '/targets.pickle')
+        with open(file_path, 'wb') as f:
+            pickle.dump(self, f)
