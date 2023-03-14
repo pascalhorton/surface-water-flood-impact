@@ -9,7 +9,7 @@ config.yaml file containing these options.
 
 
 class Config:
-    def __init__(self, output_dir):
+    def __init__(self, output_dir=None):
         self.config = None
         self.output_dir = None
         filepath = ''
