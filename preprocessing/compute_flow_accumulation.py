@@ -1,13 +1,15 @@
-from pathlib import Path
-from utils.config import Config
-from utils.spatial_operations import rasterize
-import numpy as np
-import richdem as rd
-
 """
 Computes the flow accumulation (in m2) for all files listed under "DEM_PATHS" in the
 config file. Save the results as tiff file.
 """
+
+from pathlib import Path
+import numpy as np
+import richdem as rd
+
+from utils.config import Config
+from utils.spatial_operations import rasterize
+
 
 config = Config(output_dir='prepare_flowacc')
 output_dir = config.output_dir

@@ -1,6 +1,3 @@
-from utils.config import Config
-import pandas as pd
-
 """
 Compute predictions based on the 2019 version of the data.
 
@@ -44,6 +41,11 @@ The files header are:
 - ABCDE: number of claims per event in grid cell
 
 """
+
+import pandas as pd
+
+from utils.config import Config
+
 
 config = Config(output_dir='predict_v2019')
 output_dir = config.output_dir
