@@ -84,7 +84,7 @@ class Targets:
         self.structural = [False, True, False, True, False, True, False, True]
 
         self.contracts = [np.zeros((1, 1, 1))] * len(self.tags_contracts)
-        self.damages = [pd.DataFrame(columns=['date', 'index', 'claims']) for x in range(len(self.tags))]
+        self.damages = [pd.DataFrame(columns=['date_claim', 'index', 'nb_claims']) for x in range(len(self.tags))]
 
         self._load_from_dump()
 
