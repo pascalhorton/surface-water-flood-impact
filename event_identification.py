@@ -1,7 +1,5 @@
-"""
-This script extracts precipitation events following the definition given in Bernet et al. 2019
-"""
-
+#!/usr/bin/env python
+# coding: utf-8
 
 #import packages
 import xarray as xr
@@ -33,37 +31,47 @@ def get_events(coords_row):
     
     #select timeseries and convert it into a DataFrame
     time_series = data.sel(x=coords_row.x, y=coords_row.y).to_dataframe().reset_index()
-    
-    #define parameters for the calculation of the Antecedent Precipitation Index (API) following the definition in Bernet et al. 2019
+
+    #define parameters for the calculation of the Antecedent Precipitation Index (API)
     n_days = 30
     tstepsperday = 24
     reg = 0.8
 
-    #calculate windows and coefficients for the API
+    #calculate windows and coefficients for API
     rolled_windows = np.lib.stride_tricks.sliding_window_view(np.r_[np.zeros(n_days*tstepsperday),time_series.CPC.values], n_days*tstepsperday)
     reg_coef = np.power(np.repeat(reg, n_days*tstepsperday), (np.arange(n_days*tstepsperday)/tstepsperday)[::-1])
 
     #the API for each step is given by the product of the coefficients and the windows
     time_series["api"] = np.matmul(rolled_windows,reg_coef)[:-1]
-    
-    #group events by period of at least 8 time steps without precipitation larger than 0.1mm/h
+
+    #group events by period of at least 8 hour without precipitation larger than 0.1mm/h and return group IDs
     time_series_th = time_series[time_series.CPC >= 0.1]
-    groups = time_series_th.groupby(time_series_th.time.diff().ge("8h").cumsum())
-    
-    #calculate several characteristics for each event and store data in an DataFrame
-    events = pd.concat([groups.time.agg(["first", "last"]), groups.CPC.agg(["max", "sum","mean", "std"]), groups.api.first()], axis = 1)
-    events = events.rename(columns = {"first":"start", "last":"end", "max":"max_int", "sum":"agg_sum", "mean":"mean_int", "std":"std_int"})
-    events = events.astype({"max_int":"float32", "agg_sum":"float32", "std_int":"float32", "api":"float32"})
-    
+    group_ids = time_series_th.groupby(time_series_th.time.diff().gt("8h").cumsum()).ngroup()+1
+
+    #fill gaps between events to correctly calculate all event characteristics and then group again
+    time_series["group_ID"] = 0
+    time_series.group_ID = group_ids
+    ff = time_series.group_ID.ffill()
+    bf = time_series.group_ID.bfill()
+    time_series.group_ID = ff[ff == bf]
+    event_groups = time_series.groupby("group_ID")
+
+    #calculate all precipitation characteristics
+    events = pd.concat([event_groups.time.agg(["first", "last", "size"]), event_groups.CPC.agg(["sum", "max", "mean", "std"]), event_groups.api.first()], axis = 1)
+    events = events.rename(columns = {"first":"e_start", "last":"e_end", "size":"e_tot", "sum":"p_sum", "max":"i_max", "mean":"i_mean", "std":"i_sd", "api":"apireg"})
+    events = events.astype({"e_tot":"int16", "i_sd":"float32", "apireg":"float32"})
+
     #drop events that do not fulfill the condition of minimal precipitation
-    events = events[events.agg_sum>=10].reset_index(drop=True)
+    events = events[events.p_sum>=10].reset_index(drop=True)
+
+    #calculate percentiles of score for each event characteristics
+    ranks = events.iloc[:,2:].rank(pct=True).astype("float32")
+    ranks.columns = ["e_tot_q", "p_sum_q", "i_max_q", "i_mean_q", "i_sd_q", "apireg_q"]
+    events = pd.concat([events, ranks], axis = 1)
     
-    #calculate duration
-    events["duration"] = events.end - events.start
-    
-    #add coordinates to the DataFrame
+    #add coordinates to the DataFrame and round all float values
     df_coords = pd.concat([pd.DataFrame(coords_row).T]*len(events), ignore_index = True)
-    events = pd.concat([df_coords, events], axis = 1)
+    events = pd.concat([df_coords, events], axis = 1).round(5)
     
     return events
 
