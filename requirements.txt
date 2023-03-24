@@ -2,3 +2,4 @@ numpy
 PyYAML
 geopandas
 rasterio
+tqdm

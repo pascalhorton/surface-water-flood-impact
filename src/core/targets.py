@@ -4,10 +4,14 @@ Extract the annual contracts.
 
 import glob
 import pickle
+import ntpath
+from datetime import datetime
 from pathlib import Path
 
 import rasterio
 import numpy as np
+import pandas as pd
+from tqdm import tqdm
 
 from utils.config import Config
 
@@ -42,14 +46,32 @@ class Targets:
         if not self.year_end:
             self.year_end = config.get('YEAR_END', 2022)
 
-        self.tags = ['KMU_ES_FH',
-                     'KMU_ES_GB',
-                     'KMU_W_FH',
-                     'KMU_W_GB',
-                     'Privat_ES_FH',
-                     'Privat_ES_GB',
-                     'Privat_W_FH',
-                     'Privat_W_GB']
+        self.tags = ['SME_extern_content',
+                     'SME_extern_structure',
+                     'SME_intern_content',
+                     'SME_intern_structure',
+                     'Private_extern_content',
+                     'Private_extern_structure',
+                     'Private_intern_content',
+                     'Private_intern_structure']
+
+        self.tags_contracts = ['KMU_ES_FH',
+                               'KMU_ES_GB',
+                               'KMU_W_FH',
+                               'KMU_W_GB',
+                               'Privat_ES_FH',
+                               'Privat_ES_GB',
+                               'Privat_W_FH',
+                               'Privat_W_GB']
+
+        self.tags_damages = ['Ueberschwemmung_KMU_FH',
+                             'Ueberschwemmung_KMU_GB',
+                             'Wasser_KMU_FH',
+                             'Wasser_KMU_B',
+                             'Ueberschwemmung_Privat_FH',
+                             'Ueberschwemmung_Privat_GB',
+                             'Wasser_Privat_FH',
+                             'Wasser_Privat_GB']
 
         # Private (Privat) vs SME (KMU)
         self.private = [False, False, False, False, True, True, True, True]
@@ -61,7 +83,8 @@ class Targets:
         self.content = [True, False, True, False, True, False, True, False]
         self.structural = [False, True, False, True, False, True, False, True]
 
-        self.contracts = [np.zeros((1, 1, 1))] * len(self.tags)
+        self.contracts = [np.zeros((1, 1, 1))] * len(self.tags_contracts)
+        self.damages = [pd.DataFrame(columns=['date', 'index', 'claims']) for x in range(len(self.tags))]
 
         self._load_from_dump()
 
@@ -98,14 +121,21 @@ class Targets:
         directory: str
             The path to the directory containing the files.
         """
+        if self.use_dump and self.damages[0].count()[0] > 0:
+            print("Damages reloaded from pickle file.")
+            return
+
         if not directory:
             directory = config.get('DIR_DAMAGES')
+
+        self._extract_damage_data(directory)
 
         self._dump_object()
 
     def _extract_contract_data(self, directory):
         contracts = glob.glob(directory + '/*.tif')
-        for idx, tag in enumerate(self.tags):
+        for idx in tqdm(range(len(self.tags_contracts)), desc="Extracting contracts"):
+            tag = self.tags_contracts[idx]
             files = [s for s in contracts if tag in s]
             self.contracts[idx] = self._parse_contract_files(files)
 
@@ -126,6 +156,51 @@ class Targets:
                 else:
                     all_data = np.append(all_data, data, axis=0)
         return all_data
+
+    def _extract_damage_data(self, directory):
+        damages = glob.glob(directory + '/*.tif')
+        for idx, tag in enumerate(self.tags_damages):
+            tag = self.tags_damages[idx]
+            files = [s for s in damages if tag in s]
+            files.sort()
+            self._parse_damage_files(files, idx)
+
+    def _parse_damage_files(self, files, idx):
+        for i_file in tqdm(range(len(files)), desc=f"Extracting damages of type {self.tags[idx]}"):
+            file = files[i_file]
+            with rasterio.open(file) as dataset:
+                self._check_projection(dataset, file)
+                self._check_extent(dataset, file)
+                data = dataset.read()
+                self._check_shape(data, file)
+
+                # Damages can be empty for a given type of object or phenomenon
+                if data.sum() == 0:
+                    continue
+
+                indices, values = self._extract_non_null_damages(data)
+                date = self._extract_date_from_filename(file)
+
+                for i, v in zip(indices, values):
+                    self.damages[idx].loc[len(self.damages[idx])] = [date, i, v]
+
+    def _extract_non_null_damages(self, data):
+        # Extract the pixels where the catalog is not null
+        extracted = np.extract(self.mask, data[0, :, :])
+        if data.sum() != extracted.sum():
+            raise RuntimeError(f"Missed damages during extraction: {data.sum() - extracted.sum()}")
+
+        # Get non null data
+        indices = np.nonzero(extracted)[0]
+        values = extracted[indices]
+        return indices, values
+
+    @staticmethod
+    def _extract_date_from_filename(file):
+        filename = ntpath.basename(file)
+        filename_date = filename.split("_")[1]
+        date = datetime.strptime(filename_date, '%Y%m%d').date()
+        return date
 
     def _check_projection(self, dataset, file):
         if dataset.crs != self.crs:
@@ -170,6 +245,7 @@ class Targets:
                 self.extent = values.extent
                 self.mask = values.mask
                 self.contracts = values.contracts
+                self.damages = values.damages
 
     def _dump_object(self):
         if not self.use_dump:
