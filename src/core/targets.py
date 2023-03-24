@@ -67,7 +67,7 @@ class Targets:
         self.tags_damages = ['Ueberschwemmung_KMU_FH',
                              'Ueberschwemmung_KMU_GB',
                              'Wasser_KMU_FH',
-                             'Wasser_KMU_B',
+                             'Wasser_KMU_GB',
                              'Ueberschwemmung_Privat_FH',
                              'Ueberschwemmung_Privat_GB',
                              'Wasser_Privat_FH',
