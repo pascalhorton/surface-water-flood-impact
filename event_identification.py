@@ -6,7 +6,6 @@ from glob import glob
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
-import itertools
 from scipy.ndimage import uniform_filter
 
 # Get quantile data to select the coordinates for the event calculation

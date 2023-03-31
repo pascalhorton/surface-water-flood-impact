@@ -1,5 +1,5 @@
 """
-Extract the annual contracts.
+Extract the annual contracts and the damages.
 """
 
 import glob
@@ -18,10 +18,10 @@ from utils.config import Config
 config = Config()
 
 
-class Targets:
+class Damages:
     def __init__(self, year_start=None, year_end=None, use_dump=True):
         """
-        The Targets class.
+        The Damages class.
 
         Parameters
         ----------
@@ -64,14 +64,14 @@ class Targets:
                                'Privat_W_FH',
                                'Privat_W_GB']
 
-        self.tags_damages = ['Ueberschwemmung_KMU_FH',
-                             'Ueberschwemmung_KMU_GB',
-                             'Wasser_KMU_FH',
-                             'Wasser_KMU_GB',
-                             'Ueberschwemmung_Privat_FH',
-                             'Ueberschwemmung_Privat_GB',
-                             'Wasser_Privat_FH',
-                             'Wasser_Privat_GB']
+        self.tags_claims = ['Ueberschwemmung_KMU_FH',
+                            'Ueberschwemmung_KMU_GB',
+                            'Wasser_KMU_FH',
+                            'Wasser_KMU_GB',
+                            'Ueberschwemmung_Privat_FH',
+                            'Ueberschwemmung_Privat_GB',
+                            'Wasser_Privat_FH',
+                            'Wasser_Privat_GB']
 
         # Private (Privat) vs SME (KMU)
         self.private = [False, False, False, False, True, True, True, True]
@@ -84,7 +84,7 @@ class Targets:
         self.structural = [False, True, False, True, False, True, False, True]
 
         self.contracts = [np.zeros((1, 1, 1))] * len(self.tags_contracts)
-        self.damages = [pd.DataFrame(columns=['date_claim', 'index', 'nb_claims']) for x in range(len(self.tags))]
+        self.claims = [pd.DataFrame(columns=['date_claim', 'index', 'nb_claims']) for x in range(len(self.tags))]
 
         self._load_from_dump()
 
@@ -112,7 +112,7 @@ class Targets:
 
         self._dump_object()
 
-    def load_damages(self, directory=None):
+    def load_claims(self, directory=None):
         """
         Load the damage data from geotiff files.
 
@@ -121,12 +121,12 @@ class Targets:
         directory: str
             The path to the directory containing the files.
         """
-        if self.use_dump and self.damages[0].count()[0] > 0:
-            print("Damages reloaded from pickle file.")
+        if self.use_dump and self.claims[0].count()[0] > 0:
+            print("Claims reloaded from pickle file.")
             return
 
         if not directory:
-            directory = config.get('DIR_DAMAGES')
+            directory = config.get('DIR_CLAIMS')
 
         self._extract_damage_data(directory)
 
@@ -158,15 +158,15 @@ class Targets:
         return all_data
 
     def _extract_damage_data(self, directory):
-        damages = glob.glob(directory + '/*.tif')
-        for idx, tag in enumerate(self.tags_damages):
-            tag = self.tags_damages[idx]
-            files = [s for s in damages if tag in s]
+        claims = glob.glob(directory + '/*.tif')
+        for idx, tag in enumerate(self.tags_claims):
+            tag = self.tags_claims[idx]
+            files = [s for s in claims if tag in s]
             files.sort()
             self._parse_damage_files(files, idx)
 
     def _parse_damage_files(self, files, idx):
-        for i_file in tqdm(range(len(files)), desc=f"Extracting damages of type {self.tags[idx]}"):
+        for i_file in tqdm(range(len(files)), desc=f"Extracting claims of type {self.tags[idx]}"):
             file = files[i_file]
             with rasterio.open(file) as dataset:
                 self._check_projection(dataset, file)
@@ -174,21 +174,21 @@ class Targets:
                 data = dataset.read()
                 self._check_shape(data, file)
 
-                # Damages can be empty for a given type of object or phenomenon
+                # Claims can be empty for a given type of object or phenomenon
                 if data.sum() == 0:
                     continue
 
-                indices, values = self._extract_non_null_damages(data)
+                indices, values = self._extract_non_null_claims(data)
                 date = self._extract_date_from_filename(file)
 
                 for i, v in zip(indices, values):
-                    self.damages[idx].loc[len(self.damages[idx])] = [date, i, v]
+                    self.claims[idx].loc[len(self.claims[idx])] = [date, i, v]
 
-    def _extract_non_null_damages(self, data):
+    def _extract_non_null_claims(self, data):
         # Extract the pixels where the catalog is not null
         extracted = np.extract(self.mask, data[0, :, :])
         if data.sum() != extracted.sum():
-            raise RuntimeError(f"Missed damages during extraction: {data.sum() - extracted.sum()}")
+            raise RuntimeError(f"Missed claims during extraction: {data.sum() - extracted.sum()}")
 
         # Get non null data
         indices = np.nonzero(extracted)[0]
@@ -237,7 +237,7 @@ class Targets:
         if not self.use_dump:
             return
         tmp_dir = config.get('TMP_DIR')
-        file_path = Path(tmp_dir + '/targets.pickle')
+        file_path = Path(tmp_dir + '/claims.pickle')
         if file_path.is_file():
             with open(file_path, 'rb') as f:
                 values = pickle.load(f)
@@ -245,12 +245,12 @@ class Targets:
                 self.extent = values.extent
                 self.mask = values.mask
                 self.contracts = values.contracts
-                self.damages = values.damages
+                self.claims = values.claims
 
     def _dump_object(self):
         if not self.use_dump:
             return
         tmp_dir = config.get('TMP_DIR')
-        file_path = Path(tmp_dir + '/targets.pickle')
+        file_path = Path(tmp_dir + '/claims.pickle')
         with open(file_path, 'wb') as f:
             pickle.dump(self, f)
