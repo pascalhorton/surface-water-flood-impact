@@ -1,5 +1,5 @@
 """
-Extract the annual contracts and the claims.
+Class to handle all contracts and claims.
 """
 
 import glob
@@ -85,6 +85,10 @@ class Damages:
             columns=['year', 'index', 'contracts_tot'] + self.categories)
         self.claims = pd.DataFrame(
             columns=['date_claim', 'index', 'claims_tot'] + self.categories)
+
+        self.contracts = self.contracts.astype('int32')
+        self.claims = self.claims.astype('int32')
+        self.claims['date_claim'] = pd.to_datetime(self.claims['date_claim'])
 
         self._load_from_dump()
 
@@ -185,6 +189,10 @@ class Damages:
         """
         Parse the claim files for a given category.
         """
+        df_claims = pd.DataFrame(columns=['date_claim', 'index', category])
+        df_claims = df_claims.astype('int32')
+        df_claims['date_claim'] = pd.to_datetime(df_claims['date_claim'])
+
         for i_file in tqdm(range(len(files)), desc=f"Extracting {category}"):
             file = files[i_file]
             with rasterio.open(file) as dataset:
@@ -199,22 +207,20 @@ class Damages:
 
                 indices, values = self._extract_non_null_claims(data)
                 date = self._extract_date_from_filename(file)
-                self._store_in_claims_dataframe(date, indices, values, category)
+                df_event = pd.DataFrame(columns=['date_claim', 'index', category])
+                df_event['date_claim'] = [date] * len(indices)
+                df_event['index'] = indices
+                df_event[category] = values
+                df_claims = pd.concat([df_claims, df_event])
 
-    def _store_in_claims_dataframe(self, date, indices, values, category):
+        self._store_in_claims_dataframe(df_claims)
+
+    def _store_in_claims_dataframe(self, df_claims):
         """
-        Stores the claims for a given date and category in the dataframe.
+        Stores the claims for a given category in the dataframe.
         """
-        for idx, val in zip(indices, values):
-            loc = self.claims.loc[(self.claims['date_claim'] == date) &
-                                  (self.claims['index'] == idx)]
-            if loc.empty:
-                new_row = pd.DataFrame(
-                    {'date_claim': date, 'index': idx, category: val}, index=[0])
-                self.claims = pd.concat([self.claims, new_row], ignore_index=True)
-            else:
-                self.claims.loc[(self.claims['date_claim'] == date) &
-                                (self.claims['index'] == idx), category] = val
+        self.claims = pd.merge(self.claims, df_claims, how="outer",
+                               on=["date_claim", "index"], validate="one_to_one")
 
     def _extract_non_null_claims(self, data):
         """
