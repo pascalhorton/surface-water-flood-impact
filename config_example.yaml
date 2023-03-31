@@ -1,8 +1,17 @@
 OUTPUT_DIR: ''
+TMP_DIR: ''
 
-# Synthetic csv files v2019
-CSV_2019_TRIGGER: ''
-CSV_2019_ALL: ''
+# General options
+CRS: 'EPSG:2056'
+YEAR_START: 2013
+YEAR_END: 2022
+
+# Contract and damage data directories
+DIR_CONTRACTS: ''
+DIR_CLAIMS: ''
+
+# Path to the events parquet file
+EVENTS_PATH: ''
 
 # DEMs (with different resolutions)
 DEM_PATHS:
