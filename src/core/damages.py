@@ -128,7 +128,7 @@ class Damages:
         directory: str
             The path to the directory containing the files.
         """
-        if self.use_dump and self.claims.count()[0] > 0:
+        if self.use_dump and not self.claims.empty:
             print("Claims reloaded from pickle file.")
             return
 
