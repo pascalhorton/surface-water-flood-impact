@@ -84,7 +84,8 @@ class Damages:
         self.structural = [False, True, False, True, False, True, False, True]
 
         self.contracts = [np.zeros((1, 1, 1))] * len(self.tags_contracts)
-        self.claims = [pd.DataFrame(columns=['date_claim', 'index', 'nb_claims']) for x in range(len(self.tags))]
+        self.claims = [pd.DataFrame(columns=['date_claim', 'index', 'nb_claims']) for x
+                       in range(len(self.tags))]
 
         self._load_from_dump()
 
@@ -166,7 +167,7 @@ class Damages:
             self._parse_damage_files(files, idx)
 
     def _parse_damage_files(self, files, idx):
-        for i_file in tqdm(range(len(files)), desc=f"Extracting claims of type {self.tags[idx]}"):
+        for i_file in tqdm(range(len(files)), desc=f"Extracting {self.tags[idx]}"):
             file = files[i_file]
             with rasterio.open(file) as dataset:
                 self._check_projection(dataset, file)
@@ -188,7 +189,8 @@ class Damages:
         # Extract the pixels where the catalog is not null
         extracted = np.extract(self.mask, data[0, :, :])
         if data.sum() != extracted.sum():
-            raise RuntimeError(f"Missed claims during extraction: {data.sum() - extracted.sum()}")
+            raise RuntimeError(
+                f"Missed claims during extraction: {data.sum() - extracted.sum()}")
 
         # Get non null data
         indices = np.nonzero(extracted)[0]
