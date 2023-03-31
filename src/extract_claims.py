@@ -3,7 +3,7 @@ from utils.config import Config
 
 config = Config()
 
-targets = core.targets.Targets()
-targets.load_contracts(config.get('DIR_CONTRACTS'))
-targets.load_damages(config.get('DIR_CLAIMS'))
+damages = core.damages.Damages()
+damages.load_contracts(config.get('DIR_CONTRACTS'))
+damages.load_claims(config.get('DIR_CLAIMS'))
 

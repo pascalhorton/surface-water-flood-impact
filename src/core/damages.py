@@ -124,7 +124,7 @@ class Damages:
         directory: str
             The path to the directory containing the files.
         """
-        if self.use_dump and self.claims[0].count()[0] > 0:
+        if self.use_dump and self.claims.count()[0] > 0:
             print("Claims reloaded from pickle file.")
             return
 
@@ -179,13 +179,13 @@ class Damages:
             tag = self.tags_claims[idx]
             files = [s for s in claims if tag in s]
             files.sort()
-            self._parse_claim_files(files, idx)
+            self._parse_claim_files(files, self.categories[idx])
 
-    def _parse_claim_files(self, files, idx):
+    def _parse_claim_files(self, files, category):
         """
         Parse the claim files for a given category.
         """
-        for i_file in tqdm(range(len(files)), desc=f"Extracting {self.categories[idx]}"):
+        for i_file in tqdm(range(len(files)), desc=f"Extracting {category}"):
             file = files[i_file]
             with rasterio.open(file) as dataset:
                 self._check_projection(dataset, file)
@@ -199,9 +199,22 @@ class Damages:
 
                 indices, values = self._extract_non_null_claims(data)
                 date = self._extract_date_from_filename(file)
+                self._store_in_claims_dataframe(date, indices, values, category)
 
-                for i, v in zip(indices, values):
-                    self.claims[idx].loc[len(self.claims[idx])] = [date, i, v]
+    def _store_in_claims_dataframe(self, date, indices, values, category):
+        """
+        Stores the claims for a given date and category in the dataframe.
+        """
+        for idx, val in zip(indices, values):
+            loc = self.claims.loc[(self.claims['date_claim'] == date) &
+                                  (self.claims['index'] == idx)]
+            if loc.empty:
+                new_row = pd.DataFrame(
+                    {'date_claim': date, 'index': idx, category: val}, index=[0])
+                self.claims = pd.concat([self.claims, new_row], ignore_index=True)
+            else:
+                self.claims.loc[(self.claims['date_claim'] == date) &
+                                (self.claims['index'] == idx), category] = val
 
     def _extract_non_null_claims(self, data):
         """
