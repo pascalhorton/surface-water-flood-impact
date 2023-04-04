@@ -40,10 +40,12 @@ class Damages:
         self.use_dump = use_dump
 
         self.crs = config.get('CRS', 'EPSG:2056')
-        self.shape = None
-        self.extent = None
-        self.mask = None
-        self.cids = dict(extent=None, ids=None)
+        self.resolution = None
+
+        self.mask = dict(extent=None, shape=None, mask=np.array([]), xs=np.array([]),
+                         ys=np.array([]))
+        self.cids = dict(extent=None, ids_map=np.array([]), ids_list=np.array([]),
+                         xs=np.array([]), ys=np.array([]))
 
         self.year_start = year_start
         if not self.year_start:
@@ -85,9 +87,9 @@ class Damages:
                                 'Wasser_Privat_GB']
 
         self.contracts = pd.DataFrame(
-            columns=['year', 'index', 'selection'] + self.categories)
+            columns=['year', 'mask_index', 'selection'] + self.categories)
         self.claims = pd.DataFrame(
-            columns=['date_claim', 'index', 'selection'])
+            columns=['date_claim', 'mask_index', 'selection'])
 
         self.contracts = self.contracts.astype('int32')
         self.claims = self.claims.astype('int32')
@@ -105,7 +107,7 @@ class Damages:
         directory: str
             The path to the directory containing the files.
         """
-        if self.use_dump and self.shape is not None:
+        if self.use_dump and self.mask['mask'].size > 0:
             print("Contracts reloaded from pickle file.")
             return
 
@@ -114,6 +116,7 @@ class Damages:
 
         contract_data = self._extract_contract_data(directory)
         self._create_mask(contract_data)
+        self._create_cids_list()
 
         for idx, contracts in enumerate(contract_data):
             contract_data_cat = self._extract_data_with_mask(contracts)
@@ -141,6 +144,7 @@ class Damages:
 
         self._extract_claim_data(directory)
         self._clean_claims_dataframe()
+        self._set_cids()
 
         self._dump_object()
 
@@ -175,6 +179,7 @@ class Damages:
             file = file[0]
             with rasterio.open(file) as dataset:
                 self._check_projection(dataset, file)
+                self._check_resolution(dataset, file)
                 self._check_extent(dataset, file)
                 data = dataset.read()
                 self._check_shape(data, file)
@@ -199,7 +204,7 @@ class Damages:
         """
         Parse the claim files for a given category.
         """
-        df_claims = pd.DataFrame(columns=['date_claim', 'index', category])
+        df_claims = pd.DataFrame(columns=['date_claim', 'mask_index', category])
         df_claims = df_claims.astype('int32')
         df_claims['date_claim'] = pd.to_datetime(df_claims['date_claim'])
 
@@ -207,6 +212,7 @@ class Damages:
             file = files[i_file]
             with rasterio.open(file) as dataset:
                 self._check_projection(dataset, file)
+                self._check_resolution(dataset, file)
                 self._check_extent(dataset, file)
                 data = dataset.read()
                 self._check_shape(data, file)
@@ -217,9 +223,9 @@ class Damages:
 
                 indices, values = self._extract_non_null_claims(data)
                 date = self._extract_date_from_filename(file)
-                df_event = pd.DataFrame(columns=['date_claim', 'index', category])
+                df_event = pd.DataFrame(columns=['date_claim', 'mask_index', category])
                 df_event['date_claim'] = [date] * len(indices)
-                df_event['index'] = indices
+                df_event['mask_index'] = indices
                 df_event[category] = values
                 df_claims = pd.concat([df_claims, df_event])
 
@@ -230,14 +236,14 @@ class Damages:
         Stores the claims for a given category in the dataframe.
         """
         self.claims = pd.merge(self.claims, df_claims, how="outer",
-                               on=["date_claim", "index"], validate="one_to_one")
+                               on=["date_claim", "mask_index"], validate="one_to_one")
 
     def _extract_non_null_claims(self, data):
         """
         Extracts the cells with at least 1 claim.
         """
         # Extract the pixels where the catalog is not null
-        extracted = np.extract(self.mask, data[0, :, :])
+        extracted = np.extract(self.mask['mask'], data[0, :, :])
         if data.sum() != extracted.sum():
             raise RuntimeError(
                 f"Missed claims during extraction: {data.sum() - extracted.sum()}")
@@ -265,42 +271,78 @@ class Damages:
             raise RuntimeError(
                 f"The projection of {file} differs from the project one.")
 
+    def _check_resolution(self, dataset, file):
+        """
+        Check the resolution consistency with other files.
+        """
+        if self.resolution is None:
+            self.resolution = dataset.res
+        if dataset.res != self.resolution:
+            raise RuntimeError(
+                f"The resolution of {file} differs from the project one.")
+
     def _check_extent(self, dataset, file):
         """
         Check extent consistency with other files.
         """
-        if not self.extent:
-            self.extent = dataset.bounds
-        elif self.extent != dataset.bounds:
+        if self.mask['extent'] is None:
+            self.mask['extent'] = dataset.bounds
+
+            # Extract the axes
+            data = dataset.read()
+            data = data.squeeze(axis=0)
+            height = data.shape[0]
+            width = data.shape[1]
+            cols, rows = np.meshgrid(np.arange(width), np.arange(height))
+            xs, ys = rasterio.transform.xy(dataset.transform, rows, cols)
+            self.mask['xs'] = np.array(xs)
+            self.mask['ys'] = np.array(ys)
+
+        elif self.mask['extent'] != dataset.bounds:
             raise RuntimeError(f"The extent of {file} differs from other files.")
 
     def _check_shape(self, data, file):
         """
         Check shape consistency with other files.
         """
-        if not self.shape:
-            self.shape = data.shape
-        elif self.shape != data.shape:
+        if self.mask['shape'] is None:
+            self.mask['shape'] = data.shape
+        elif self.mask['shape'] != data.shape:
             raise RuntimeError(f"The shape of {file} differs from other files.")
 
     def _create_mask(self, contract_data):
         """
         Creates a mask with True for all pixels containing at least 1 annual contract.
         """
-        self.mask = np.zeros(self.shape[1:], dtype=bool)
+        self.mask['mask'] = np.zeros(self.mask['shape'][1:], dtype=bool)
         for arr in contract_data:
             max_value = arr.max(axis=0)
-            self.mask[max_value > 0] = True
+            self.mask['mask'][max_value > 0] = True
+
+    def _create_cids_list(self):
+        """
+        Creates the CIDs list for cells where we have damages
+        """
+        xs_mask_extracted = np.extract(self.mask['mask'], self.mask['xs'])
+        ys_mask_extracted = np.extract(self.mask['mask'], self.mask['ys'])
+        cids = np.zeros(len(xs_mask_extracted))
+        xs_cid = self.cids['xs'][0, :]
+        ys_cid = self.cids['ys'][:, 0]
+
+        for i, (x, y) in enumerate(zip(xs_mask_extracted, ys_mask_extracted)):
+            cids[i] = self.cids['ids_map'][ys_cid == y, xs_cid == x]
+
+        self.cids['ids_list'] = cids
 
     def _extract_data_with_mask(self, data):
         """
         Extracts data according to the mask and returns a 1-D array.
         """
-        if self.mask is None:
+        if self.mask['mask'].size == 0:
             raise RuntimeError("The mask for extraction was not defined.")
-        extracted = np.zeros((data.shape[0], np.sum(self.mask)), dtype=np.int16)
+        extracted = np.zeros((data.shape[0], np.sum(self.mask['mask'])), dtype=np.int16)
         for i in range(data.shape[0]):
-            extracted[i, :] = np.extract(self.mask, data[i, :, :])
+            extracted[i, :] = np.extract(self.mask['mask'], data[i, :, :])
         return extracted
 
     def _load_from_dump(self):
@@ -314,8 +356,7 @@ class Damages:
         if file_path.is_file():
             with open(file_path, 'rb') as f:
                 values = pickle.load(f)
-                self.shape = values.shape
-                self.extent = values.extent
+                self.resolution = values.resolution
                 self.mask = values.mask
                 self.cids = values.cids
                 self.contracts = values.contracts
@@ -334,15 +375,15 @@ class Damages:
 
     def _initialize_contracts_dataframe(self, contract_data_cat):
         """
-        Initializes the contracts dataframe by filling the year and the index columns.
-        The index column refers to the 1-D array after extraction by the mask.
+        Initializes the contracts dataframe by filling the year and the mask_index columns.
+        The mask_index column refers to the 1-D array after extraction by the mask.
         """
         n_years = self.year_end - self.year_start + 1
         n_annual_rows = contract_data_cat.shape[1]
         years = np.repeat(np.arange(self.year_start, self.year_end + 1), n_annual_rows)
         self.contracts['year'] = years
         indices = np.tile(np.arange(n_annual_rows), n_years)
-        self.contracts['index'] = indices
+        self.contracts['mask_index'] = indices
 
     def _set_to_contracts_dataframe(self, contract_data_cat, category):
         """
@@ -355,13 +396,23 @@ class Damages:
         """
         Reorder claims dataframe and remove nans.
         """
-        columns = ['date_claim', 'index', 'selection'] + self.categories
+        columns = ['date_claim', 'mask_index', 'selection'] + self.categories
         self.claims = self.claims.reindex(columns=columns)
         self.claims.fillna(0, inplace=True)
-        self.claims.sort_values(by=['date_claim', 'index'], inplace=True)
+        self.claims.sort_values(by=['date_claim', 'mask_index'], inplace=True)
         self.claims.reset_index(inplace=True, drop=True)
         for category in self.categories:
             self.claims[category] = self.claims[category].astype('int32')
+
+    def _set_cids(self):
+        xs_mask_extracted = np.extract(self.mask['mask'], self.mask['xs'])
+        ys_mask_extracted = np.extract(self.mask['mask'], self.mask['ys'])
+        cids = self.cids['ids_list'][self.claims['mask_index']].astype(np.int32)
+        x = xs_mask_extracted[self.claims['mask_index']].astype(np.int32)
+        y = ys_mask_extracted[self.claims['mask_index']].astype(np.int32)
+        self.claims.insert(2, 'cid', cids)
+        self.claims.insert(3, 'x', x)
+        self.claims.insert(4, 'y', y)
 
     def _load_cid_file(self, cid_file):
         if self.use_dump and self.cids['extent'] is not None:
@@ -369,7 +420,17 @@ class Damages:
             return
         with rasterio.open(cid_file) as dataset:
             self._check_projection(dataset, cid_file)
+            self._check_resolution(dataset, cid_file)
             data = np.nan_to_num(dataset.read())
             data = data.astype(np.int32)
-            self.cids['ids'] = data
+            data = data.squeeze(axis=0)
+            self.cids['ids_map'] = data
             self.cids['extent'] = dataset.bounds
+
+            # Extract the axes
+            height = data.shape[0]
+            width = data.shape[1]
+            cols, rows = np.meshgrid(np.arange(width), np.arange(height))
+            xs, ys = rasterio.transform.xy(dataset.transform, rows, cols)
+            self.cids['xs'] = np.array(xs)
+            self.cids['ys'] = np.array(ys)
