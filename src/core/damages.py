@@ -136,9 +136,14 @@ class Damages:
             directory = config.get('DIR_CLAIMS')
 
         self._extract_claim_data(directory)
-        self._clean_claim_dataframe()
+        self._clean_claims_dataframe()
 
         self._dump_object()
+
+    def select_all_categories(self):
+        columns = self.categories
+        self.contracts['selection'] = self.contracts[columns].sum(axis=1)
+        self.claims['selection'] = self.claims[columns].sum(axis=1)
 
     def _extract_contract_data(self, directory):
         """
@@ -331,7 +336,7 @@ class Damages:
         n_annual_rows = contract_data_cat.shape[1]
         years = np.repeat(np.arange(self.year_start, self.year_end + 1), n_annual_rows)
         self.contracts['year'] = years
-        indices = np.repeat(np.arange(n_annual_rows), n_years)
+        indices = np.tile(np.arange(n_annual_rows), n_years)
         self.contracts['index'] = indices
 
     def _set_to_contracts_dataframe(self, contract_data_cat, category):
@@ -341,7 +346,10 @@ class Damages:
         contracts = np.reshape(contract_data_cat, contract_data_cat.size)
         self.contracts[category] = contracts
 
-    def _clean_dataframes(self):
+    def _clean_claims_dataframe(self):
+        """
+        Reorder claims dataframe and remove nans.
+        """
         columns = ['date_claim', 'index', 'selection'] + self.categories
         self.claims = self.claims.reindex(columns=columns)
         self.claims.fillna(0, inplace=True)
