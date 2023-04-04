@@ -82,9 +82,9 @@ class Damages:
                                 'Wasser_Privat_GB']
 
         self.contracts = pd.DataFrame(
-            columns=['year', 'index', 'contracts_tot'] + self.categories)
+            columns=['year', 'index', 'selection'] + self.categories)
         self.claims = pd.DataFrame(
-            columns=['date_claim', 'index', 'claims_tot'] + self.categories)
+            columns=['date_claim', 'index', 'selection'])
 
         self.contracts = self.contracts.astype('int32')
         self.claims = self.claims.astype('int32')
@@ -136,6 +136,7 @@ class Damages:
             directory = config.get('DIR_CLAIMS')
 
         self._extract_claim_data(directory)
+        self._clean_claim_dataframe()
 
         self._dump_object()
 
@@ -339,3 +340,12 @@ class Damages:
         """
         contracts = np.reshape(contract_data_cat, contract_data_cat.size)
         self.contracts[category] = contracts
+
+    def _clean_dataframes(self):
+        columns = ['date_claim', 'index', 'selection'] + self.categories
+        self.claims = self.claims.reindex(columns=columns)
+        self.claims.fillna(0, inplace=True)
+        self.claims.sort_values(by=['date_claim', 'index'], inplace=True)
+        self.claims.reset_index(inplace=True, drop=True)
+        for category in self.categories:
+            self.claims[category] = self.claims[category].astype('int32')
