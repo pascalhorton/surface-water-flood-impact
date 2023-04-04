@@ -4,3 +4,4 @@ pandas==2.*
 geopandas
 rasterio
 tqdm
+pyarrow

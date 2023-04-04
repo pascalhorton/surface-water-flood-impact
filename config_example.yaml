@@ -6,6 +6,9 @@ CRS: 'EPSG:2056'
 YEAR_START: 2013
 YEAR_END: 2022
 
+# CID (cells IDs) raster path
+CID_PATH: '..\files\cids.tif'
+
 # Contract and damage data directories
 DIR_CONTRACTS: ''
 DIR_CLAIMS: ''

@@ -19,13 +19,15 @@ config = Config()
 
 
 class Damages:
-    def __init__(self, year_start=None, year_end=None, use_dump=True,
+    def __init__(self, cid_file, year_start=None, year_end=None, use_dump=True,
                  dataset='mobi_2023'):
         """
         The Damages class.
 
         Parameters
         ----------
+        cid_file: str
+            Path to the CID file containing the IDs of the cells
         year_start: int
             The starting year of the data.
         year_end: int
@@ -41,6 +43,7 @@ class Damages:
         self.shape = None
         self.extent = None
         self.mask = None
+        self.cids = dict(extent=None, ids=None)
 
         self.year_start = year_start
         if not self.year_start:
@@ -91,6 +94,7 @@ class Damages:
         self.claims['date_claim'] = pd.to_datetime(self.claims['date_claim'])
 
         self._load_from_dump()
+        self._load_cid_file(cid_file)
 
     def load_contracts(self, directory=None):
         """
@@ -313,6 +317,7 @@ class Damages:
                 self.shape = values.shape
                 self.extent = values.extent
                 self.mask = values.mask
+                self.cids = values.cids
                 self.contracts = values.contracts
                 self.claims = values.claims
 
@@ -357,3 +362,14 @@ class Damages:
         self.claims.reset_index(inplace=True, drop=True)
         for category in self.categories:
             self.claims[category] = self.claims[category].astype('int32')
+
+    def _load_cid_file(self, cid_file):
+        if self.use_dump and self.cids['extent'] is not None:
+            print("CIDs reloaded from pickle file.")
+            return
+        with rasterio.open(cid_file) as dataset:
+            self._check_projection(dataset, cid_file)
+            data = np.nan_to_num(dataset.read())
+            data = data.astype(np.int32)
+            self.cids['ids'] = data
+            self.cids['extent'] = dataset.bounds
