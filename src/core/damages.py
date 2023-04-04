@@ -20,7 +20,7 @@ config = Config()
 
 class Damages:
     def __init__(self, cid_file, year_start=None, year_end=None, use_dump=True,
-                 dataset='mobi_2023'):
+                 dataset='mobi_2023', dir_contracts=None, dir_claims=None):
         """
         The Damages class.
 
@@ -36,6 +36,10 @@ class Damages:
             Dump the content to the TMP_DIR and load if available
         dataset: str
             The dataset ID (default 'mobi_2023')
+        dir_contracts: str
+            The path to the directory containing the contract files.
+        dir_claims: str
+            The path to the directory containing the claim files.
         """
         self.use_dump = use_dump
 
@@ -97,6 +101,12 @@ class Damages:
 
         self._load_from_dump()
         self._load_cid_file(cid_file)
+
+        if dir_contracts is not None:
+            self.load_contracts(dir_contracts)
+
+        if dir_claims is not None:
+            self.load_claims(dir_claims)
 
     def load_contracts(self, directory=None):
         """
