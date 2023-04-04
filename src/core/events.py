@@ -50,6 +50,7 @@ class Events:
         print(f"Number of all events: {len(self.events)}")
 
         self.select_locations_with_contracts(damages)
+        self._add_event_id()
         self._dump_object()
 
     def get_events_sample(self):
@@ -98,3 +99,10 @@ class Events:
         file_path = Path(tmp_dir + '/events.pickle')
         with open(file_path, 'wb') as f:
             pickle.dump(self, f)
+
+    def _add_event_id(self):
+        """
+        Add an incremental event ID
+        """
+        ids = np.arange(start=1, stop=len(self.events) + 1)
+        self.events.insert(0, 'eid', ids)

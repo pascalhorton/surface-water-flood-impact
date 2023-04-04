@@ -5,7 +5,7 @@ Class to handle all contracts and claims.
 import glob
 import pickle
 import ntpath
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import rasterio
@@ -159,9 +159,53 @@ class Damages:
         self._dump_object()
 
     def select_all_categories(self):
+        """
+        Select all the damage categories.
+        """
         columns = self.categories
         self.contracts['selection'] = self.contracts[columns].sum(axis=1)
         self.claims['selection'] = self.claims[columns].sum(axis=1)
+
+    def match_with_events(self, events):
+        """
+        Match the damages with the events.
+
+        Parameters
+        ----------
+        events: Events instance
+            An object containing the events properties.
+        """
+        self.claims['eid'] = np.nan
+        matches = dict(none=0, single=0, multiple=0)
+        for idx, claim in self.claims.iterrows():
+            potential_events = self._get_potential_events(claim, events)
+            if len(potential_events) == 0:
+                matches['none'] += 1
+                continue
+            if len(potential_events) == 1:
+                self.claims.at[idx, 'eid'] = potential_events['eid'].iat[0]
+                matches['single'] += 1
+                continue
+
+        print(f"{matches['none']} claims could not be matched")
+
+    @staticmethod
+    def _get_potential_events(claim, events):
+        """
+        Get all potential events based on the CID and the date.
+        """
+        cid = claim['cid']
+        date_claim = claim['date_claim']
+        date_window_start = datetime.combine(date_claim - timedelta(days=2),
+                                             datetime.min.time())
+        date_window_end = datetime.combine(date_claim + timedelta(days=2),
+                                           datetime.max.time())
+        potential_events = events.events[
+            (events.events['cid'] == cid) &
+            (events.events['e_start'] < date_window_end) &
+            (events.events['e_end'] > date_window_start)]
+
+        return potential_events
 
     def _extract_contract_data(self, directory):
         """
@@ -233,11 +277,11 @@ class Damages:
 
                 indices, values = self._extract_non_null_claims(data)
                 date = self._extract_date_from_filename(file)
-                df_event = pd.DataFrame(columns=['date_claim', 'mask_index', category])
-                df_event['date_claim'] = [date] * len(indices)
-                df_event['mask_index'] = indices
-                df_event[category] = values
-                df_claims = pd.concat([df_claims, df_event])
+                df_case = pd.DataFrame(columns=['date_claim', 'mask_index', category])
+                df_case['date_claim'] = [date] * len(indices)
+                df_case['mask_index'] = indices
+                df_case[category] = values
+                df_claims = pd.concat([df_claims, df_case])
 
         self._store_in_claims_dataframe(df_claims)
 
@@ -245,8 +289,8 @@ class Damages:
         """
         Stores the claims for a given category in the dataframe.
         """
-        self.claims = pd.merge(self.claims, df_claims, how="outer",
-                               on=["date_claim", "mask_index"], validate="one_to_one")
+        self.claims = pd.merge(self.claims, df_claims, how='outer',
+                               on=['date_claim', 'mask_index'], validate='one_to_one')
 
     def _extract_non_null_claims(self, data):
         """
