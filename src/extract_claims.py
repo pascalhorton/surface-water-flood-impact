@@ -10,4 +10,4 @@ damages = core.damages.Damages(cid_file=config.get('CID_PATH'),
 damages.select_all_categories()
 
 events = core.events.Events()
-events.load_from_parquet(config.get('EVENTS_PATH'))
+events.load_events_and_select_locations(config.get('EVENTS_PATH'), damages)
