@@ -175,35 +175,99 @@ class Damages:
         events: Events instance
             An object containing the events properties.
         """
+        window_days = [5, 3, 1]
+        criteria = ['i_mean', 'i_max', 'p_sum', 'pc_e_tot', 'pc_e_win']
+        max_points = len(window_days) * len(criteria)
+
         self.claims['eid'] = np.nan
         matches = dict(none=0, single=0, multiple=0)
         for idx, claim in self.claims.iterrows():
-            potential_events = self._get_potential_events(claim, events)
-            if len(potential_events) == 0:
+
+            # Get potential events
+            pot_events = self._get_potential_events(
+                claim, events, window_days=window_days)
+            if pot_events is None:
                 matches['none'] += 1
                 continue
-            if len(potential_events) == 1:
-                self.claims.at[idx, 'eid'] = potential_events['eid'].iat[0]
-                matches['single'] += 1
-                continue
+
+            pot_events['match_score'] = 0
+            pot_events['overlap_hrs'] = 0
+            pot_events['pc_e_win'] = 0  # former 'tx'
+            pot_events['pc_e_tot'] = 0  # former 'et'
+
+            # Assign points for all windows and criteria
+            for window in window_days:
+                self._compute_temporal_overlap(claim['date_claim'], pot_events, window)
+                pot_events['pc_e_tot'] = pot_events['overlap_hrs'] / pot_events['e_tot']
+                pot_events['pc_e_win'] = pot_events['overlap_hrs'] / (window * 24)
+                for criterion in criteria:
+                    pot_events.loc[
+                        (pot_events['min_window'] <= window) &
+                        (pot_events[criterion] == pot_events[criterion].max()),
+                        f'{criterion}_{window}'] = 1
+                    pot_events.loc[
+                        (pot_events['min_window'] <= window) &
+                        (pot_events[criterion] == pot_events[criterion].max()),
+                        'match_score'] += 1
 
         print(f"{matches['none']} claims could not be matched")
 
     @staticmethod
-    def _get_potential_events(claim, events):
+    def _compute_temporal_overlap(date_claim, pot_events, window):
+        delta_days = (window - 1) / 2
+        date_window_start = datetime.combine(
+            date_claim - timedelta(days=delta_days),
+            datetime.min.time())
+        date_window_end = datetime.combine(
+            date_claim + timedelta(days=delta_days),
+            datetime.max.time())
+        for i, event in pot_events.iterrows():
+            overlap_window_start = max(date_window_start, event['e_start'])
+            overlap_window_end = min(date_window_end, event['e_end'])
+            overlap = overlap_window_end - overlap_window_start
+            pot_events.at[i, 'overlap_hrs'] = overlap.total_seconds() / 3600
+
+    @staticmethod
+    def _get_potential_events(claim, events, window_days):
         """
         Get all potential events based on the CID and the date.
         """
+        # Define the starting and ending dates of the longest temporal window
+        window_days.sort(reverse=True)
+        delta_days = (window_days[0] - 1) / 2
         cid = claim['cid']
         date_claim = claim['date_claim']
-        date_window_start = datetime.combine(date_claim - timedelta(days=2),
-                                             datetime.min.time())
-        date_window_end = datetime.combine(date_claim + timedelta(days=2),
-                                           datetime.max.time())
+        date_window_start = datetime.combine(
+            date_claim - timedelta(days=delta_days),
+            datetime.min.time())
+        date_window_end = datetime.combine(
+            date_claim + timedelta(days=delta_days),
+            datetime.max.time())
+
+        # Select all events in the longest temporal window
         potential_events = events.events[
             (events.events['cid'] == cid) &
             (events.events['e_start'] < date_window_end) &
-            (events.events['e_end'] > date_window_start)]
+            (events.events['e_end'] > date_window_start)].copy()
+
+        if len(potential_events) == 0:
+            return None
+
+        potential_events['min_window'] = window_days[0]
+
+        # Assess all other temporal windows and keep the smallest value
+        for window in window_days[1:]:
+            delta_days = (window - 1) / 2
+            date_window_start = datetime.combine(
+                date_claim - timedelta(days=delta_days),
+                datetime.min.time())
+            date_window_end = datetime.combine(
+                date_claim + timedelta(days=delta_days),
+                datetime.max.time())
+            potential_events.loc[
+                (potential_events['e_start'] < date_window_end) &
+                (potential_events['e_end'] > date_window_start),
+                'min_window'] = window
 
         return potential_events
 
