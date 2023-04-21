@@ -231,7 +231,7 @@ class Damages:
     @staticmethod
     def _get_best_candidate(pot_events, window_days, stats):
         best_matches = pot_events.loc[pot_events['match_score'] ==
-                                      pot_events['match_score'].max()]
+                                      pot_events['match_score'].max()].copy()
 
         if len(best_matches) > 1:
             stats['conflicts'] += 1
