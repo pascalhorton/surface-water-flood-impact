@@ -178,18 +178,14 @@ class Damages:
         window_days = [5, 3, 1]
         criteria = ['i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt']
 
-        self.claims.reset_index(inplace=True)
-        self.claims['eid'] = 0
-        self.claims['e_search_window'] = 0
-        self.claims['e_match_score'] = 0
-        matches_stat = dict(none=0, single=0, two=0, three=0, multiple=0, conflicts=0)
+        self._add_event_matching_fields()
+        stats = dict(none=0, single=0, two=0, three=0, multiple=0, conflicts=0)
         for i_claim in tqdm(range(len(self.claims)), desc=f"Matching claims / events"):
             claim = self.claims.iloc[i_claim]
 
             # Get potential events
-            pot_events = self._get_potential_events(
-                claim, events, window_days=window_days)
-            self._record_stat_candidates(matches_stat, pot_events)
+            pot_events = self._get_potential_events(claim, events, window_days)
+            self._record_stat_candidates(stats, pot_events)
 
             if pot_events is None:
                 continue
@@ -198,26 +194,43 @@ class Damages:
             self._compute_match_score(claim, criteria, pot_events, window_days)
 
             # Getting the best event matches
-            best_matches = pot_events.loc[pot_events['match_score'] ==
-                                          pot_events['match_score'].max()]
-            assert len(best_matches) > 0
+            best_matches = self._get_best_candidate(pot_events, window_days, stats)
+            self._record_best_event(best_matches, i_claim)
 
-            if len(best_matches) > 1:
-                matches_stat['conflicts'] += 1
-                for window in reversed(window_days):
-                    best_matches['sub_score'] = best_matches[f'i_mean_{window}'] + \
-                                                best_matches[f'i_max_{window}'] + \
-                                                best_matches[f'p_sum_{window}']
-                    best_matches = best_matches.loc[best_matches['sub_score'] ==
-                                                    best_matches['sub_score'].max()]
-                    if len(best_matches) == 1:
-                        break
+        self._print_matches_stats(stats)
 
-            self.claims.at[i_claim, 'eid'] = best_matches.iloc[0].eid
-            self.claims.at[i_claim, 'e_search_window'] = best_matches.iloc[0].min_window
-            self.claims.at[i_claim, 'e_match_score'] = best_matches.iloc[0].match_score
+        self.claims.dropna(subset=['eid'], inplace=True)
 
-        self._print_matches_stats(matches_stat)
+        self._dump_object('damages_matched.pickle')
+
+    def _add_event_matching_fields(self):
+        self.claims.reset_index(inplace=True)
+        self.claims['eid'] = 0
+        self.claims['e_search_window'] = 0
+        self.claims['e_match_score'] = 0
+
+    @staticmethod
+    def _get_best_candidate(pot_events, window_days, stats):
+        best_matches = pot_events.loc[pot_events['match_score'] ==
+                                      pot_events['match_score'].max()]
+
+        if len(best_matches) > 1:
+            stats['conflicts'] += 1
+            for window in reversed(window_days):
+                best_matches['sub_score'] = best_matches[f'i_mean_{window}'] + \
+                                            best_matches[f'i_max_{window}'] + \
+                                            best_matches[f'p_sum_{window}']
+                best_matches = best_matches.loc[best_matches['sub_score'] ==
+                                                best_matches['sub_score'].max()]
+                if len(best_matches) == 1:
+                    break
+
+        return best_matches
+
+    def _record_best_event(self, best_matches, i_claim):
+        self.claims.at[i_claim, 'eid'] = best_matches.iloc[0].eid
+        self.claims.at[i_claim, 'e_search_window'] = best_matches.iloc[0].min_window
+        self.claims.at[i_claim, 'e_match_score'] = best_matches.iloc[0].match_score
 
     def _compute_match_score(self, claim, criteria, pot_events, window_days):
         pot_events['match_score'] = 0
@@ -230,41 +243,36 @@ class Damages:
             pot_events['r_ts_win'] = pot_events['overlap_hrs'] / (window * 24)
             pot_events['r_ts_evt'] = pot_events['overlap_hrs'] / pot_events['e_tot']
             for criterion in criteria:
-                pot_events[f'{criterion}_{window}'] = 0
-                val_max = pot_events.loc[
-                    pot_events['min_window'] <= window,
-                    criterion].max()
-                pot_events.loc[
-                    (pot_events['min_window'] <= window) &
-                    (pot_events[criterion] == val_max),
-                    f'{criterion}_{window}'] = 1
-                pot_events.loc[
-                    (pot_events['min_window'] <= window) &
-                    (pot_events[criterion] == val_max),
-                    'match_score'] += 1
+                field_name = f'{criterion}_{window}'
+                pot_events[field_name] = 0
+                within_window = pot_events['min_window'] <= window
+                val_max = pot_events.loc[within_window, criterion].max()
+                with_max_val = pot_events[criterion] == val_max
+                pot_events.loc[within_window & with_max_val, field_name] = 1
+                pot_events.loc[within_window & with_max_val, 'match_score'] += 1
 
     @staticmethod
-    def _record_stat_candidates(matches_stat, pot_events):
+    def _record_stat_candidates(stats, pot_events):
         if pot_events is None:
-            matches_stat['none'] += 1
+            stats['none'] += 1
         elif len(pot_events) == 1:
-            matches_stat['single'] += 1
+            stats['single'] += 1
         elif len(pot_events) == 2:
-            matches_stat['two'] += 1
+            stats['two'] += 1
         elif len(pot_events) == 3:
-            matches_stat['three'] += 1
+            stats['three'] += 1
         else:
-            matches_stat['multiple'] += 1
+            stats['multiple'] += 1
 
     @staticmethod
-    def _print_matches_stats(matches_stat):
+    def _print_matches_stats(stats):
         print(f"Stats of the events / damage matches:")
-        print(f"- {matches_stat['none']} claims could not be matched")
-        print(f"- {matches_stat['single']} claims had 1 candidate event")
-        print(f"- {matches_stat['two']} claims had 2 candidate event")
-        print(f"- {matches_stat['three']} claims had 3 candidate event")
-        print(f"- {matches_stat['multiple']} claims had more candidate event")
-        print(f"- {matches_stat['conflicts']} claims had conflicts")
+        print(f"- {stats['none']} claims could not be matched")
+        print(f"- {stats['single']} claims had 1 candidate event")
+        print(f"- {stats['two']} claims had 2 candidate event")
+        print(f"- {stats['three']} claims had 3 candidate event")
+        print(f"- {stats['multiple']} claims had more candidate event")
+        print(f"- {stats['conflicts']} claims had conflicts")
 
     @staticmethod
     def _compute_temporal_overlap(date_claim, pot_events, window):
@@ -518,14 +526,14 @@ class Damages:
             extracted[i, :] = np.extract(self.mask['mask'], data[i, :, :])
         return extracted
 
-    def _load_from_dump(self):
+    def _load_from_dump(self, filename='damages.pickle'):
         """
         Loads the object content from a pickle file.
         """
         if not self.use_dump:
             return
         tmp_dir = config.get('TMP_DIR')
-        file_path = Path(tmp_dir + '/damages.pickle')
+        file_path = Path(tmp_dir + '/' + filename)
         if file_path.is_file():
             with open(file_path, 'rb') as f:
                 values = pickle.load(f)
@@ -535,14 +543,14 @@ class Damages:
                 self.contracts = values.contracts
                 self.claims = values.claims
 
-    def _dump_object(self):
+    def _dump_object(self, filename='damages.pickle'):
         """
         Saves the object content to a pickle file.
         """
         if not self.use_dump:
             return
         tmp_dir = config.get('TMP_DIR')
-        file_path = Path(tmp_dir + '/damages.pickle')
+        file_path = Path(tmp_dir + '/' + filename)
         with open(file_path, 'wb') as f:
             pickle.dump(self, f)
 
