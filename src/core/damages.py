@@ -166,7 +166,8 @@ class Damages:
         self.contracts['selection'] = self.contracts[columns].sum(axis=1)
         self.claims['selection'] = self.claims[columns].sum(axis=1)
 
-    def match_with_events(self, events):
+    def match_with_events(self, events, criteria=None, window_days=None,
+                          filename='damages_matched.pickle'):
         """
         Match the damages with the events.
 
@@ -174,9 +175,27 @@ class Damages:
         ----------
         events: Events instance
             An object containing the events properties.
+        criteria: list (optional)
+            A list of the criteria to consider for the matching.
+            Default to ['i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt']
+            where:
+            - i_mean: mean intensity of the event
+            - i_max: max intensity of the event
+            - p_sum: sum of the event precipitation
+            - r_ts_win: ratio of the event time steps within the temporal window on the
+              total window duration
+            - r_ts_evt: ratio of the event time steps within the temporal window on the
+              total event duration
+        window_days: list (optional)
+            A list of the temporal window (days) on which to search for events to match.
+            Default to [5, 3, 1]
+        filename: str
+            File name to save the results (pickle format)
         """
-        window_days = [5, 3, 1]
-        criteria = ['i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt']
+        if window_days is None:
+            window_days = [5, 3, 1]
+        if criteria is None:
+            criteria = ['i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt']
 
         self._add_event_matching_fields()
         stats = dict(none=0, single=0, two=0, three=0, multiple=0, conflicts=0)
@@ -201,7 +220,7 @@ class Damages:
 
         self.claims.dropna(subset=['eid'], inplace=True)
 
-        self._dump_object('damages_matched.pickle')
+        self._dump_object(filename)
 
     def _add_event_matching_fields(self):
         self.claims.reset_index(inplace=True)
@@ -217,13 +236,22 @@ class Damages:
         if len(best_matches) > 1:
             stats['conflicts'] += 1
             for window in reversed(window_days):
-                best_matches['sub_score'] = best_matches[f'i_mean_{window}'] + \
-                                            best_matches[f'i_max_{window}'] + \
-                                            best_matches[f'p_sum_{window}']
+                best_matches['sub_score'] = 0
+                if f'i_mean_{window}' in best_matches:
+                    best_matches['sub_score'] += best_matches[f'i_mean_{window}']
+                if f'i_max_{window}' in best_matches:
+                    best_matches['sub_score'] += best_matches[f'i_max_{window}']
+                if f'p_sum_{window}' in best_matches:
+                    best_matches['sub_score'] += best_matches[f'p_sum_{window}']
+
                 best_matches = best_matches.loc[best_matches['sub_score'] ==
                                                 best_matches['sub_score'].max()]
                 if len(best_matches) == 1:
                     break
+
+        if len(best_matches) > 1:
+            print("Conflict not resolved. Taking the first event.")
+            best_matches = best_matches[0]
 
         return best_matches
 
