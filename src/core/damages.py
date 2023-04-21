@@ -176,41 +176,95 @@ class Damages:
             An object containing the events properties.
         """
         window_days = [5, 3, 1]
-        criteria = ['i_mean', 'i_max', 'p_sum', 'pc_e_tot', 'pc_e_win']
-        max_points = len(window_days) * len(criteria)
+        criteria = ['i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt']
 
-        self.claims['eid'] = np.nan
-        matches = dict(none=0, single=0, multiple=0)
-        for idx, claim in self.claims.iterrows():
+        self.claims.reset_index(inplace=True)
+        self.claims['eid'] = 0
+        self.claims['e_search_window'] = 0
+        self.claims['e_match_score'] = 0
+        matches_stat = dict(none=0, single=0, two=0, three=0, multiple=0, conflicts=0)
+        for i_claim in tqdm(range(len(self.claims)), desc=f"Matching claims / events"):
+            claim = self.claims.iloc[i_claim]
 
             # Get potential events
             pot_events = self._get_potential_events(
                 claim, events, window_days=window_days)
+            self._record_stat_candidates(matches_stat, pot_events)
+
             if pot_events is None:
-                matches['none'] += 1
                 continue
 
-            pot_events['match_score'] = 0
-            pot_events['overlap_hrs'] = 0
-            pot_events['pc_e_win'] = 0  # former 'tx'
-            pot_events['pc_e_tot'] = 0  # former 'et'
-
             # Assign points for all windows and criteria
-            for window in window_days:
-                self._compute_temporal_overlap(claim['date_claim'], pot_events, window)
-                pot_events['pc_e_tot'] = pot_events['overlap_hrs'] / pot_events['e_tot']
-                pot_events['pc_e_win'] = pot_events['overlap_hrs'] / (window * 24)
-                for criterion in criteria:
-                    pot_events.loc[
-                        (pot_events['min_window'] <= window) &
-                        (pot_events[criterion] == pot_events[criterion].max()),
-                        f'{criterion}_{window}'] = 1
-                    pot_events.loc[
-                        (pot_events['min_window'] <= window) &
-                        (pot_events[criterion] == pot_events[criterion].max()),
-                        'match_score'] += 1
+            self._compute_match_score(claim, criteria, pot_events, window_days)
 
-        print(f"{matches['none']} claims could not be matched")
+            # Getting the best event matches
+            best_matches = pot_events.loc[pot_events['match_score'] ==
+                                          pot_events['match_score'].max()]
+            assert len(best_matches) > 0
+
+            if len(best_matches) > 1:
+                matches_stat['conflicts'] += 1
+                for window in reversed(window_days):
+                    best_matches['sub_score'] = best_matches[f'i_mean_{window}'] + \
+                                                best_matches[f'i_max_{window}'] + \
+                                                best_matches[f'p_sum_{window}']
+                    best_matches = best_matches.loc[best_matches['sub_score'] ==
+                                                    best_matches['sub_score'].max()]
+                    if len(best_matches) == 1:
+                        break
+
+            self.claims.at[i_claim, 'eid'] = best_matches.iloc[0].eid
+            self.claims.at[i_claim, 'e_search_window'] = best_matches.iloc[0].min_window
+            self.claims.at[i_claim, 'e_match_score'] = best_matches.iloc[0].match_score
+
+        self._print_matches_stats(matches_stat)
+
+    def _compute_match_score(self, claim, criteria, pot_events, window_days):
+        pot_events['match_score'] = 0
+        pot_events['overlap_hrs'] = 0
+        pot_events['r_ts_win'] = 0  # former 'tx', (#ts overlap)/(#ts window)
+        pot_events['r_ts_evt'] = 0  # former 'et', (#ts overlap)/(evt duration)
+
+        for window in window_days:
+            self._compute_temporal_overlap(claim['date_claim'], pot_events, window)
+            pot_events['r_ts_win'] = pot_events['overlap_hrs'] / (window * 24)
+            pot_events['r_ts_evt'] = pot_events['overlap_hrs'] / pot_events['e_tot']
+            for criterion in criteria:
+                pot_events[f'{criterion}_{window}'] = 0
+                val_max = pot_events.loc[
+                    pot_events['min_window'] <= window,
+                    criterion].max()
+                pot_events.loc[
+                    (pot_events['min_window'] <= window) &
+                    (pot_events[criterion] == val_max),
+                    f'{criterion}_{window}'] = 1
+                pot_events.loc[
+                    (pot_events['min_window'] <= window) &
+                    (pot_events[criterion] == val_max),
+                    'match_score'] += 1
+
+    @staticmethod
+    def _record_stat_candidates(matches_stat, pot_events):
+        if pot_events is None:
+            matches_stat['none'] += 1
+        elif len(pot_events) == 1:
+            matches_stat['single'] += 1
+        elif len(pot_events) == 2:
+            matches_stat['two'] += 1
+        elif len(pot_events) == 3:
+            matches_stat['three'] += 1
+        else:
+            matches_stat['multiple'] += 1
+
+    @staticmethod
+    def _print_matches_stats(matches_stat):
+        print(f"Stats of the events / damage matches:")
+        print(f"- {matches_stat['none']} claims could not be matched")
+        print(f"- {matches_stat['single']} claims had 1 candidate event")
+        print(f"- {matches_stat['two']} claims had 2 candidate event")
+        print(f"- {matches_stat['three']} claims had 3 candidate event")
+        print(f"- {matches_stat['multiple']} claims had more candidate event")
+        print(f"- {matches_stat['conflicts']} claims had conflicts")
 
     @staticmethod
     def _compute_temporal_overlap(date_claim, pot_events, window):
@@ -225,7 +279,8 @@ class Damages:
             overlap_window_start = max(date_window_start, event['e_start'])
             overlap_window_end = min(date_window_end, event['e_end'])
             overlap = overlap_window_end - overlap_window_start
-            pot_events.at[i, 'overlap_hrs'] = overlap.total_seconds() / 3600
+            overlap_hrs = max(0.0, overlap.total_seconds() / 3600)
+            pot_events.at[i, 'overlap_hrs'] = overlap_hrs
 
     @staticmethod
     def _get_potential_events(claim, events, window_days):
