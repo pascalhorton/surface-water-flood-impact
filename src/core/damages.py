@@ -19,8 +19,9 @@ config = Config()
 
 
 class Damages:
-    def __init__(self, cid_file, year_start=None, year_end=None, use_dump=True,
-                 dataset='mobi_2023', dir_contracts=None, dir_claims=None):
+    def __init__(self, cid_file=None, year_start=None, year_end=None, use_dump=True,
+                 dataset='mobi_2023', dir_contracts=None, dir_claims=None,
+                 pickle_file=None):
         """
         The Damages class.
 
@@ -40,6 +41,8 @@ class Damages:
             The path to the directory containing the contract files.
         dir_claims: str
             The path to the directory containing the claim files.
+        pickle_file: str
+            The path to a pickle file to load.
         """
         self.use_dump = use_dump
 
@@ -50,6 +53,9 @@ class Damages:
                          ys=np.array([]))
         self.cids = dict(extent=None, ids_map=np.array([]), ids_list=np.array([]),
                          xs=np.array([]), ys=np.array([]))
+
+        if not cid_file:
+            cid_file = config.get('CID_PATH')
 
         self.year_start = year_start
         if not self.year_start:
@@ -107,6 +113,20 @@ class Damages:
 
         if dir_claims is not None:
             self.load_claims(dir_claims)
+
+        if pickle is not None:
+            self.load_from_pickle(pickle_file)
+
+    def load_from_pickle(self, filename='damages.pickle'):
+        """
+        Load the damage pre-processed data from a pickle file.
+
+        Parameters
+        ----------
+        filename: str
+            The name the pickle file in the project temporary directory (TMP_DIR)
+        """
+        self._load_from_dump(filename=filename)
 
     def load_contracts(self, directory=None):
         """
@@ -625,7 +645,6 @@ class Damages:
 
     def _load_cid_file(self, cid_file):
         if self.use_dump and self.cids['extent'] is not None:
-            print("CIDs reloaded from pickle file.")
             return
         with rasterio.open(cid_file) as dataset:
             self._check_projection(dataset, cid_file)
