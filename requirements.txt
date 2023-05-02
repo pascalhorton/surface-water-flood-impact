@@ -5,3 +5,4 @@ geopandas
 rasterio
 tqdm
 pyarrow
+matplotlib
