@@ -237,16 +237,32 @@ class Damages:
             self._record_best_event(best_matches, i_claim)
 
         self._print_matches_stats(stats)
-
-        self.claims.dropna(subset=['eid'], inplace=True)
-
+        self._remove_claims_with_no_event()
         self._dump_object(filename)
 
+    def merge_with_events(self, events):
+        """
+        Merge the claims with the pre-assigned event data using the fields 'cid' and
+        'eid'. The prior use of the match_with_events() function is mandatory to assign
+        the event IDs (eid).
+
+        Parameters
+        ----------
+        events: Events instance
+            An object containing the events properties.
+        """
+        self.claims = pd.merge(self.claims, events.events,
+                               how="left", on=['cid', 'eid'])
+
     def _add_event_matching_fields(self):
-        self.claims.reset_index(inplace=True)
+        self.claims.reset_index(inplace=True, drop=True)
         self.claims['eid'] = 0
         self.claims['e_search_window'] = 0
         self.claims['e_match_score'] = 0
+
+    def _remove_claims_with_no_event(self):
+        self.claims = self.claims[self.claims.eid != 0]
+        self.claims.reset_index(inplace=True, drop=True)
 
     @staticmethod
     def _get_best_candidate(pot_events, window_days, stats):
