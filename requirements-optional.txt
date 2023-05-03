@@ -1,2 +1,5 @@
 richdem
 gdal
+xarray
+dask
+netcdf4
