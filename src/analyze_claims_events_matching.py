@@ -31,6 +31,9 @@ labels = [
     'all',
 ]
 
+window_days = [5, 3, 1]
+#window_days = [9, 7, 5, 3, 1]
+
 tmp_dir = config.get('TMP_DIR')
 
 # Compute the different matching
@@ -51,7 +54,8 @@ for i, criteria in enumerate(criteria_list):
     events = core.events.Events()
     events.load_events_and_select_locations(config.get('EVENTS_PATH'), damages)
 
-    damages.match_with_events(events, criteria=criteria, filename=filename)
+    damages.match_with_events(events, criteria=criteria, filename=filename,
+                              window_days=window_days)
 
 # Load the first pickle file and do some common work
 damages = core.damages.Damages(pickle_file=f'damages_matched_conf_{0}.pickle')
@@ -67,16 +71,22 @@ for i_ref, criteria_ref in enumerate(criteria_list):
     df_ref = core.damages.Damages(pickle_file=filename_ref)
     assert total == df_ref.claims.eid.astype(bool).sum()
 
-    # Compute the time difference between the event center and the claim date
+    # Compute and plot the time difference between the event and the claim date
     df_ref.merge_with_events(events)
-    df_ref.claims['e_mid'] = \
-        df_ref.claims.e_start + \
-        (df_ref.claims.e_end - df_ref.claims.e_start) / 2
-    df_ref.claims['datetime_claim'] = pd.to_datetime(
-        df_ref.claims['date_claim'])
-    df_ref.claims['datetime_claim'] += timedelta(hours=12)
-    df_ref.claims['dt'] = (df_ref.claims.e_mid - df_ref.claims.datetime_claim)
+    df_ref.compute_days_to_event_start('dt_start')
+    df_ref.compute_days_to_event_center('dt_center')
 
+    utils.plotting.plot_histogram_time_difference(
+        df_ref.claims, field_name='dt_start', dir_output=config.get('OUTPUT_DIR'),
+        title=f"Difference (in days) between the claim date and the event start \n"
+        f"when using '{labels[i_ref]}'")
+
+    utils.plotting.plot_histogram_time_difference(
+        df_ref.claims, field_name='dt_center', dir_output=config.get('OUTPUT_DIR'),
+        title=f"Difference (in days) between the claim date and the event center \n"
+        f"when using '{labels[i_ref]}'")
+
+    # Compute the differences in events attribution with other criteria
     for i_diff, criteria_diff in enumerate(criteria_list):
         filename_diff = f'damages_matched_conf_{i_diff}.pickle'
         df_comp = core.damages.Damages(pickle_file=filename_diff)
@@ -86,5 +96,5 @@ for i_ref, criteria_ref in enumerate(criteria_list):
         diff_count[i_ref, i_diff] = diffs.astype(bool).sum()
 
 utils.plotting.plot_heatmap_differences(
-    diff_count, total, labels,
-    "Differences in the event-damage attribution")
+    diff_count, total, labels, dir_output=config.get('OUTPUT_DIR'),
+    title="Differences in the event-damage attribution")

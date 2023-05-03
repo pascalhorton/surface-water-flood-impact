@@ -114,7 +114,7 @@ class Damages:
         if dir_claims is not None:
             self.load_claims(dir_claims)
 
-        if pickle is not None:
+        if pickle_file is not None:
             self.load_from_pickle(pickle_file)
 
     def load_from_pickle(self, filename='damages.pickle'):
@@ -254,6 +254,37 @@ class Damages:
         self.claims = pd.merge(self.claims, events.events,
                                how="left", on=['cid', 'eid'])
 
+    def compute_days_to_event_start(self, field_name='dt_start'):
+        """
+        Compute the number of days between the claims and the events start.
+        The prior use of the match_with_events() and the merge_with_events()
+        functions is mandatory.
+
+        Parameters
+        ----------
+        field_name: str
+            The name of the field to add to the dataframe.
+        """
+        claims = self.claims
+        self.claims[field_name] = claims.e_start.dt.date - claims.date_claim
+        self.claims[field_name] = claims[field_name].apply(lambda x: x.days)
+
+    def compute_days_to_event_center(self, field_name='dt_center'):
+        """
+        Compute the number of days between the claims and the events center (average
+        of the start and end of the event). The prior use of the match_with_events()
+        and the merge_with_events() functions is mandatory.
+
+        Parameters
+        ----------
+        field_name: str
+            The name of the field to add to the dataframe.
+        """
+        claims = self.claims
+        self.claims[field_name] = ((claims.e_start + (
+                claims.e_end - claims.e_start) / 2).dt.date - claims.date_claim)
+        self.claims[field_name] = claims[field_name].apply(lambda x: x.days)
+
     def _add_event_matching_fields(self):
         self.claims.reset_index(inplace=True, drop=True)
         self.claims['eid'] = 0
@@ -287,7 +318,7 @@ class Damages:
 
         if len(best_matches) > 1:
             print("Conflict not resolved. Taking the first event.")
-            best_matches = best_matches[0]
+            best_matches = best_matches.iloc[0]
 
         return best_matches
 
