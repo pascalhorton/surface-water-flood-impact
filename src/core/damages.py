@@ -14,6 +14,7 @@ import pandas as pd
 from tqdm import tqdm
 
 from utils.config import Config
+from core.domain import Domain
 
 config = Config()
 
@@ -46,16 +47,9 @@ class Damages:
         """
         self.use_dump = use_dump
 
-        self.crs = config.get('CRS', 'EPSG:2056')
-        self.resolution = None
-
+        self.domain = Domain(cid_file)
         self.mask = dict(extent=None, shape=None, mask=np.array([]), xs=np.array([]),
                          ys=np.array([]))
-        self.cids = dict(extent=None, ids_map=np.array([]), ids_list=np.array([]),
-                         xs=np.array([]), ys=np.array([]))
-
-        if not cid_file:
-            cid_file = config.get('CID_PATH')
 
         self.year_start = year_start
         if not self.year_start:
@@ -106,7 +100,6 @@ class Damages:
         self.claims['date_claim'] = pd.to_datetime(self.claims['date_claim'])
 
         self._load_from_dump()
-        self._load_cid_file(cid_file)
 
         if dir_contracts is not None:
             self.load_contracts(dir_contracts)
@@ -454,8 +447,8 @@ class Damages:
                 raise RuntimeError(f"{len(file)} files found instead of 1.")
             file = file[0]
             with rasterio.open(file) as dataset:
-                self._check_projection(dataset, file)
-                self._check_resolution(dataset, file)
+                self.domain.check_projection(dataset, file)
+                self.domain.check_resolution(dataset, file)
                 self._check_extent(dataset, file)
                 data = dataset.read()
                 self._check_shape(data, file)
@@ -487,8 +480,8 @@ class Damages:
         for i_file in tqdm(range(len(files)), desc=f"Extracting {category}"):
             file = files[i_file]
             with rasterio.open(file) as dataset:
-                self._check_projection(dataset, file)
-                self._check_resolution(dataset, file)
+                self.domain.check_projection(dataset, file)
+                self.domain.check_resolution(dataset, file)
                 self._check_extent(dataset, file)
                 data = dataset.read()
                 self._check_shape(data, file)
@@ -539,24 +532,6 @@ class Damages:
         date = datetime.strptime(filename_date, '%Y%m%d').date()
         return date
 
-    def _check_projection(self, dataset, file):
-        """
-        Check projection consistency with other files.
-        """
-        if dataset.crs != self.crs:
-            raise RuntimeError(
-                f"The projection of {file} differs from the project one.")
-
-    def _check_resolution(self, dataset, file):
-        """
-        Check the resolution consistency with other files.
-        """
-        if self.resolution is None:
-            self.resolution = dataset.res
-        if dataset.res != self.resolution:
-            raise RuntimeError(
-                f"The resolution of {file} differs from the project one.")
-
     def _check_extent(self, dataset, file):
         """
         Check extent consistency with other files.
@@ -599,16 +574,9 @@ class Damages:
         """
         Creates the CIDs list for cells where we have damages
         """
-        xs_mask_extracted = np.extract(self.mask['mask'], self.mask['xs'])
-        ys_mask_extracted = np.extract(self.mask['mask'], self.mask['ys'])
-        cids = np.zeros(len(xs_mask_extracted))
-        xs_cid = self.cids['xs'][0, :]
-        ys_cid = self.cids['ys'][:, 0]
-
-        for i, (x, y) in enumerate(zip(xs_mask_extracted, ys_mask_extracted)):
-            cids[i] = self.cids['ids_map'][ys_cid == y, xs_cid == x]
-
-        self.cids['ids_list'] = cids
+        xs_mask = np.extract(self.mask['mask'], self.mask['xs'])
+        ys_mask = np.extract(self.mask['mask'], self.mask['ys'])
+        self.domain.create_cids_list(xs_mask, ys_mask)
 
     def _extract_data_with_mask(self, data):
         """
@@ -632,9 +600,7 @@ class Damages:
         if file_path.is_file():
             with open(file_path, 'rb') as f:
                 values = pickle.load(f)
-                self.resolution = values.resolution
                 self.mask = values.mask
-                self.cids = values.cids
                 self.contracts = values.contracts
                 self.claims = values.claims
 
@@ -683,29 +649,9 @@ class Damages:
     def _set_cids(self):
         xs_mask_extracted = np.extract(self.mask['mask'], self.mask['xs'])
         ys_mask_extracted = np.extract(self.mask['mask'], self.mask['ys'])
-        cids = self.cids['ids_list'][self.claims['mask_index']].astype(np.int32)
+        cids = self.domain.cids['ids_list'][self.claims['mask_index']].astype(np.int32)
         x = xs_mask_extracted[self.claims['mask_index']].astype(np.int32)
         y = ys_mask_extracted[self.claims['mask_index']].astype(np.int32)
         self.claims.insert(2, 'cid', cids)
         self.claims.insert(3, 'x', x)
         self.claims.insert(4, 'y', y)
-
-    def _load_cid_file(self, cid_file):
-        if self.use_dump and self.cids['extent'] is not None:
-            return
-        with rasterio.open(cid_file) as dataset:
-            self._check_projection(dataset, cid_file)
-            self._check_resolution(dataset, cid_file)
-            data = np.nan_to_num(dataset.read())
-            data = data.astype(np.int32)
-            data = data.squeeze(axis=0)
-            self.cids['ids_map'] = data
-            self.cids['extent'] = dataset.bounds
-
-            # Extract the axes
-            height = data.shape[0]
-            width = data.shape[1]
-            cols, rows = np.meshgrid(np.arange(width), np.arange(height))
-            xs, ys = rasterio.transform.xy(dataset.transform, rows, cols)
-            self.cids['xs'] = np.array(xs)
-            self.cids['ys'] = np.array(ys)
