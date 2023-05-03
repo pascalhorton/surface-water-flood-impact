@@ -19,7 +19,7 @@ class Domain:
         """
         self.crs = config.get('CRS', 'EPSG:2056')
         self.resolution = None
-        self.cids = dict(extent=None, ids_map=np.array([]), ids_list=np.array([]),
+        self.cids = dict(extent=None, ids_map=np.array([]),
                          xs=np.array([]), ys=np.array([]))
 
         if not cid_file:
@@ -58,26 +58,6 @@ class Domain:
             raise RuntimeError(
                 f"The resolution of {file} differs from the project one.")
 
-    def create_cids_list(self, xs_mask, ys_mask):
-        """
-        Create the list of CIDs.
-
-        Parameters
-        ----------
-        xs_mask: list
-            X coordinates from the mask.
-        ys_mask: list
-            Y coordinates from the mask.
-        """
-        cids = np.zeros(len(xs_mask))
-        xs_cid = self.cids['xs'][0, :]
-        ys_cid = self.cids['ys'][:, 0]
-
-        for i, (x, y) in enumerate(zip(xs_mask, ys_mask)):
-            cids[i] = self.cids['ids_map'][ys_cid == y, xs_cid == x]
-
-        self.cids['ids_list'] = cids
-
     def _load_cid_file(self, cid_file):
         """
         Load the file containing the CIDs.
@@ -101,7 +81,7 @@ class Domain:
 
         self._dump_object()
 
-    def _load_from_dump(self, filename='damages.pickle'):
+    def _load_from_dump(self, filename='domain.pickle'):
         """
         Loads the object content from a pickle file.
         """
@@ -113,7 +93,7 @@ class Domain:
                 self.resolution = values.resolution
                 self.cids = values.cids
 
-    def _dump_object(self, filename='damages.pickle'):
+    def _dump_object(self, filename='domain.pickle'):
         """
         Saves the object content to a pickle file.
         """

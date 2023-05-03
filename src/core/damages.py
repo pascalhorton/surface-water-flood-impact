@@ -48,6 +48,7 @@ class Damages:
         self.use_dump = use_dump
 
         self.domain = Domain(cid_file)
+        self.cids_list = None
         self.mask = dict(extent=None, shape=None, mask=np.array([]), xs=np.array([]),
                          ys=np.array([]))
 
@@ -576,7 +577,15 @@ class Damages:
         """
         xs_mask = np.extract(self.mask['mask'], self.mask['xs'])
         ys_mask = np.extract(self.mask['mask'], self.mask['ys'])
-        self.domain.create_cids_list(xs_mask, ys_mask)
+
+        cids = np.zeros(len(xs_mask))
+        xs_cid = self.domain.cids['xs'][0, :]
+        ys_cid = self.domain.cids['ys'][:, 0]
+
+        for i, (x, y) in enumerate(zip(xs_mask, ys_mask)):
+            cids[i] = self.domain.cids['ids_map'][ys_cid == y, xs_cid == x]
+
+        self.cids_list = cids
 
     def _extract_data_with_mask(self, data):
         """
@@ -603,6 +612,8 @@ class Damages:
                 self.mask = values.mask
                 self.contracts = values.contracts
                 self.claims = values.claims
+                if 'cids_list' in values:
+                    self.cids_list = values.cids_list
 
     def _dump_object(self, filename='damages.pickle'):
         """
@@ -649,7 +660,7 @@ class Damages:
     def _set_cids(self):
         xs_mask_extracted = np.extract(self.mask['mask'], self.mask['xs'])
         ys_mask_extracted = np.extract(self.mask['mask'], self.mask['ys'])
-        cids = self.domain.cids['ids_list'][self.claims['mask_index']].astype(np.int32)
+        cids = self.cids_list[self.claims['mask_index']].astype(np.int32)
         x = xs_mask_extracted[self.claims['mask_index']].astype(np.int32)
         y = ys_mask_extracted[self.claims['mask_index']].astype(np.int32)
         self.claims.insert(2, 'cid', cids)
