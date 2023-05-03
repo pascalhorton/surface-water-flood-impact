@@ -8,8 +8,17 @@ import numpy as np
 from tqdm import tqdm
 from scipy.ndimage import uniform_filter
 
+from utils.config import Config
+from core.domain import Domain
+
+config = Config()
+
+
+domain = Domain(config.get('CID_PATH'))
+
+
 # Get quantile data to select the coordinates for the event calculation
-ds_q = xr.open_dataset("quantiles_markus/quantiles_0513_markus.nc")
+ds_q = xr.open_dataset(R"\\mobistorage02.giub.unibe.ch\share\SFW2023\02_data\CPC\quantiles_Mar23\quantiles_2005-2013_no_smoothing.nc")
 
 # Get mask
 msk = np.isfinite(ds_q.psum_q98.values)
@@ -20,7 +29,8 @@ coords = coords[coords.cid.notnull()].reset_index(drop=True).astype("int32")
 coords = pd.concat([coords.iloc[:, -1], coords.iloc[:, :2]], axis=1)
 
 # Load CombiPrecip files
-files = sorted(glob("/scratch3/severin/data/meteoswiss/cpch/*"))
+data_path = config.get('DIR_PRECIP')
+files = sorted(glob(f"{data_path}/*.nc"))
 datasets = xr.open_mfdataset(files, parallel=True)
 
 # Function the calculates the events
