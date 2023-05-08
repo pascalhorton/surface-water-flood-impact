@@ -22,7 +22,7 @@ config = Config()
 class Damages:
     def __init__(self, cid_file=None, year_start=None, year_end=None, use_dump=True,
                  dataset='mobi_2023', dir_contracts=None, dir_claims=None,
-                 pickle_file=None):
+                 pickle_file=None, tmp_dir=None):
         """
         The Damages class.
 
@@ -44,8 +44,13 @@ class Damages:
             The path to the directory containing the claim files.
         pickle_file: str
             The path to a pickle file to load.
+        tmp_dir: str
+            The path to the working temporary directory
         """
         self.use_dump = use_dump
+        self.tmp_dir = tmp_dir
+        if tmp_dir is None:
+            self.tmp_dir = config.get('TMP_DIR')
 
         self.domain = Domain(cid_file)
         self.cids_list = None
@@ -212,7 +217,8 @@ class Damages:
             criteria = ['i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt']
 
         self._add_event_matching_fields()
-        stats = dict(none=0, single=0, two=0, three=0, multiple=0, conflicts=0)
+        stats = dict(none=0, single=0, two=0, three=0, multiple=0,
+                     conflicts=0, unresolved=0)
         for i_claim in tqdm(range(len(self.claims)), desc=f"Matching claims / events"):
             claim = self.claims.iloc[i_claim]
 
@@ -311,7 +317,7 @@ class Damages:
                     break
 
         if len(best_matches) > 1:
-            print("Conflict not resolved. Taking the first event.")
+            stats['unresolved'] += 1
             best_matches = best_matches.head(1)
 
         return best_matches
@@ -362,6 +368,7 @@ class Damages:
         print(f"- {stats['three']} claims had 3 candidate event")
         print(f"- {stats['multiple']} claims had more candidate event")
         print(f"- {stats['conflicts']} claims had conflicts")
+        print(f"- {stats['unresolved']} matching were unresolved (first event taken)")
 
     @staticmethod
     def _compute_temporal_overlap(date_claim, pot_events, window):
@@ -604,8 +611,7 @@ class Damages:
         """
         if not self.use_dump:
             return
-        tmp_dir = config.get('TMP_DIR')
-        file_path = Path(tmp_dir + '/' + filename)
+        file_path = Path(self.tmp_dir + '/' + filename)
         if file_path.is_file():
             with open(file_path, 'rb') as f:
                 values = pickle.load(f)
@@ -620,8 +626,7 @@ class Damages:
         """
         if not self.use_dump:
             return
-        tmp_dir = config.get('TMP_DIR')
-        file_path = Path(tmp_dir + '/' + filename)
+        file_path = Path(self.tmp_dir + '/' + filename)
         with open(file_path, 'wb') as f:
             pickle.dump(self, f)
 
