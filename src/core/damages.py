@@ -312,7 +312,7 @@ class Damages:
 
         if len(best_matches) > 1:
             print("Conflict not resolved. Taking the first event.")
-            best_matches = best_matches.iloc[0]
+            best_matches = best_matches.head(1)
 
         return best_matches
 
@@ -612,8 +612,7 @@ class Damages:
                 self.mask = values.mask
                 self.contracts = values.contracts
                 self.claims = values.claims
-                if 'cids_list' in values:
-                    self.cids_list = values.cids_list
+                self.cids_list = values.cids_list
 
     def _dump_object(self, filename='damages.pickle'):
         """
