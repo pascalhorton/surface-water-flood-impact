@@ -58,6 +58,26 @@ class Domain:
             raise RuntimeError(
                 f"The resolution of {file} differs from the project one.")
 
+    def get_cid_coordinates(self, cid):
+        """
+        Get the coordinates corresponding to a cell ID
+
+        Parameters
+        ----------
+        cid: int
+            The cell ID
+
+        Returns
+        -------
+        int, int
+            The x, y coordinates
+        """
+        idx = np.where(self.cids['ids_map'] == cid)
+        x = self.cids['xs'][idx[0][0], idx[1][0]]
+        y = self.cids['ys'][idx[0][0], idx[1][0]]
+
+        return x, y
+
     def _load_cid_file(self, cid_file):
         """
         Load the file containing the CIDs.
