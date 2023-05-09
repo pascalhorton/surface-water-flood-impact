@@ -205,6 +205,7 @@ class Damages:
               total window duration
             - r_ts_evt: ratio of the event time steps within the temporal window on the
               total event duration
+            - prior: put more weights on events occurring prior to the claim
         window_days: list (optional)
             A list of the temporal window (days) on which to search for events to match.
             Default to [5, 3, 1]
@@ -216,9 +217,10 @@ class Damages:
         if criteria is None:
             criteria = ['i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt']
 
-        self._add_event_matching_fields()
+        self._add_event_matching_fields(events, window_days, criteria)
         stats = dict(none=0, single=0, two=0, three=0, multiple=0,
                      conflicts=0, unresolved=0)
+
         for i_claim in tqdm(range(len(self.claims)), desc=f"Matching claims / events"):
             claim = self.claims.iloc[i_claim]
 
@@ -285,11 +287,23 @@ class Damages:
                 claims.e_end - claims.e_start) / 2).dt.date - claims.date_claim)
         self.claims[field_name] = claims[field_name].apply(lambda x: x.days)
 
-    def _add_event_matching_fields(self):
+    def _add_event_matching_fields(self, events, window_days, criteria):
         self.claims.reset_index(inplace=True, drop=True)
         self.claims['eid'] = 0
         self.claims['e_search_window'] = 0
         self.claims['e_match_score'] = 0
+
+        events.events['min_window'] = 0
+        events.events['match_score'] = 0
+        events.events['prior'] = 0
+        events.events['overlap_hrs'] = 0
+        events.events['r_ts_win'] = 0  # former 'tx', (#ts overlap)/(#ts window)
+        events.events['r_ts_evt'] = 0  # former 'et', (#ts overlap)/(evt duration)
+
+        for window in window_days:
+            for criterion in criteria:
+                field_name = f'{criterion}_{window}'
+                events.events[field_name] = 0
 
     def _remove_claims_with_no_event(self):
         self.claims = self.claims[self.claims.eid != 0]
@@ -328,23 +342,24 @@ class Damages:
         self.claims.at[i_claim, 'e_match_score'] = best_matches.iloc[0].match_score
 
     def _compute_match_score(self, claim, criteria, pot_events, window_days):
-        pot_events['match_score'] = 0
-        pot_events['overlap_hrs'] = 0
-        pot_events['r_ts_win'] = 0  # former 'tx', (#ts overlap)/(#ts window)
-        pot_events['r_ts_evt'] = 0  # former 'et', (#ts overlap)/(evt duration)
+        if 'prior' in criteria:
+            self._compute_prior_to_claim(claim['date_claim'], pot_events)
 
         for window in window_days:
-            self._compute_temporal_overlap(claim['date_claim'], pot_events, window)
-            pot_events['r_ts_win'] = pot_events['overlap_hrs'] / (window * 24)
-            pot_events['r_ts_evt'] = pot_events['overlap_hrs'] / pot_events['e_tot']
+            if 'r_ts_win' in criteria or 'r_ts_evt' in criteria:
+                self._compute_temporal_overlap(claim['date_claim'], pot_events, window)
+                pot_events['r_ts_win'] = pot_events['overlap_hrs'] / (window * 24)
+                pot_events['r_ts_evt'] = pot_events['overlap_hrs'] / pot_events['e_tot']
             for criterion in criteria:
-                field_name = f'{criterion}_{window}'
-                pot_events[field_name] = 0
                 within_window = pot_events['min_window'] <= window
                 val_max = pot_events.loc[within_window, criterion].max()
+                if criterion == 'prior':
+                    val_max = 1
                 with_max_val = pot_events[criterion] == val_max
-                pot_events.loc[within_window & with_max_val, field_name] = 1
-                pot_events.loc[within_window & with_max_val, 'match_score'] += 1
+                if len(with_max_val) > 0:
+                    field_name = f'{criterion}_{window}'
+                    pot_events.loc[within_window & with_max_val, field_name] = 1
+                    pot_events.loc[within_window & with_max_val, 'match_score'] += 1
 
     @staticmethod
     def _record_stat_candidates(stats, pot_events):
@@ -387,6 +402,14 @@ class Damages:
             pot_events.at[i, 'overlap_hrs'] = overlap_hrs
 
     @staticmethod
+    def _compute_prior_to_claim(date_claim, pot_events):
+        date_claim_end_day = datetime.combine(
+            date_claim, datetime.max.time())
+        for i, event in pot_events.iterrows():
+            if event['e_start'] < date_claim_end_day:
+                pot_events.at[i, 'prior'] = 1
+
+    @staticmethod
     def _get_potential_events(claim, events, window_days):
         """
         Get all potential events based on the CID and the date.
@@ -407,11 +430,12 @@ class Damages:
         potential_events = events.events[
             (events.events['cid'] == cid) &
             (events.events['e_start'] < date_window_end) &
-            (events.events['e_end'] > date_window_start)].copy()
+            (events.events['e_end'] > date_window_start)]
 
         if len(potential_events) == 0:
             return None
 
+        potential_events = potential_events.copy()
         potential_events['min_window'] = window_days[0]
 
         # Assess all other temporal windows and keep the smallest value

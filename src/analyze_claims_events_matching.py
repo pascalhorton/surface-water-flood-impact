@@ -19,6 +19,9 @@ criteria_list = [
     ['i_mean', 'i_max', 'p_sum', 'r_ts_win'],
     ['i_mean', 'i_max', 'p_sum', 'r_ts_evt'],
     ['i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt'],
+    ['i_max', 'p_sum', 'r_ts_win', 'r_ts_evt'],
+    ['prior', 'i_max', 'p_sum'],
+    ['prior', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt'],
 ]
 
 labels = [
@@ -28,7 +31,9 @@ labels = [
     '3 qty',
     '3 qty + r_ts_win',
     '3 qty + r_ts_evt',
-    'all',
+    'original',
+    'v2',
+    'v3',
 ]
 
 window_days = [5, 3, 1]
