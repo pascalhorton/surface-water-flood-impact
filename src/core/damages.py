@@ -185,6 +185,62 @@ class Damages:
         self.contracts['selection'] = self.contracts[columns].sum(axis=1)
         self.claims['selection'] = self.claims[columns].sum(axis=1)
 
+    def select_categories_type(self, types):
+        """
+        Select the damage categories corresponding to a certain type.
+
+        Parameters
+        ----------
+        types: list|str
+            The types of the damage categories to select. The type are exclusive.
+            For example : ['external', 'structure'].
+            Options are:
+            - 'external' vs 'internal' (the building)
+            - 'SME' vs 'private'
+            - 'content' vs 'structure' (of the building)
+        """
+        columns = self.categories
+
+        if isinstance(types, str):
+            types = [types]
+
+        for cat_type in types:
+            if cat_type.lower() == 'external':
+                columns = [i for i in columns if 'ext' in i]
+                continue
+            if cat_type.lower() == 'internal':
+                columns = [i for i in columns if 'int' in i]
+                continue
+            if cat_type.lower() == 'sme':
+                columns = [i for i in columns if 'sme' in i]
+                continue
+            if cat_type.lower() == 'private':
+                columns = [i for i in columns if 'priv' in i]
+                continue
+            if cat_type.lower() == 'content':
+                columns = [i for i in columns if 'cont' in i]
+                continue
+            if cat_type.lower() == 'structure':
+                columns = [i for i in columns if 'struc' in i]
+
+        self.contracts['selection'] = self.contracts[columns].sum(axis=1)
+        self.claims['selection'] = self.claims[columns].sum(axis=1)
+
+    def select_categories(self, categories):
+        """
+        Select the given damage categories.
+
+        Parameters
+        ----------
+        categories: list
+            A list of the categories to select. For example, for the 'mobi_2023' dataset
+            the possible categories are: 'sme_ext_cont', 'sme_ext_struc',
+            'sme_int_cont', 'sme_int_struc', 'priv_ext_cont', 'priv_ext_struc',
+            'priv_int_cont', 'priv_int_struc'
+        """
+        self.contracts['selection'] = self.contracts[categories].sum(axis=1)
+        self.claims['selection'] = self.claims[categories].sum(axis=1)
+
     def match_with_events(self, events, criteria=None, window_days=None,
                           filename='damages_matched.pickle'):
         """
@@ -379,8 +435,8 @@ class Damages:
         print(f"Stats of the events / damage matches:")
         print(f"- {stats['none']} claims could not be matched")
         print(f"- {stats['single']} claims had 1 candidate event")
-        print(f"- {stats['two']} claims had 2 candidate event")
-        print(f"- {stats['three']} claims had 3 candidate event")
+        print(f"- {stats['two']} claims had 2 candidate events")
+        print(f"- {stats['three']} claims had 3 candidate events")
         print(f"- {stats['multiple']} claims had more candidate event")
         print(f"- {stats['conflicts']} claims had conflicts")
         print(f"- {stats['unresolved']} matching were unresolved (first event taken)")
