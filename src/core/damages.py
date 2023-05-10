@@ -224,7 +224,11 @@ class Damages:
                 columns = [i for i in columns if 'struc' in i]
 
         self.contracts['selection'] = self.contracts[columns].sum(axis=1)
+        self.contracts = self.contracts[self.contracts.selection != 0]
+        self.contracts.reset_index(inplace=True, drop=True)
         self.claims['selection'] = self.claims[columns].sum(axis=1)
+        self.claims = self.claims[self.claims.selection != 0]
+        self.claims.reset_index(inplace=True, drop=True)
 
     def select_categories(self, categories):
         """
@@ -239,12 +243,16 @@ class Damages:
             'priv_int_cont', 'priv_int_struc'
         """
         self.contracts['selection'] = self.contracts[categories].sum(axis=1)
+        self.contracts = self.contracts[self.contracts.selection != 0]
+        self.contracts.reset_index(inplace=True, drop=True)
         self.claims['selection'] = self.claims[categories].sum(axis=1)
+        self.claims = self.claims[self.claims.selection != 0]
+        self.claims.reset_index(inplace=True, drop=True)
 
-    def match_with_events(self, events, criteria=None, window_days=None,
-                          filename='damages_matched.pickle'):
+    def link_with_events(self, events, criteria=None, window_days=None,
+                         filename='damages_matched.pickle'):
         """
-        Match the damages with the events.
+        Link the damages with the events.
 
         Parameters
         ----------
