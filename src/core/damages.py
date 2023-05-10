@@ -470,17 +470,13 @@ class Damages:
         """
         Get all potential events based on the CID and the date.
         """
-        # Define the starting and ending dates of the longest temporal window
-        window_days.sort(reverse=True)
-        delta_days = (window_days[0] - 1) / 2
         cid = claim['cid']
         date_claim = claim['date_claim']
-        date_window_start = datetime.combine(
-            date_claim - timedelta(days=delta_days),
-            datetime.min.time())
-        date_window_end = datetime.combine(
-            date_claim + timedelta(days=delta_days),
-            datetime.max.time())
+
+        # Define the starting and ending dates of the longest temporal window
+        window_days.sort(reverse=True)
+        date_window_end, date_window_start = Damages._get_window_dates(
+            date_claim, max(window_days))
 
         # Select all events in the longest temporal window
         potential_events = events.events[
@@ -496,19 +492,32 @@ class Damages:
 
         # Assess all other temporal windows and keep the smallest value
         for window in window_days[1:]:
-            delta_days = (window - 1) / 2
-            date_window_start = datetime.combine(
-                date_claim - timedelta(days=delta_days),
-                datetime.min.time())
-            date_window_end = datetime.combine(
-                date_claim + timedelta(days=delta_days),
-                datetime.max.time())
+            date_window_end, date_window_start = Damages._get_window_dates(
+                date_claim, window)
             potential_events.loc[
                 (potential_events['e_start'] < date_window_end) &
                 (potential_events['e_end'] > date_window_start),
                 'min_window'] = window
 
         return potential_events
+
+    @staticmethod
+    def _get_window_dates(date_claim, window):
+        if (window % 2) == 0:  # Even number: use day and day-1 as center
+            delta_days = (window - 2) / 2
+            date_window_start = datetime.combine(
+                date_claim - timedelta(days=delta_days + 1),
+                datetime.min.time())
+        else:
+            delta_days = (window - 1) / 2
+            date_window_start = datetime.combine(
+                date_claim - timedelta(days=delta_days),
+                datetime.min.time())
+        date_window_end = datetime.combine(
+            date_claim + timedelta(days=delta_days),
+            datetime.max.time())
+
+        return date_window_end, date_window_start
 
     def _extract_contract_data(self, directory):
         """
