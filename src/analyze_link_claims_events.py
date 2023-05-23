@@ -18,28 +18,16 @@ CRITERIA_LIST = [
     ['i_max', 'p_sum', 'r_ts_evt'],
     ['i_max', 'p_sum', 'r_ts_win', 'r_ts_evt'],
     ['prior', 'i_max', 'p_sum'],
-    ['prior', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt'],
+    ['prior', 'i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt'],
+    # Original
+    ['i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt'],
     # For an intermediate temporal window ([5, 3, 2, 1])
     ['i_max', 'p_sum'],
     ['i_max', 'p_sum', 'r_ts_win'],
     ['i_max', 'p_sum', 'r_ts_evt'],
     ['i_max', 'p_sum', 'r_ts_win', 'r_ts_evt'],
     ['prior', 'i_max', 'p_sum'],
-    ['prior', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt'],
-    # For an intermediate temporal window ([5, 3, 2])
-    ['i_max', 'p_sum'],
-    ['i_max', 'p_sum', 'r_ts_win'],
-    ['i_max', 'p_sum', 'r_ts_evt'],
-    ['i_max', 'p_sum', 'r_ts_win', 'r_ts_evt'],
-    ['prior', 'i_max', 'p_sum'],
-    ['prior', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt'],
-    # For an even temporal window ([6, 4, 2])
-    ['i_max', 'p_sum'],
-    ['i_max', 'p_sum', 'r_ts_win'],
-    ['i_max', 'p_sum', 'r_ts_evt'],
-    ['i_max', 'p_sum', 'r_ts_win', 'r_ts_evt'],
-    ['prior', 'i_max', 'p_sum'],
-    ['prior', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt'],
+    ['prior', 'i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt'],
 ]
 
 LABELS = [
@@ -52,6 +40,8 @@ LABELS = [
     'v4',
     'v5',
     'v6',
+    # Original intermediate temporal window ([5, 3, 2, 1])
+    'original 4win',
     # For an intermediate temporal window ([5, 3, 2, 1])
     'v1 4win',
     'v2 4win',
@@ -59,20 +49,6 @@ LABELS = [
     'v4 4win',
     'v5 4win',
     'v6 4win',
-    # For an intermediate temporal window ([5, 3, 2])
-    'v1 mid',
-    'v2 mid',
-    'v3 mid',
-    'v4 mid',
-    'v5 mid',
-    'v6 mid',
-    # For an even temporal window ([6, 4, 2])
-    'v1 even',
-    'v2 even',
-    'v3 even',
-    'v4 even',
-    'v5 even',
-    'v6 even',
 ]
 
 WINDOW_DAYS = [
@@ -86,34 +62,22 @@ WINDOW_DAYS = [
     [5, 3, 1],
 
     [5, 3, 2, 1],
-    [5, 3, 2, 1],
-    [5, 3, 2, 1],
-    [5, 3, 2, 1],
-    [5, 3, 2, 1],
-    [5, 3, 2, 1],
 
-    [5, 3, 2],
-    [5, 3, 2],
-    [5, 3, 2],
-    [5, 3, 2],
-    [5, 3, 2],
-    [5, 3, 2],
-
-    [6, 4, 2],
-    [6, 4, 2],
-    [6, 4, 2],
-    [6, 4, 2],
-    [6, 4, 2],
-    [6, 4, 2],
+    [5, 3, 2, 1],
+    [5, 3, 2, 1],
+    [5, 3, 2, 1],
+    [5, 3, 2, 1],
+    [5, 3, 2, 1],
+    [5, 3, 2, 1],
 ]
 
-DAMAGE_CATEGORIES = ['external']
+DAMAGE_CATEGORIES = ['external', 'pluvial']
 
 TMP_DIR = CONFIG.get('TMP_DIR')
 
 PLOT_HISTOGRAMS = False
 PLOT_MATRIX = True
-PLOT_ALL_TIME_SERIES = True
+PLOT_ALL_TIME_SERIES = False
 PLOT_TIME_SERIES_DISAGREEMENT = True
 
 
@@ -125,7 +89,7 @@ def main():
     damages = core.damages.Damages(
         pickle_file=f'damages_linked_{LABELS[0].replace(" ", "_")}.pickle')
     events = core.events.Events()
-    events.load_events_and_select_locations(CONFIG.get('EVENTS_PATH'), damages)
+    events.load_events_and_select_locations_with_contracts(CONFIG.get('EVENTS_PATH'), damages)
     del damages
 
     precip = None
@@ -194,7 +158,7 @@ def compute_link_and_save_to_pickle():
         damages.select_categories_type(DAMAGE_CATEGORIES)
 
         events = core.events.Events()
-        events.load_events_and_select_locations(CONFIG.get('EVENTS_PATH'), damages)
+        events.load_events_and_select_locations_with_contracts(CONFIG.get('EVENTS_PATH'), damages)
 
         damages.link_with_events(events, criteria=criteria, filename=filename,
                                  window_days=WINDOW_DAYS[i])
