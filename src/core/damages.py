@@ -222,19 +222,37 @@ class Damages:
         self.contracts['selection'] = self.contracts[columns].sum(axis=1)
         self.claims['selection'] = self.claims[columns].sum(axis=1)
 
-    def select_categories_type(self, types):
+    def categories_are_for_type(self, types):
         """
-        Select the damage categories corresponding to a certain type.
+        Check if the categories are for a given type.
 
         Parameters
         ----------
-        types: list|str
-            The types of the damage categories to select. The type are exclusive.
-            For example : ['external', 'structure'].
-            Options are:
-            - 'external' vs 'internal' (the building)
-            - 'SME' vs 'private'
-            - 'content' vs 'structure' (of the building)
+        types: str or list
+            The types of categories to check. Can be 'external', 'internal', 'sme',
+            'private', 'content', 'structure'.
+
+        Returns
+        -------
+        True if the categories are for the given type, False otherwise.
+        """
+        categories = self.get_categories_from_type(types)
+
+        return categories == self.selected_categories
+
+    def get_categories_from_type(self, types):
+        """
+        Get the categories from types.
+
+        Parameters
+        ----------
+        types: str or list
+            The types of categories to get. Can be 'external', 'internal', 'sme',
+            'private', 'content', 'structure'.
+
+        Returns
+        -------
+        The list of corresponding categories.
         """
         columns = self.categories
 
@@ -263,12 +281,31 @@ class Damages:
             if cat_type.lower() == 'pluvial':
                 columns = [i for i in columns if 'pluv' in i]
 
+        return columns
+
+    def select_categories_type(self, types):
+        """
+        Select the damage categories corresponding to a certain type.
+
+        Parameters
+        ----------
+        types: list|str
+            The types of the damage categories to select. The type are exclusive.
+            For example : ['external', 'structure'].
+            Options are:
+            - 'external' vs 'internal' (the building)
+            - 'SME' vs 'private'
+            - 'content' vs 'structure' (of the building)
+
+        Returns
+        -------
+        The list of selected categories.
+        """
+        columns = self.get_categories_from_type(types)
         self.contracts['selection'] = self.contracts[columns].sum(axis=1)
-        self.contracts = self.contracts[self.contracts.selection != 0]
-        self.contracts.reset_index(inplace=True, drop=True)
-        self.claims['selection'] = self.claims[columns].sum(axis=1)
-        self.claims = self.claims[self.claims.selection != 0]
-        self.claims.reset_index(inplace=True, drop=True)
+        self._apply_categories_selection(columns)
+
+        return columns
 
     def select_categories(self, categories):
         """
@@ -283,11 +320,7 @@ class Damages:
             'priv_int_cont', 'priv_int_struc'
         """
         self.contracts['selection'] = self.contracts[categories].sum(axis=1)
-        self.contracts = self.contracts[self.contracts.selection != 0]
-        self.contracts.reset_index(inplace=True, drop=True)
-        self.claims['selection'] = self.claims[categories].sum(axis=1)
-        self.claims = self.claims[self.claims.selection != 0]
-        self.claims.reset_index(inplace=True, drop=True)
+        self._apply_categories_selection(categories)
 
     def link_with_events(self, events, criteria=None, window_days=None,
                          filename='damages_matched.pickle'):
@@ -390,6 +423,14 @@ class Damages:
         self.claims[field_name] = ((claims.e_start + (
                 claims.e_end - claims.e_start) / 2).dt.date - claims.date_claim)
         self.claims[field_name] = claims[field_name].apply(lambda x: x.days)
+
+    def _apply_categories_selection(self, categories):
+        self.contracts = self.contracts[self.contracts.selection != 0]
+        self.contracts.reset_index(inplace=True, drop=True)
+        self.claims['selection'] = self.claims[categories].sum(axis=1)
+        self.claims = self.claims[self.claims.selection != 0]
+        self.claims.reset_index(inplace=True, drop=True)
+        self.selected_categories = categories
 
     def _add_event_matching_fields(self, events, window_days, criteria):
         self.claims.reset_index(inplace=True, drop=True)
@@ -756,6 +797,8 @@ class Damages:
                 self.contracts = values.contracts
                 self.claims = values.claims
                 self.cids_list = values.cids_list
+                if hasattr(values, 'selected_categories'):
+                    self.selected_categories = values.selected_categories
 
     def _dump_object(self, filename='damages.pickle'):
         """
