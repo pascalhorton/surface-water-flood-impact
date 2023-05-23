@@ -93,13 +93,10 @@ def plot_claim_events_timeseries(window_days, precip, claim_1, label_1, claim_2=
     win_start = datetime.combine(claim_date - timedelta_max, datetime.min.time())
     win_end = datetime.combine(claim_date + timedelta_max, datetime.max.time())
     precip_win = precip.get_time_series(cid, win_start, win_end, size=3)
-    precip_win_orig = precip.get_time_series(cid, win_start, win_end, size=1)
     dates_win = [win_start + timedelta(hours=x) for x in range(len(precip_win))]
 
     # Plot precipitation
     fig, axs = plt.subplots(figsize=(12, 4))
-    plt.plot(dates_win, precip_win_orig, label='not smoothed', linewidth=1,
-             color='0.3', linestyle='dotted')
     plt.plot(dates_win, precip_win, linewidth=1, color='0.1')
     if claim_1 is not None:
         plt.plot(e_1_dates, precip_1, label=label_1, linewidth=2)
