@@ -69,32 +69,53 @@ class Damages:
         self.tags_claims = ['*']
 
         if dataset == 'mobi_2023':
-            self.categories = ['sme_ext_cont',  # SME, external, content
-                               'sme_ext_struc',  # SME, external, structure
-                               'sme_int_cont',  # SME, internal, content
-                               'sme_int_struc',  # SME, internal, structure
-                               'priv_ext_cont',  # Private, external, content
-                               'priv_ext_struc',  # Private, external, structure
-                               'priv_int_cont',  # Private, internal, content
-                               'priv_int_struc']  # Private, internal, structure
+            self.categories = [
+                'sme_ext_cont_pluv',  # SME, external, content, pluvial
+                'sme_ext_cont_fluv',  # SME, external, content, fluvial
+                'sme_ext_struc_pluv',  # SME, external, structure, pluvial
+                'sme_ext_struc_fluv',  # SME, external, structure, fluvial
+                'sme_int_cont',  # SME, internal, content
+                'sme_int_struc',  # SME, internal, structure
+                'priv_ext_cont_pluv',  # Private, external, content, pluvial
+                'priv_ext_cont_fluv',  # Private, external, content, fluvial
+                'priv_ext_struc_pluv',  # Private, external, structure, pluvial
+                'priv_ext_struc_fluv',  # Private, external, structure, fluvial
+                'priv_int_cont',  # Private, internal, content
+                'priv_int_struc']  # Private, internal, structure
 
-            self.tags_contracts = ['KMU_ES_FH',
-                                   'KMU_ES_GB',
-                                   'KMU_W_FH',
-                                   'KMU_W_GB',
-                                   'Privat_ES_FH',
-                                   'Privat_ES_GB',
-                                   'Privat_W_FH',
-                                   'Privat_W_GB']
+            self.selected_categories = [
+                'sme_ext_cont_pluv',
+                'sme_ext_struc_pluv',
+                'priv_ext_cont_pluv',
+                'priv_ext_struc_pluv']
 
-            self.tags_claims = ['Ueberschwemmung_KMU_FH',
-                                'Ueberschwemmung_KMU_GB',
-                                'Wasser_KMU_FH',
-                                'Wasser_KMU_GB',
-                                'Ueberschwemmung_Privat_FH',
-                                'Ueberschwemmung_Privat_GB',
-                                'Wasser_Privat_FH',
-                                'Wasser_Privat_GB']
+            self.tags_contracts = [
+                'KMU_ES_FH',
+                'KMU_ES_FH',
+                'KMU_ES_GB',
+                'KMU_ES_GB',
+                'KMU_W_FH',
+                'KMU_W_GB',
+                'Privat_ES_FH',
+                'Privat_ES_FH',
+                'Privat_ES_GB',
+                'Privat_ES_GB',
+                'Privat_W_FH',
+                'Privat_W_GB']
+
+            self.tags_claims = [
+                'Ueberschwemmung_pluvial_KMU_FH',
+                'Ueberschwemmung_fluvial_KMU_FH',
+                'Ueberschwemmung_pluvial_KMU_GB',
+                'Ueberschwemmung_fluvial_KMU_GB',
+                'Wasser_KMU_FH',
+                'Wasser_KMU_GB',
+                'Ueberschwemmung_pluvial_Privat_FH',
+                'Ueberschwemmung_fluvial_Privat_FH',
+                'Ueberschwemmung_pluvial_Privat_GB',
+                'Ueberschwemmung_fluvial_Privat_GB',
+                'Wasser_Privat_FH',
+                'Wasser_Privat_GB']
 
         self.contracts = pd.DataFrame(
             columns=['year', 'mask_index', 'selection'] + self.categories)
@@ -238,6 +259,9 @@ class Damages:
                 continue
             if cat_type.lower() == 'structure':
                 columns = [i for i in columns if 'struc' in i]
+                continue
+            if cat_type.lower() == 'pluvial':
+                columns = [i for i in columns if 'pluv' in i]
 
         self.contracts['selection'] = self.contracts[columns].sum(axis=1)
         self.contracts = self.contracts[self.contracts.selection != 0]
