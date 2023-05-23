@@ -177,6 +177,22 @@ class Damages:
 
         self._dump_object()
 
+    def set_target_variable_value(self, mode='occurrence'):
+        """
+        Set the target variable value.
+
+        Parameters
+        ----------
+        mode : str
+            The mode to set the target variable. Can be 'occurrence' or 'ratio'.
+        """
+        self.claims['target'] = 0
+        if mode == 'occurrence':
+            self.claims.loc[self.claims.selection > 0, 'target'] = 1
+        elif mode == 'ratio':
+            self.claims.target = self.claims.selection
+            raise NotImplementedError
+
     def select_all_categories(self):
         """
         Select all the damage categories.
