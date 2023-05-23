@@ -29,7 +29,7 @@ class Events:
 
         self._load_from_dump()
 
-    def load_events_and_select_locations(self, path, damages):
+    def load_events_and_select_locations_with_contracts(self, path, damages):
         """
         Load all events from a parquet file. Then, select only the events where there
         is a contract.
@@ -76,27 +76,27 @@ class Events:
         self.events = self.events[self.events['cid'].isin(cids)]
         print(f"Number of events with contracts: {len(self.events)}")
 
-    def _load_from_dump(self):
+    def _load_from_dump(self, filename='events.pickle'):
         """
         Loads the object content from a pickle file.
         """
         if not self.use_dump:
             return
         tmp_dir = config.get('TMP_DIR')
-        file_path = Path(tmp_dir + '/events.pickle')
+        file_path = Path(f'{tmp_dir}/{filename}')
         if file_path.is_file():
             with open(file_path, 'rb') as f:
                 values = pickle.load(f)
                 self.events = values.events
 
-    def _dump_object(self):
+    def _dump_object(self, filename='events.pickle'):
         """
         Saves the object content to a pickle file.
         """
         if not self.use_dump:
             return
         tmp_dir = config.get('TMP_DIR')
-        file_path = Path(tmp_dir + '/events.pickle')
+        file_path = Path(f'{tmp_dir}/{filename}')
         with open(file_path, 'wb') as f:
             pickle.dump(self, f)
 

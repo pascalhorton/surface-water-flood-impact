@@ -10,6 +10,6 @@ damages = core.damages.Damages(cid_file=config.get('CID_PATH'),
 damages.select_all_categories()
 
 events = core.events.Events()
-events.load_events_and_select_locations(config.get('EVENTS_PATH'), damages)
+events.load_events_and_select_locations_with_contracts(config.get('EVENTS_PATH'), damages)
 
 damages.link_with_events(events)
