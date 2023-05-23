@@ -4,8 +4,10 @@ import matplotlib.pyplot as plt
 from datetime import datetime, time, timedelta
 from pathlib import Path
 
+import pandas as pd
 
-def plot_heatmap_differences(data, total, labels, title, dir_output=None):
+
+def plot_heatmap_differences(data, total, labels, title, dir_output=None, fontsize=9):
     fig, ax = plt.subplots(figsize=(6, 6))
     im = ax.imshow(data)
 
@@ -14,15 +16,18 @@ def plot_heatmap_differences(data, total, labels, title, dir_output=None):
     plt.setp(ax.get_xticklabels(), rotation=45, ha='right', rotation_mode='anchor')
 
     threshold = im.norm(data.max()) / 2.
-    kw = dict(ha='center', va='center')
+    kw = dict(ha='center', va='center', fontsize=fontsize)
     text_colors = ('white', 'black')
 
     for i in range(len(labels)):
         for j in range(len(labels)):
             kw.update(color=text_colors[int(im.norm(data[i, j]) > threshold)])
+            total_val = total
+            if isinstance(total, list):
+                total_val = total[i]
             if i > j:
-                pc = 100 * data[i, j] / total
-                ax.text(j, i, f'{pc:.2f}%', **kw)
+                pc = 100 * data[i, j] / total_val
+                ax.text(j, i, f'{pc:.1f}%', **kw)
             elif j > i:
                 ax.text(j, i, f'{int(data[i, j])}', **kw)
 
@@ -47,13 +52,32 @@ def plot_histogram_time_difference(claims, field_name, title, dir_output=None):
 
 def plot_claim_events_timeseries(window_days, precip, claim_1, label_1, claim_2=None,
                                  label_2=None, title=None, dir_output=None):
-    cid = claim_1.cid
-    claim_date = claim_1.date_claim
+    cid = None
+    claim_date = None
+
+    if len(claim_1) > 0:
+        if isinstance(claim_1, pd.DataFrame):
+            claim_1 = claim_1.iloc[0]
+        cid = claim_1.cid
+        claim_date = claim_1.date_claim
+    else:
+        claim_1 = None
+
+    if len(claim_2) > 0:
+        if isinstance(claim_2, pd.DataFrame):
+            claim_2 = claim_2.iloc[0]
+        cid = claim_2.cid
+        claim_date = claim_2.date_claim
+    else:
+        claim_2 = None
 
     # Get first event data
-    e_1_dur = (claim_1.e_end - claim_1.e_start).total_seconds() / 3600
-    e_1_dates = [claim_1.e_start + timedelta(hours=x) for x in range(int(e_1_dur) + 1)]
-    precip_1 = precip.get_time_series(cid, claim_1.e_start, claim_1.e_end)
+    e_1_dates = None
+    precip_1 = None
+    if claim_1 is not None:
+        e_1_dur = (claim_1.e_end - claim_1.e_start).total_seconds() / 3600
+        e_1_dates = [claim_1.e_start + timedelta(hours=x) for x in range(int(e_1_dur) + 1)]
+        precip_1 = precip.get_time_series(cid, claim_1.e_start, claim_1.e_end)
 
     # Get second event data
     e_2_dates = None
@@ -77,7 +101,8 @@ def plot_claim_events_timeseries(window_days, precip, claim_1, label_1, claim_2=
     plt.plot(dates_win, precip_win_orig, label='not smoothed', linewidth=1,
              color='0.3', linestyle='dotted')
     plt.plot(dates_win, precip_win, linewidth=1, color='0.1')
-    plt.plot(e_1_dates, precip_1, label=label_1, linewidth=2)
+    if claim_1 is not None:
+        plt.plot(e_1_dates, precip_1, label=label_1, linewidth=2)
     if claim_2 is not None:
         plt.plot(e_2_dates, precip_2, label=label_2, linewidth=2)
 
@@ -100,6 +125,16 @@ def plot_claim_events_timeseries(window_days, precip, claim_1, label_1, claim_2=
     filename = f"{claim_date} {cid}"
 
     _save_or_show(dir_output, filename)
+
+
+def output_file_exists(dir_output, title):
+    if dir_output is None:
+        return False
+    dir_output = Path(dir_output)
+    filename = re.sub(r'\W+', '', title.replace(' ', '_'))
+    filepath_png = dir_output / (filename + '.png')
+    filepath_pdf = dir_output / (filename + '.pdf')
+    return filepath_png.exists() or filepath_pdf.exists()
 
 
 def _save_or_show(dir_output, title):

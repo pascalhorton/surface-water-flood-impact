@@ -113,6 +113,7 @@ TMP_DIR = CONFIG.get('TMP_DIR')
 
 PLOT_HISTOGRAMS = False
 PLOT_MATRIX = True
+PLOT_ALL_TIME_SERIES = True
 PLOT_TIME_SERIES_DISAGREEMENT = True
 
 
@@ -127,7 +128,8 @@ def main():
     events.load_events_and_select_locations(CONFIG.get('EVENTS_PATH'), damages)
     del damages
 
-    if PLOT_TIME_SERIES_DISAGREEMENT:
+    precip = None
+    if PLOT_TIME_SERIES_DISAGREEMENT or PLOT_ALL_TIME_SERIES:
         # Precipitation data
         precip = core.precipitation.Precipitation(CONFIG.get('DIR_PRECIP'))
 
@@ -147,6 +149,9 @@ def main():
 
         if PLOT_HISTOGRAMS:
             plot_histograms_time_differences(df_ref, i_ref)
+
+        if PLOT_ALL_TIME_SERIES:
+            plot_time_series(df_ref, precip, i_ref)
 
         # Compute the differences in events attribution with other criteria
         for i_diff, criteria_diff in enumerate(CRITERIA_LIST):
@@ -173,26 +178,6 @@ def main():
             title="Differences in the event-damage attribution", fontsize=6)
 
 
-def plot_time_series_different_events(df_merged_claims, df_comp, df_ref, diffs, events,
-                                      precip, i_diff, i_ref):
-    idx_diffs = diffs.to_numpy().nonzero()[0]
-    df_comp.merge_with_events(events)
-    for idx in idx_diffs:
-        date_claim = df_merged_claims.iloc[idx]['date_claim']
-        cid = df_merged_claims.iloc[idx]['cid']
-        claim_1 = df_ref.claims.loc[(df_ref.claims.cid == cid) &
-                                    (df_ref.claims.date_claim == date_claim)]
-        claim_2 = df_comp.claims.loc[(df_comp.claims.cid == cid) &
-                                     (df_comp.claims.date_claim == date_claim)]
-        label_1 = LABELS[i_ref]
-        label_2 = LABELS[i_diff]
-        dir_output = CONFIG.get(
-            'OUTPUT_DIR') + f'/Timeseries {label_1} vs {label_2}'
-        utils.plotting.plot_claim_events_timeseries(
-            [5, 3, 1], precip, claim_1, label_1, claim_2,
-            label_2, dir_output=dir_output)
-
-
 def compute_link_and_save_to_pickle():
     for i, criteria in enumerate(CRITERIA_LIST):
         label = LABELS[i].replace(" ", "_")
@@ -213,6 +198,35 @@ def compute_link_and_save_to_pickle():
 
         damages.link_with_events(events, criteria=criteria, filename=filename,
                                  window_days=WINDOW_DAYS[i])
+
+
+def plot_time_series_different_events(df_merged_claims, df_comp, df_ref, diffs, events,
+                                      precip, i_diff, i_ref):
+    idx_diffs = diffs.to_numpy().nonzero()[0]
+    df_comp.merge_with_events(events)
+    for idx in idx_diffs:
+        date_claim = df_merged_claims.iloc[idx]['date_claim']
+        cid = df_merged_claims.iloc[idx]['cid']
+        claim_1 = df_ref.claims.loc[(df_ref.claims.cid == cid) &
+                                    (df_ref.claims.date_claim == date_claim)]
+        claim_2 = df_comp.claims.loc[(df_comp.claims.cid == cid) &
+                                     (df_comp.claims.date_claim == date_claim)]
+        label_1 = LABELS[i_ref]
+        label_2 = LABELS[i_diff]
+        dir_output = CONFIG.get(
+            'OUTPUT_DIR') + f'/Timeseries {label_1} vs {label_2}'
+        utils.plotting.plot_claim_events_timeseries(
+            [5, 3, 1], precip, claim_1, label_1, claim_2,
+            label_2, dir_output=dir_output)
+
+
+def plot_time_series(df_ref, precip, i_ref):
+    for idx in range(len(df_ref.claims)):
+        claim = df_ref.claims.iloc[idx]
+        label = LABELS[i_ref]
+        dir_output = CONFIG.get('OUTPUT_DIR') + f'/Single timeseries {label}'
+        utils.plotting.plot_claim_events_timeseries(
+            WINDOW_DAYS, precip, claim, label, dir_output=dir_output)
 
 
 def plot_histograms_time_differences(df, idx):
