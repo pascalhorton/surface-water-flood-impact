@@ -9,66 +9,25 @@ from pathlib import Path
 
 CONFIG = Config()
 
-CRITERIA_LIST = [
+PARAMETERS = [  # [label, [criteria], [window_days]]
     # Original
-    ['i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt'],
+    ['original', ['i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt'], [5, 3, 1]],
     # For the original temporal window ([5, 3, 1])
-    ['i_max', 'p_sum'],
-    ['i_max', 'p_sum', 'r_ts_win'],
-    ['i_max', 'p_sum', 'r_ts_evt'],
-    ['i_max', 'p_sum', 'r_ts_win', 'r_ts_evt'],
-    ['prior', 'i_max', 'p_sum'],
-    ['prior', 'i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt'],
-    # Original
-    ['i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt'],
+    ['v1', ['i_max', 'p_sum'], [5, 3, 1]],
+    ['v2', ['i_max', 'p_sum', 'r_ts_win'], [5, 3, 1]],
+    ['v3', ['i_max', 'p_sum', 'r_ts_evt'], [5, 3, 1]],
+    ['v4', ['i_max', 'p_sum', 'r_ts_win', 'r_ts_evt'], [5, 3, 1]],
+    ['v5', ['prior', 'i_max', 'p_sum'], [5, 3, 1]],
+    ['v6', ['prior', 'i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt'], [5, 3, 1]],
+    # Original with intermediate temporal window ([5, 3, 2, 1])
+    ['original 4win', ['i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt'], [5, 3, 2, 1]],
     # For an intermediate temporal window ([5, 3, 2, 1])
-    ['i_max', 'p_sum'],
-    ['i_max', 'p_sum', 'r_ts_win'],
-    ['i_max', 'p_sum', 'r_ts_evt'],
-    ['i_max', 'p_sum', 'r_ts_win', 'r_ts_evt'],
-    ['prior', 'i_max', 'p_sum'],
-    ['prior', 'i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt'],
-]
-
-LABELS = [
-    # Original
-    'original',
-    # For the original temporal window ([5, 3, 1])
-    'v1',
-    'v2',
-    'v3',
-    'v4',
-    'v5',
-    'v6',
-    # Original intermediate temporal window ([5, 3, 2, 1])
-    'original 4win',
-    # For an intermediate temporal window ([5, 3, 2, 1])
-    'v1 4win',
-    'v2 4win',
-    'v3 4win',
-    'v4 4win',
-    'v5 4win',
-    'v6 4win',
-]
-
-WINDOW_DAYS = [
-    [5, 3, 1],
-
-    [5, 3, 1],
-    [5, 3, 1],
-    [5, 3, 1],
-    [5, 3, 1],
-    [5, 3, 1],
-    [5, 3, 1],
-
-    [5, 3, 2, 1],
-
-    [5, 3, 2, 1],
-    [5, 3, 2, 1],
-    [5, 3, 2, 1],
-    [5, 3, 2, 1],
-    [5, 3, 2, 1],
-    [5, 3, 2, 1],
+    ['v1 4win', ['i_max', 'p_sum'], [5, 3, 2, 1]],
+    ['v2 4win', ['i_max', 'p_sum', 'r_ts_win'], [5, 3, 2, 1]],
+    ['v3 4win', ['i_max', 'p_sum', 'r_ts_evt'], [5, 3, 2, 1]],
+    ['v4 4win', ['i_max', 'p_sum', 'r_ts_win', 'r_ts_evt'], [5, 3, 2, 1]],
+    ['v5 4win', ['prior', 'i_max', 'p_sum'], [5, 3, 2, 1]],
+    ['v6 4win', ['prior', 'i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt'], [5, 3, 2, 1]]
 ]
 
 DAMAGE_CATEGORIES = ['external', 'pluvial']
@@ -87,7 +46,7 @@ def main():
 
     # Load the first pickle file and do some common work
     damages = core.damages.Damages(
-        pickle_file=f'damages_linked_{LABELS[0].replace(" ", "_")}.pickle')
+        pickle_file=f'damages_linked_{PARAMETERS[0][0].replace(" ", "_")}.pickle')
     events = core.events.Events()
     events.load_events_and_select_locations_with_contracts(CONFIG.get('EVENTS_PATH'), damages)
     del damages
@@ -98,10 +57,10 @@ def main():
         precip = core.precipitation.Precipitation(CONFIG.get('DIR_PRECIP'))
 
     # Compare the events assigned
-    diff_count = np.zeros((len(CRITERIA_LIST), len(CRITERIA_LIST)))
+    diff_count = np.zeros((len(PARAMETERS), len(PARAMETERS)))
     total = []
-    for i_ref, criteria_ref in enumerate(CRITERIA_LIST):
-        label_ref = LABELS[i_ref].replace(" ", "_")
+    for i_ref, params_ref in enumerate(PARAMETERS):
+        label_ref = params_ref[0].replace(" ", "_")
         filename_ref = f'damages_linked_{label_ref}.pickle'
         df_ref = core.damages.Damages(pickle_file=filename_ref)
         total.append(df_ref.claims.eid.astype(bool).sum())
@@ -112,14 +71,14 @@ def main():
         df_ref.compute_days_to_event_center('dt_center')
 
         if PLOT_HISTOGRAMS:
-            plot_histograms_time_differences(df_ref, i_ref)
+            plot_histograms_time_differences(df_ref, label_ref)
 
         if PLOT_ALL_TIME_SERIES:
-            plot_time_series(df_ref, precip, i_ref)
+            plot_time_series(df_ref, precip, params_ref)
 
         # Compute the differences in events attribution with other criteria
-        for i_diff, criteria_diff in enumerate(CRITERIA_LIST):
-            label_diff = LABELS[i_diff].replace(" ", "_")
+        for i_diff, params_diff in enumerate(PARAMETERS):
+            label_diff = params_diff[0].replace(" ", "_")
             filename_diff = f'damages_linked_{label_diff}.pickle'
             df_comp = core.damages.Damages(pickle_file=filename_diff)
             if len(df_ref.claims) >= len(df_comp.claims):
@@ -133,18 +92,22 @@ def main():
             diff_count[i_ref, i_diff] = diffs.astype(bool).sum()
 
             if PLOT_TIME_SERIES_DISAGREEMENT:
-                plot_time_series_different_events(df_merged_claims, df_comp, df_ref,
-                                                  diffs, events, precip, i_diff, i_ref)
+                plot_time_series_different_events(
+                    df_merged_claims, df_comp, df_ref, diffs, events, precip,
+                    label_ref, label_diff)
 
     if PLOT_MATRIX:
+        labels = [p[0] for p in PARAMETERS]
         utils.plotting.plot_heatmap_differences(
-            diff_count, total, LABELS, dir_output=CONFIG.get('OUTPUT_DIR'),
+            diff_count, total, labels, dir_output=CONFIG.get('OUTPUT_DIR'),
             title="Differences in the event-damage attribution", fontsize=6)
 
 
 def compute_link_and_save_to_pickle():
-    for i, criteria in enumerate(CRITERIA_LIST):
-        label = LABELS[i].replace(" ", "_")
+    for params in PARAMETERS:
+        label = params[0].replace(" ", "_")
+        criteria = params[1]
+        window_days = params[2]
         filename = f'damages_linked_{label}.pickle'
         file_path = Path(TMP_DIR + '/' + filename)
 
@@ -161,11 +124,11 @@ def compute_link_and_save_to_pickle():
         events.load_events_and_select_locations_with_contracts(CONFIG.get('EVENTS_PATH'), damages)
 
         damages.link_with_events(events, criteria=criteria, filename=filename,
-                                 window_days=WINDOW_DAYS[i])
+                                 window_days=window_days)
 
 
 def plot_time_series_different_events(df_merged_claims, df_comp, df_ref, diffs, events,
-                                      precip, i_diff, i_ref):
+                                      precip, label_ref, label_diff):
     idx_diffs = diffs.to_numpy().nonzero()[0]
     df_comp.merge_with_events(events)
     for idx in idx_diffs:
@@ -175,30 +138,29 @@ def plot_time_series_different_events(df_merged_claims, df_comp, df_ref, diffs, 
                                     (df_ref.claims.date_claim == date_claim)]
         claim_2 = df_comp.claims.loc[(df_comp.claims.cid == cid) &
                                      (df_comp.claims.date_claim == date_claim)]
-        label_1 = LABELS[i_ref]
-        label_2 = LABELS[i_diff]
         dir_output = CONFIG.get(
-            'OUTPUT_DIR') + f'/Timeseries {label_1} vs {label_2}'
+            'OUTPUT_DIR') + f'/Timeseries {label_ref} vs {label_diff}'
         utils.plotting.plot_claim_events_timeseries(
-            [5, 3, 1], precip, claim_1, label_1, claim_2,
-            label_2, dir_output=dir_output)
+            [5, 3, 1], precip, claim_1, label_ref, claim_2,
+            label_diff, dir_output=dir_output)
 
 
-def plot_time_series(df_ref, precip, i_ref):
+def plot_time_series(df_ref, precip, params):
     for idx in range(len(df_ref.claims)):
         claim = df_ref.claims.iloc[idx]
-        label = LABELS[i_ref]
+        label = params[0]
         dir_output = CONFIG.get('OUTPUT_DIR') + f'/Single timeseries {label}'
+        window_days = [p[2] for p in PARAMETERS]
         utils.plotting.plot_claim_events_timeseries(
-            WINDOW_DAYS, precip, claim, label, dir_output=dir_output)
+            window_days, precip, claim, label, dir_output=dir_output)
 
 
-def plot_histograms_time_differences(df, idx):
+def plot_histograms_time_differences(df, label):
     dir_output = CONFIG.get('OUTPUT_DIR')
     title_start = f"Difference (in days) between the claim date and the " \
-                  f"event start \n when using '{LABELS[idx]}'"
+                  f"event start \n when using '{label}'"
     title_center = f"Difference (in days) between the claim date and the " \
-                   f"event center \n when using '{LABELS[idx]}'"
+                   f"event center \n when using '{label}'"
 
     if utils.plotting.output_file_exists(dir_output, title_start):
         return
