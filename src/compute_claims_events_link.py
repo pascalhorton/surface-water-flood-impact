@@ -8,11 +8,12 @@ CONFIG = Config()
 
 CRITERIA = ['i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt']
 LABEL_DAMAGE_LINK = 'original'
-LABEL_EVENT_FILE = 'original_pluvial'
 WINDOW_DAYS = [5, 3, 1]
 DAMAGE_CATEGORIES = ['external', 'pluvial']
 TMP_DIR = CONFIG.get('TMP_DIR')
 EVENTS_PATH = CONFIG.get('EVENTS_PATH')
+LABEL_RESULTING_FILE = 'original_pluvial'
+SAVE_AS_CSV = False
 
 
 def main():
@@ -31,9 +32,10 @@ def main():
     events.set_target_values_from_damages(damages)
 
     # Save the events with target values to a pickle file
-    filename = f'events_with_target_values_{LABEL_EVENT_FILE}'
+    filename = f'events_with_target_values_{LABEL_RESULTING_FILE}'
     events.save_to_pickle(filename=filename + '.pickle')
-    events.save_to_csv(filename=filename + '.csv')
+    if SAVE_AS_CSV:
+        events.save_to_csv(filename=filename + '.csv')
 
     print(f"Linked performed and saved to {CONFIG.get('TMP_DIR')}.")
 
