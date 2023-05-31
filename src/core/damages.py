@@ -5,7 +5,7 @@ Class to handle all contracts and claims.
 import glob
 import pickle
 import ntpath
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from pathlib import Path
 
 import rasterio
@@ -544,7 +544,8 @@ class Damages:
             date_claim + timedelta(days=delta_days),
             datetime.max.time())
         for i, event in pot_events.iterrows():
-            overlap_window_start = max(date_window_start, event['e_start'])
+            e_start_corr = event['e_start'] - timedelta(hours=1)  # 1 hr is missing
+            overlap_window_start = max(date_window_start, e_start_corr)
             overlap_window_end = min(date_window_end, event['e_end'])
             overlap = overlap_window_end - overlap_window_start
             overlap_hrs = max(0.0, overlap.total_seconds() / 3600)
