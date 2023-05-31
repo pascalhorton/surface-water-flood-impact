@@ -14,20 +14,18 @@ PARAMETERS = [  # [label, [criteria], [window_days]]
     ['original', ['i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt'], [5, 3, 1]],
     # For the original temporal window ([5, 3, 1])
     ['v1', ['i_max', 'p_sum'], [5, 3, 1]],
-    ['v2', ['i_max', 'p_sum', 'r_ts_win'], [5, 3, 1]],
-    ['v3', ['i_max', 'p_sum', 'r_ts_evt'], [5, 3, 1]],
-    ['v4', ['i_max', 'p_sum', 'r_ts_win', 'r_ts_evt'], [5, 3, 1]],
-    ['v5', ['prior', 'i_max', 'p_sum'], [5, 3, 1]],
-    ['v6', ['prior', 'i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt'], [5, 3, 1]],
+    ['v2', ['i_max', 'p_sum', 'r_ts_evt'], [5, 3, 1]],
+    ['v3', ['i_max', 'p_sum', 'r_ts_win', 'r_ts_evt'], [5, 3, 1]],
+    ['v4', ['prior', 'i_max', 'p_sum'], [5, 3, 1]],
+    ['v5', ['prior', 'i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt'], [5, 3, 1]],
     # Original with intermediate temporal window ([5, 3, 2, 1])
     ['original 4win', ['i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt'], [5, 3, 2, 1]],
     # For an intermediate temporal window ([5, 3, 2, 1])
     ['v1 4win', ['i_max', 'p_sum'], [5, 3, 2, 1]],
-    ['v2 4win', ['i_max', 'p_sum', 'r_ts_win'], [5, 3, 2, 1]],
-    ['v3 4win', ['i_max', 'p_sum', 'r_ts_evt'], [5, 3, 2, 1]],
-    ['v4 4win', ['i_max', 'p_sum', 'r_ts_win', 'r_ts_evt'], [5, 3, 2, 1]],
+    ['v2 4win', ['i_max', 'p_sum', 'r_ts_evt'], [5, 3, 2, 1]],
+    ['v3 4win', ['i_max', 'p_sum', 'r_ts_win', 'r_ts_evt'], [5, 3, 2, 1]],
     ['v5 4win', ['prior', 'i_max', 'p_sum'], [5, 3, 2, 1]],
-    ['v6 4win', ['prior', 'i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt'], [5, 3, 2, 1]]
+    ['v5 4win', ['prior', 'i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt'], [5, 3, 2, 1]]
 ]
 
 DAMAGE_CATEGORIES = ['external', 'pluvial']

@@ -72,7 +72,7 @@ class Events:
         damages: Damages instance
             The damages object containing the contracts and claims data.
         """
-        cids = damages.cids['ids_list']
+        cids = damages.cids_list
         self.events = self.events[self.events['cid'].isin(cids)]
         print(f"Number of events with contracts: {len(self.events)}")
 
