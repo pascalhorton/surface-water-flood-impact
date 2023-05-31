@@ -76,6 +76,60 @@ class Events:
         self.events = self.events[self.events['cid'].isin(cids)]
         print(f"Number of events with contracts: {len(self.events)}")
 
+    def set_target_values_from_damages(self, damages):
+        """
+        Set the target values for the events from the damage data. The damage data
+        must be linked to the events.
+
+        Parameters
+        ----------
+        damages: Damages instance
+            An object containing the damages properties.
+        """
+        target_values = damages.claims.loc[:, ['eid', 'target']]
+
+        # Merge the target values with the events
+        self.events = pd.merge(self.events, target_values,
+                               how="left", on=['eid'])
+        self.events['target'] = self.events['target'].fillna(0)
+
+    def save_to_pickle(self, filename='events.pickle'):
+        """
+        Save the events to a pickle file.
+
+        Parameters
+        ----------
+        filename: str
+            The filename of the pickle file.
+        """
+        self.use_dump = True
+        self._dump_object(filename)
+
+    def load_from_pickle(self, filename='events.pickle'):
+        """
+        Load the events from a pickle file.
+
+        Parameters
+        ----------
+        filename: str
+            The filename of the pickle file.
+        """
+        self.use_dump = True
+        self._load_from_dump(filename)
+
+    def save_to_csv(self, filename='events.csv'):
+        """
+        Save the events to a csv file.
+
+        Parameters
+        ----------
+        filename: str
+            The filename of the csv file.
+        """
+        tmp_dir = config.get('TMP_DIR')
+        file_path = Path(f'{tmp_dir}/{filename}')
+        self.events.to_csv(file_path, index=False)
+
     def _load_from_dump(self, filename='events.pickle'):
         """
         Loads the object content from a pickle file.
