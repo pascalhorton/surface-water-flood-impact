@@ -75,17 +75,21 @@ def plot_claim_events_timeseries(window_days, precip, claim_1, label_1, claim_2=
     e_1_dates = None
     precip_1 = None
     if claim_1 is not None:
-        e_1_dur = (claim_1.e_end - claim_1.e_start).total_seconds() / 3600
-        e_1_dates = [claim_1.e_start + timedelta(hours=x) for x in range(int(e_1_dur) + 1)]
-        precip_1 = precip.get_time_series(cid, claim_1.e_start, claim_1.e_end)
+        e_start_1 = claim_1.e_start - timedelta(hours=1)
+        e_end_1 = claim_1.e_end + timedelta(hours=1)
+        e_1_dur = (e_end_1 - e_start_1).total_seconds() / 3600
+        e_1_dates = [e_start_1 + timedelta(hours=x) for x in range(int(e_1_dur) + 1)]
+        precip_1 = precip.get_time_series(cid, e_start_1, e_end_1)
 
     # Get second event data
     e_2_dates = None
     precip_2 = None
     if claim_2 is not None:
-        e_2_dur = (claim_2.e_end - claim_2.e_start).total_seconds() / 3600
-        e_2_dates = [claim_2.e_start + timedelta(hours=x) for x in range(int(e_2_dur) + 1)]
-        precip_2 = precip.get_time_series(cid, claim_2.e_start, claim_2.e_end)
+        e_start_2 = claim_2.e_start - timedelta(hours=1)
+        e_end_2 = claim_2.e_end + timedelta(hours=1)
+        e_2_dur = (e_end_2 - e_start_2).total_seconds() / 3600
+        e_2_dates = [e_start_2 + timedelta(hours=x) for x in range(int(e_2_dur) + 1)]
+        precip_2 = precip.get_time_series(cid, e_start_2, e_end_2)
 
     # Get full window data
     delta_days_max = (max(window_days) - 1) / 2
