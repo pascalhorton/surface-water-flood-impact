@@ -105,18 +105,6 @@ class Events:
         self.use_dump = True
         self._dump_object(filename)
 
-    def load_from_pickle(self, filename='events.pickle'):
-        """
-        Load the events from a pickle file.
-
-        Parameters
-        ----------
-        filename: str
-            The filename of the pickle file.
-        """
-        self.use_dump = True
-        self._load_from_dump(filename)
-
     def save_to_csv(self, filename='events.csv'):
         """
         Save the events to a csv file.
@@ -160,3 +148,25 @@ class Events:
         """
         ids = np.arange(start=1, stop=len(self.events) + 1)
         self.events.insert(0, 'eid', ids)
+
+
+def load_from_pickle(filename='events.pickle'):
+    """
+    Load the events from a pickle file.
+
+    Parameters
+    ----------
+    filename: str
+        The filename of the pickle file.
+    """
+    tmp_dir = config.get('TMP_DIR')
+    file_path = Path(f'{tmp_dir}/{filename}')
+    if not file_path.is_file():
+        raise Exception(f"File {file_path} does not exist.")
+
+    events = Events(use_dump=False)
+    with open(file_path, 'rb') as f:
+        values = pickle.load(f)
+        events.events = values.events
+
+    return events
