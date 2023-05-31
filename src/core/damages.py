@@ -447,6 +447,8 @@ class Damages:
 
         for window in window_days:
             for criterion in criteria:
+                if criterion == "prior":
+                    continue
                 field_name = f'{criterion}_{window}'
                 events.events[field_name] = 0
 
@@ -489,6 +491,7 @@ class Damages:
     def _compute_match_score(self, claim, criteria, pot_events, window_days):
         if 'prior' in criteria:
             self._compute_prior_to_claim(claim['date_claim'], pot_events)
+            pot_events.loc[pot_events['prior'] == 1, 'match_score'] += 1
 
         for window in window_days:
             if 'r_ts_win' in criteria or 'r_ts_evt' in criteria:
@@ -496,15 +499,16 @@ class Damages:
                 pot_events['r_ts_win'] = pot_events['overlap_hrs'] / (window * 24)
                 pot_events['r_ts_evt'] = pot_events['overlap_hrs'] / pot_events['e_tot']
             for criterion in criteria:
+                if criterion == 'prior':
+                    continue
                 within_window = pot_events['min_window'] <= window
                 val_max = pot_events.loc[within_window, criterion].max()
-                if criterion == 'prior':
-                    val_max = 1
                 with_max_val = pot_events[criterion] == val_max
-                if len(with_max_val) > 0:
-                    field_name = f'{criterion}_{window}'
-                    pot_events.loc[within_window & with_max_val, field_name] = 1
-                    pot_events.loc[within_window & with_max_val, 'match_score'] += 1
+                if with_max_val.empty:
+                    continue
+                field_name = f'{criterion}_{window}'
+                pot_events.loc[within_window & with_max_val, field_name] = 1
+                pot_events.loc[within_window & with_max_val, 'match_score'] += 1
 
     @staticmethod
     def _record_stat_candidates(stats, pot_events):
