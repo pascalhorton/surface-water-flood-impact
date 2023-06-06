@@ -6,13 +6,13 @@ from pathlib import Path
 
 CONFIG = Config()
 
-CRITERIA = ['i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt']
-LABEL_DAMAGE_LINK = 'original'
+CRITERIA = ['prior', 'i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt']
+LABEL_DAMAGE_LINK = 'v5'
 WINDOW_DAYS = [5, 3, 1]
 DAMAGE_CATEGORIES = ['external', 'pluvial']
 TMP_DIR = CONFIG.get('TMP_DIR')
 EVENTS_PATH = CONFIG.get('EVENTS_PATH')
-LABEL_RESULTING_FILE = 'original_pluvial'
+LABEL_RESULTING_FILE = 'original_w_prior_pluvial'
 SAVE_AS_CSV = False
 
 

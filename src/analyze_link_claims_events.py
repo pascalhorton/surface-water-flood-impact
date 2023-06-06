@@ -24,7 +24,7 @@ PARAMETERS = [  # [label, [criteria], [window_days]]
     ['v1 4win', ['i_max', 'p_sum'], [5, 3, 2, 1]],
     ['v2 4win', ['i_max', 'p_sum', 'r_ts_evt'], [5, 3, 2, 1]],
     ['v3 4win', ['i_max', 'p_sum', 'r_ts_win', 'r_ts_evt'], [5, 3, 2, 1]],
-    ['v5 4win', ['prior', 'i_max', 'p_sum'], [5, 3, 2, 1]],
+    ['v4 4win', ['prior', 'i_max', 'p_sum'], [5, 3, 2, 1]],
     ['v5 4win', ['prior', 'i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt'], [5, 3, 2, 1]]
 ]
 

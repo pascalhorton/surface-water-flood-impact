@@ -1,33 +1,31 @@
 import math
+from sklearn.metrics import roc_auc_score
 
 
-def compute_confusion_matrix(df, field_obs='target', field_model='predict'):
+def compute_confusion_matrix(y_test, y_pred):
     """
     Compute the confusion matrix.
 
     Parameters
     ----------
-    df: pandas.DataFrame
-        The dataframe containing the observations and the model predictions.
-    field_obs: str
-        The name of the field containing the observations.
-    field_model
-        The name of the field containing the model predictions.
+    y_test: array
+        The true values
+    y_pred: array
+        The predicted probabilities
 
     Returns
     -------
     The confusion matrix components (tp, tn, fp, fn).
-
     """
-    tp = len(df[(df[field_obs] == 1) & (df[field_model] == 1)])
-    tn = len(df[(df[field_obs] == 0) & (df[field_model] == 0)])
-    fp = len(df[(df[field_obs] == 0) & (df[field_model] == 1)])
-    fn = len(df[(df[field_obs] == 1) & (df[field_model] == 0)])
+    tp = len(y_test[(y_test == 1) & (y_pred == 1)])
+    tn = len(y_test[(y_test == 0) & (y_pred == 0)])
+    fp = len(y_test[(y_test == 0) & (y_pred == 1)])
+    fn = len(y_test[(y_test == 1) & (y_pred == 0)])
 
     return tp, tn, fp, fn
 
 
-def compute_score(metric, tp, tn, fp, fn):
+def compute_score_binary(metric, tp, tn, fp, fn):
     """
     Metrics based on the confusion matrix.
 
@@ -244,3 +242,58 @@ def compute_score(metric, tp, tn, fp, fn):
                 math.log(f) + math.log(h) + math.log(1 - h) + math.log(1 - f))
         assert (-1 <= sedi <= 1)
         return sedi
+
+
+def print_classic_scores(tp, tn, fp, fn):
+    """
+    Compute classic scores from contingency table
+
+    Parameters
+    ----------
+    tp: int
+        The number of true positives
+    tn: int
+        The number of true negatives
+    fp: int
+        The number of false positives
+    fn: int
+        The number of false negatives
+    """
+
+    print(f"TP: {tp}")
+    print(f"TN: {tn}")
+    print(f"FP: {fp}")
+    print(f"FN: {fn}")
+
+    print(f"SEDI: {compute_score_binary('SEDI', tp, tn, fp, fn):.3f}")
+    print(f"False alarm rate (F): {compute_score_binary('F', tp, tn, fp, fn):.3f}")
+    print(f"False alarm ratio (FAR): {compute_score_binary('FAR', tp, tn, fp, fn):.3f}")
+    print(f"Hit rate (H): {compute_score_binary('H', tp, tn, fp, fn):.3f}")
+    print(f"Bias: {compute_score_binary('bias', tp, tn, fp, fn):.3f}")
+
+    print(f"Accuracy: {(tp + tn) / (tp + tn + fp + fn):.3f}")
+    print(f"Precision: {tp / (tp + fp):.3f}")
+    print(f"Recall: {tp / (tp + fn):.3f}")
+    print(f"F1: {2 * tp / (2 * tp + fp + fn):.3f}")
+
+
+def assess_roc_auc(y_test, y_pred):
+    """
+    Compute the ROC AUC score.
+
+    Parameters
+    ----------
+    y_test: array
+        The true values
+    y_pred: array
+        The predicted probabilities
+
+    Returns
+    -------
+    The ROC AUC score.
+    """
+
+    print(f"ROC AUC: {roc_auc_score(y_test, y_pred):.3f}")
+
+    return roc_auc_score(y_test, y_pred)
+

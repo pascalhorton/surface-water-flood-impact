@@ -1,13 +1,16 @@
+import numpy as np
+
 import core.damages
 import core.events
 import core.precipitation
-from utils.forecast_verification import compute_confusion_matrix, compute_score
+from utils.forecast_verification import compute_confusion_matrix, print_classic_scores
 from utils.config import Config
+from sklearn.model_selection import train_test_split
 
 CONFIG = Config()
 
 TMP_DIR = CONFIG.get('TMP_DIR')
-LABEL_RESULTING_FILE = 'original_pluvial'
+LABEL_RESULTING_FILE = 'original_w_prior_pluvial'
 THRESHOLD_I_MAX = 0.9
 THRESHOLD_P_SUM = 0.98
 
@@ -23,28 +26,32 @@ def main():
     print(f"Number of events with damages: {len(events_with_damages)}")
     print(f"Number of events without damages: {len(events_without_damages)}")
 
-    # Apply the threshold method
-    df['predict'] = 0
-    df.loc[df['i_max_q'] >= THRESHOLD_I_MAX, 'predict'] = 1
-    df.loc[df['p_sum_q'] >= THRESHOLD_P_SUM, 'predict'] = 1
+    # Extract the features and the target
+    x = df[['i_max_q', 'p_sum_q']].to_numpy()
+    y = df['target'].to_numpy()
+
+    # Split the sample into training and test sets
+    x_train, x_test, y_train, y_test = train_test_split(
+        x, y, test_size=0.33, random_state=42)
+
+    # Apply the threshold method (union)
+    y_pred = np.zeros(len(y_test))
+    y_pred[x_test[:, 0] >= THRESHOLD_I_MAX] = 1
+    y_pred[x_test[:, 1] >= THRESHOLD_P_SUM] = 1
 
     # Compute the confusion matrix
-    tp, tn, fp, fn = compute_confusion_matrix(df)
-    print(f"TP: {tp}")
-    print(f"TN: {tn}")
-    print(f"FP: {fp}")
-    print(f"FN: {fn}")
+    print(f"Threshold 2019 method (union):")
+    tp, tn, fp, fn = compute_confusion_matrix(y_test, y_pred)
+    print_classic_scores(tp, tn, fp, fn)
 
-    print(f"SEDI: {compute_score('SEDI', tp, tn, fp, fn):.3f}")
-    print(f"False alarm rate (F): {compute_score('F', tp, tn, fp, fn):.3f}")
-    print(f"False alarm ratio (FAR): {compute_score('FAR', tp, tn, fp, fn):.3f}")
-    print(f"Hit rate (H): {compute_score('H', tp, tn, fp, fn):.3f}")
-    print(f"Bias: {compute_score('bias', tp, tn, fp, fn):.3f}")
+    # Apply the threshold method (intersection)
+    y_pred = np.zeros(len(y_test))
+    y_pred[(x_test[:, 0] >= THRESHOLD_I_MAX) & (x_test[:, 1] >= THRESHOLD_P_SUM)] = 1
 
-    print(f"Accuracy: {(tp + tn) / (tp + tn + fp + fn):.3f}")
-    print(f"Precision: {tp / (tp + fp):.3f}")
-    print(f"Recall: {tp / (tp + fn):.3f}")
-    print(f"F1: {2 * tp / (2 * tp + fp + fn):.3f}")
+    # Compute the confusion matrix
+    print(f"Threshold 2019 method (intersection):")
+    tp, tn, fp, fn = compute_confusion_matrix(y_test, y_pred)
+    print_classic_scores(tp, tn, fp, fn)
 
 
 if __name__ == '__main__':
