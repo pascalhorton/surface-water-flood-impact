@@ -245,6 +245,36 @@ def compute_score_binary(metric, tp, tn, fp, fn):
         assert (-1 <= sedi <= 1)
         return sedi
 
+    elif metric in ['accuracy', 'Accuracy']:
+        # Accuracy
+        # [0, 1]
+        accuracy = (tp + tn) / (tp + tn + fp + fn)
+        assert (0 <= accuracy <= 1)
+        return accuracy
+
+    elif metric in ['precision', 'Precision']:
+        # Precision
+        # [0, 1]
+        if tp + fp == 0:
+            return math.nan
+        precision = tp / (tp + fp)
+        assert (0 <= precision <= 1)
+        return precision
+
+    elif metric in ['recall', 'Recall']:
+        # Recall
+        # [0, 1]
+        recall = tp / (tp + fn)
+        assert (0 <= recall <= 1)
+        return recall
+
+    elif metric in ['f1', 'F1']:
+        # F1
+        # [0, 1]
+        f1 = 2 * tp / (2 * tp + fp + fn)
+        assert (0 <= f1 <= 1)
+        return f1
+
 
 def print_classic_scores(tp, tn, fp, fn):
     """
@@ -273,14 +303,10 @@ def print_classic_scores(tp, tn, fp, fn):
     print(f"Hit rate (H): {compute_score_binary('H', tp, tn, fp, fn):.3f}")
     print(f"Critical Success Index (CSI): {compute_score_binary('CSI', tp, tn, fp, fn):.3f}")
     print(f"Bias: {compute_score_binary('bias', tp, tn, fp, fn):.3f}")
-
-    print(f"Accuracy: {(tp + tn) / (tp + tn + fp + fn):.3f}")
-    if tp + fp == 0:
-        print("Precision: 0")
-    else:
-        print(f"Precision: {tp / (tp + fp):.3f}")
-    print(f"Recall: {tp / (tp + fn):.3f}")
-    print(f"F1: {2 * tp / (2 * tp + fp + fn):.3f}")
+    print(f"Accuracy: {compute_score_binary('Accuracy', tp, tn, fp, fn):.3f}")
+    print(f"Precision: {compute_score_binary('Precision', tp, tn, fp, fn):.3f}")
+    print(f"Recall: {compute_score_binary('Recall', tp, tn, fp, fn):.3f}")
+    print(f"F1: {compute_score_binary('F1', tp, tn, fp, fn):.3f}")
 
 
 def assess_roc_auc(y_test, y_pred):
