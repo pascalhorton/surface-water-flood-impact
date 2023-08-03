@@ -49,6 +49,8 @@ def main():
     class_weight = {0: weights[0], 1: weights[1] / 8}
     apply_logistic_regression(x_train, y_train, x_test, y_test, class_weight)
 
+    class_weight = {0: weights[0], 1: weights[1] / 16}
+    apply_logistic_regression(x_train, y_train, x_test, y_test, class_weight)
 
 def apply_logistic_regression(x_train, y_train, x_test, y_test, class_weight):
     print(f"Logistic regression with class weight: {class_weight}")
