@@ -5,10 +5,10 @@ config file. Save the results as tiff file.
 
 from pathlib import Path
 import numpy as np
-import richdem as rd
+from pysheds.grid import Grid
 
-from utils.config import Config
-from utils.spatial_operations import rasterize
+from swafi.config import Config
+from swafi.utils.spatial_operations import rasterize
 
 
 config = Config(output_dir='prepare_flowacc')
@@ -28,21 +28,34 @@ for dem_path in DEM_PATHS:
 
     # Compute flow accumulation
     if not Path(filepath_flowacc).exists():
-        dem = rd.LoadGDAL(dem_path, no_data=-9999.0)
-        cell_area = abs(dem.geotransform[1] * dem.geotransform[5])
+        grid = Grid.from_raster(dem_path)
+        dem = grid.read_raster(dem_path)
+        dem[dem == -9999] = np.nan
 
-        # Fill depressions
-        rd.FillDepressions(dem, epsilon=True, in_place=True)
+        # Cell area
+        cell_area = abs(grid.affine.a * grid.affine.e)
 
-        # Compute flow accumulation
-        flowacc = rd.FlowAccumulation(dem, method='Dinf')
-        flowacc[flowacc == -1] = np.nan
+        # Fill pits in DEM
+        pit_filled_dem = grid.fill_pits(dem)
+
+        # Fill depressions in DEM
+        flooded_dem = grid.fill_depressions(pit_filled_dem)
+
+        # Resolve flats in DEM
+        inflated_dem = grid.resolve_flats(flooded_dem)
+
+        # Compute flow direction
+        fdir = grid.flowdir(inflated_dem, routing='dinf')
+
+        # Calculate flow accumulation
+        flowacc = grid.accumulation(fdir, routing='dinf')
         flowacc *= cell_area
 
         # Save to file
-        rd.SaveGDAL(filepath_flowacc, flowacc)
+        grid.to_raster(flowacc, filepath_flowacc)
     else:
-        flowacc = rd.LoadGDAL(filepath_flowacc)
+        grid = Grid.from_raster(filepath_flowacc)
+        flowacc = grid.read_raster(filepath_flowacc)
 
     # Mask out lakes
     if not Path(filepath_nolakes).exists():
@@ -51,9 +64,10 @@ for dem_path in DEM_PATHS:
         flowacc[mask_lakes == 1] = np.nan
 
         # Save to file
-        rd.SaveGDAL(filepath_nolakes, flowacc)
+        grid.to_raster(flowacc, filepath_nolakes)
     else:
-        flowacc = rd.LoadGDAL(filepath_nolakes)
+        grid = Grid.from_raster(filepath_nolakes)
+        flowacc = grid.read_raster(filepath_nolakes)
 
     # Mask out rivers
     if not Path(filepath_norivers).exists():
@@ -61,7 +75,8 @@ for dem_path in DEM_PATHS:
         flowacc[flowacc >= config.get('FLOWACC_RIVER_THRESHOLD', 50000)] = np.nan
 
         # Save to file
-        rd.SaveGDAL(filepath_norivers, flowacc)
+        grid.to_raster(flowacc, filepath_norivers)
     else:
-        flowacc = rd.LoadGDAL(filepath_norivers)
+        grid = Grid.from_raster(filepath_norivers)
+        flowacc = grid.read_raster(filepath_norivers)
 
