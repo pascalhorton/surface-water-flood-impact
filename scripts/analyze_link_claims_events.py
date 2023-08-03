@@ -1,10 +1,10 @@
 import numpy as np
 import pandas as pd
-import core.damages
-import core.events
-import core.precipitation
-import utils.plotting
-from utils.config import Config
+from swafi.config import Config
+from swafi.damages import Damages
+from swafi.events import Events
+from swafi.precipitation import Precipitation
+from swafi.utils.plotting import *
 from pathlib import Path
 
 CONFIG = Config()
@@ -43,16 +43,16 @@ def main():
     compute_link_and_save_to_pickle()
 
     # Load the first pickle file and do some common work
-    damages = core.damages.Damages(
+    damages = Damages(
         pickle_file=f'damages_linked_{PARAMETERS[0][0].replace(" ", "_")}.pickle')
-    events = core.events.Events()
+    events = Events()
     events.load_events_and_select_locations_with_contracts(CONFIG.get('EVENTS_PATH'), damages)
     del damages
 
     precip = None
     if PLOT_TIME_SERIES_DISAGREEMENT or PLOT_ALL_TIME_SERIES:
         # Precipitation data
-        precip = core.precipitation.Precipitation(CONFIG.get('DIR_PRECIP'))
+        precip = Precipitation(CONFIG.get('DIR_PRECIP'))
 
     # Compare the events assigned
     diff_count = np.zeros((len(PARAMETERS), len(PARAMETERS)))
@@ -60,7 +60,7 @@ def main():
     for i_ref, params_ref in enumerate(PARAMETERS):
         label_ref = params_ref[0].replace(" ", "_")
         filename_ref = f'damages_linked_{label_ref}.pickle'
-        df_ref = core.damages.Damages(pickle_file=filename_ref)
+        df_ref = Damages(pickle_file=filename_ref)
         total.append(df_ref.claims.eid.astype(bool).sum())
 
         # Compute and plot the time difference between the event and the claim date
@@ -78,7 +78,7 @@ def main():
         for i_diff, params_diff in enumerate(PARAMETERS):
             label_diff = params_diff[0].replace(" ", "_")
             filename_diff = f'damages_linked_{label_diff}.pickle'
-            df_comp = core.damages.Damages(pickle_file=filename_diff)
+            df_comp = Damages(pickle_file=filename_diff)
             if len(df_ref.claims) >= len(df_comp.claims):
                 df_merged_claims = pd.merge(df_ref.claims, df_comp.claims,
                                             how="left", on=['date_claim', 'cid'])
@@ -96,7 +96,7 @@ def main():
 
     if PLOT_MATRIX:
         labels = [p[0] for p in PARAMETERS]
-        utils.plotting.plot_heatmap_differences(
+        plot_heatmap_differences(
             diff_count, total, labels, dir_output=CONFIG.get('OUTPUT_DIR'),
             title="Differences in the event-damage attribution", fontsize=6)
 
@@ -114,11 +114,11 @@ def compute_link_and_save_to_pickle():
             continue
 
         print(f"Assessing criteria {criteria}")
-        damages = core.damages.Damages(dir_contracts=CONFIG.get('DIR_CONTRACTS'),
+        damages = Damages(dir_contracts=CONFIG.get('DIR_CONTRACTS'),
                                        dir_claims=CONFIG.get('DIR_CLAIMS'))
         damages.select_categories_type(DAMAGE_CATEGORIES)
 
-        events = core.events.Events()
+        events = Events()
         events.load_events_and_select_locations_with_contracts(CONFIG.get('EVENTS_PATH'), damages)
 
         damages.link_with_events(events, criteria=criteria, filename=filename,
@@ -138,7 +138,7 @@ def plot_time_series_different_events(df_merged_claims, df_comp, df_ref, diffs, 
                                      (df_comp.claims.date_claim == date_claim)]
         dir_output = CONFIG.get(
             'OUTPUT_DIR') + f'/Timeseries {label_ref} vs {label_diff}'
-        utils.plotting.plot_claim_events_timeseries(
+        plot_claim_events_timeseries(
             [5, 3, 1], precip, claim_1, label_ref, claim_2,
             label_diff, dir_output=dir_output)
 
@@ -149,7 +149,7 @@ def plot_time_series(df_ref, precip, params):
         label = params[0]
         dir_output = CONFIG.get('OUTPUT_DIR') + f'/Single timeseries {label}'
         window_days = [p[2] for p in PARAMETERS]
-        utils.plotting.plot_claim_events_timeseries(
+        plot_claim_events_timeseries(
             window_days, precip, claim, label, dir_output=dir_output)
 
 
@@ -160,12 +160,12 @@ def plot_histograms_time_differences(df, label):
     title_center = f"Difference (in days) between the claim date and the " \
                    f"event center \n when using '{label}'"
 
-    if utils.plotting.output_file_exists(dir_output, title_start):
+    if output_file_exists(dir_output, title_start):
         return
 
-    utils.plotting.plot_histogram_time_difference(
+    plot_histogram_time_difference(
         df.claims, field_name='dt_start', dir_output=dir_output, title=title_start)
-    utils.plotting.plot_histogram_time_difference(
+    plot_histogram_time_difference(
         df.claims, field_name='dt_center', dir_output=dir_output, title=title_center)
 
 

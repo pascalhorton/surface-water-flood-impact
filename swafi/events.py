@@ -7,9 +7,8 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from tqdm import tqdm
 
-from utils.config import Config
+from swafi.config import Config
 
 config = Config()
 
@@ -150,7 +149,7 @@ class Events:
         self.events.insert(0, 'eid', ids)
 
 
-def load_from_pickle(filename='events.pickle'):
+def load_events_from_pickle(filename='events.pickle'):
     """
     Load the events from a pickle file.
 

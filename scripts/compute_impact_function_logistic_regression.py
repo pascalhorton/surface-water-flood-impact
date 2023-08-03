@@ -1,10 +1,7 @@
-import core.damages
-import core.events
-import core.precipitation
+from swafi.config import Config
+from swafi.events import load_events_from_pickle
+from swafi.utils.verification import compute_confusion_matrix, print_classic_scores, assess_roc_auc
 import numpy as np
-from utils.forecast_verification import compute_confusion_matrix, print_classic_scores
-from utils.forecast_verification import assess_roc_auc
-from utils.config import Config
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 
@@ -20,7 +17,7 @@ FEATURES = ['i_max_q', 'p_sum_q', 'e_tot', 'i_mean_q', 'apireg_q']
 
 def main():
     filename = f'events_with_target_values_{LABEL_RESULTING_FILE}.pickle'
-    events = core.events.load_from_pickle(filename=filename)
+    events = load_events_from_pickle(filename=filename)
     df = events.events
 
     x = df[FEATURES].to_numpy()
@@ -51,6 +48,7 @@ def main():
 
     class_weight = {0: weights[0], 1: weights[1] / 16}
     apply_logistic_regression(x_train, y_train, x_test, y_test, class_weight)
+
 
 def apply_logistic_regression(x_train, y_train, x_test, y_test, class_weight):
     print(f"Logistic regression with class weight: {class_weight}")

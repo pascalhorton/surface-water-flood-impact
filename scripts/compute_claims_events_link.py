@@ -1,7 +1,6 @@
-import core.damages
-import core.events
-import core.precipitation
-from utils.config import Config
+from swafi.config import Config
+from swafi.damages import Damages
+from swafi.events import Events
 from pathlib import Path
 
 CONFIG = Config()
@@ -27,7 +26,7 @@ def main():
     damages.set_target_variable_value(mode='occurrence')
 
     # Assign the target value to the events
-    events = core.events.Events()
+    events = Events()
     events.load_events_and_select_locations_with_contracts(EVENTS_PATH, damages)
     events.set_target_values_from_damages(damages)
 
@@ -47,15 +46,15 @@ def get_damages_linked_to_events():
 
     if file_path.exists():
         print(f"Link for {CRITERIA} already computed.")
-        damages = core.damages.Damages(pickle_file=filename)
+        damages = Damages(pickle_file=filename)
         return damages
 
     print(f"Computing link for {CRITERIA}")
-    damages = core.damages.Damages(dir_contracts=CONFIG.get('DIR_CONTRACTS'),
+    damages = Damages(dir_contracts=CONFIG.get('DIR_CONTRACTS'),
                                    dir_claims=CONFIG.get('DIR_CLAIMS'))
     damages.select_categories_type(DAMAGE_CATEGORIES)
 
-    events = core.events.Events()
+    events = Events()
     events.load_events_and_select_locations_with_contracts(EVENTS_PATH, damages)
 
     damages.link_with_events(events, criteria=CRITERIA, filename=filename,

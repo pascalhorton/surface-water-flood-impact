@@ -1,10 +1,8 @@
 import numpy as np
 
-import core.damages
-import core.events
-import core.precipitation
-from utils.forecast_verification import compute_confusion_matrix, print_classic_scores
-from utils.config import Config
+from swafi.config import Config
+from swafi.events import load_events_from_pickle
+from swafi.utils.verification import compute_confusion_matrix, print_classic_scores
 from sklearn.model_selection import train_test_split
 
 CONFIG = Config()
@@ -17,7 +15,7 @@ THRESHOLD_P_SUM = 0.98
 
 def main():
     filename = f'events_with_target_values_{LABEL_RESULTING_FILE}.pickle'
-    events = core.events.load_from_pickle(filename=filename)
+    events = load_events_from_pickle(filename=filename)
     df = events.events
 
     # Count the number of events with and without damages

@@ -8,8 +8,8 @@ import numpy as np
 from tqdm import tqdm
 from scipy.ndimage import uniform_filter
 
-from utils.config import Config
-from core.domain import Domain
+from swafi.config import Config
+from swafi.domain import Domain
 
 config = Config()
 

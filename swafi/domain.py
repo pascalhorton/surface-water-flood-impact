@@ -7,7 +7,7 @@ import rasterio
 import numpy as np
 from pathlib import Path
 
-from utils.config import Config
+from swafi.config import Config
 
 config = Config()
 

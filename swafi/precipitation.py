@@ -4,10 +4,9 @@ Class to handle the precipitation data.
 
 from glob import glob
 import xarray as xr
-import numpy as np
 
-from utils.config import Config
-from core.domain import Domain
+from swafi.config import Config
+from swafi.domain import Domain
 
 config = Config()
 
