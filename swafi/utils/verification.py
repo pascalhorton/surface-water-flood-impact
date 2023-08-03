@@ -95,6 +95,8 @@ def compute_score_binary(metric, tp, tn, fp, fn):
     elif metric in ['false_alarm_ratio', 'FAR']:
         # False alarm ratio (FAR) = b / (a+b)
         # [0, 1]
+        if tp + fp == 0:
+            return 0
         far = fp / (tp + fp)
         assert (0 <= far <= 1)
         return far
@@ -269,10 +271,14 @@ def print_classic_scores(tp, tn, fp, fn):
     print(f"False alarm rate (F): {compute_score_binary('F', tp, tn, fp, fn):.3f}")
     print(f"False alarm ratio (FAR): {compute_score_binary('FAR', tp, tn, fp, fn):.3f}")
     print(f"Hit rate (H): {compute_score_binary('H', tp, tn, fp, fn):.3f}")
+    print(f"Critical Success Index (CSI): {compute_score_binary('CSI', tp, tn, fp, fn):.3f}")
     print(f"Bias: {compute_score_binary('bias', tp, tn, fp, fn):.3f}")
 
     print(f"Accuracy: {(tp + tn) / (tp + tn + fp + fn):.3f}")
-    print(f"Precision: {tp / (tp + fp):.3f}")
+    if tp + fp == 0:
+        print("Precision: 0")
+    else:
+        print(f"Precision: {tp / (tp + fp):.3f}")
     print(f"Recall: {tp / (tp + fn):.3f}")
     print(f"F1: {2 * tp / (2 * tp + fp + fn):.3f}")
 

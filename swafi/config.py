@@ -13,10 +13,12 @@ class Config:
         self.config = None
         self.output_dir = None
         filepath = ''
-        if Path('../config.yaml').exists():
-            filepath = '../config.yaml'
-        elif Path('config.yaml').exists():
+        if Path('config.yaml').exists():
             filepath = 'config.yaml'
+        elif Path('../config.yaml').exists():
+            filepath = '../config.yaml'
+        elif Path('../../config.yaml').exists():
+            filepath = '../../config.yaml'
         else:
             raise RuntimeError("The config.yaml file was not found.")
 
