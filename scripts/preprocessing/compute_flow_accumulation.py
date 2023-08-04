@@ -11,7 +11,7 @@ from swafi.config import Config
 from swafi.utils.spatial_operations import rasterize
 
 
-config = Config(output_dir='prepare_flowacc')
+config = Config(output_dir='static_flowacc')
 output_dir = config.output_dir
 
 # Get file paths
@@ -50,6 +50,7 @@ for dem_path in DEM_PATHS:
         # Calculate flow accumulation
         flowacc = grid.accumulation(fdir, routing='dinf')
         flowacc *= cell_area
+        flowacc[np.isnan(dem)] = np.nan
 
         # Save to file
         grid.to_raster(flowacc, filepath_flowacc)

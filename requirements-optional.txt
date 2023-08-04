@@ -1,4 +1,5 @@
 pysheds
+richdem
 gdal
 xarray
 dask
