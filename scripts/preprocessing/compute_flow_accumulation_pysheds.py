@@ -80,4 +80,3 @@ for dem_path in DEM_PATHS:
     else:
         grid = Grid.from_raster(filepath_norivers)
         flowacc = grid.read_raster(filepath_norivers)
-
