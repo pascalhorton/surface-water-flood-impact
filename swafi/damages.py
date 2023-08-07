@@ -48,9 +48,9 @@ class Damages:
             The path to the working directory for pickle files
         """
         self.use_dump = use_dump
-        self.pickle_dir = pickle_dir
+        self.pickles_dir = pickle_dir
         if pickle_dir is None:
-            self.pickle_dir = config.get('PICKLES_DIR')
+            self.pickles_dir = config.get('PICKLES_DIR')
 
         self.domain = Domain(cid_file)
         self.cids_list = None
@@ -794,7 +794,7 @@ class Damages:
         """
         if not self.use_dump:
             return
-        file_path = Path(self.pickle_dir + '/' + filename)
+        file_path = Path(self.pickles_dir + '/' + filename)
         if file_path.is_file():
             with open(file_path, 'rb') as f:
                 values = pickle.load(f)
@@ -811,7 +811,7 @@ class Damages:
         """
         if not self.use_dump:
             return
-        file_path = Path(self.pickle_dir + '/' + filename)
+        file_path = Path(self.pickles_dir + '/' + filename)
         with open(file_path, 'wb') as f:
             pickle.dump(self, f)
 

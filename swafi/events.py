@@ -123,8 +123,8 @@ class Events:
         """
         if not self.use_dump:
             return
-        p_dir = config.get('PICKLES_DIR')
-        file_path = Path(f'{p_dir}/{filename}')
+        pickles_dir = config.get('PICKLES_DIR')
+        file_path = Path(f'{pickles_dir}/{filename}')
         if file_path.is_file():
             with open(file_path, 'rb') as f:
                 values = pickle.load(f)
@@ -136,8 +136,8 @@ class Events:
         """
         if not self.use_dump:
             return
-        p_dir = config.get('PICKLES_DIR')
-        file_path = Path(f'{p_dir}/{filename}')
+        pickles_dir = config.get('PICKLES_DIR')
+        file_path = Path(f'{pickles_dir}/{filename}')
         with open(file_path, 'wb') as f:
             pickle.dump(self, f)
 
@@ -158,8 +158,8 @@ def load_events_from_pickle(filename='events.pickle'):
     filename: str
         The filename of the pickle file.
     """
-    p_dir = config.get('PICKLES_DIR')
-    file_path = Path(f'{p_dir}/{filename}')
+    pickles_dir = config.get('PICKLES_DIR')
+    file_path = Path(f'{pickles_dir}/{filename}')
     if not file_path.is_file():
         raise Exception(f"File {file_path} does not exist.")
 
