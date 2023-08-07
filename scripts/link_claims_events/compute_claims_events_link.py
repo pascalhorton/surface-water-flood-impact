@@ -6,7 +6,7 @@ from pathlib import Path
 CONFIG = Config()
 
 CRITERIA = ['prior', 'i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt']
-LABEL_DAMAGE_LINK = 'v5'
+LABEL_DAMAGE_LINK = 'original_w_prior_pluvial'
 WINDOW_DAYS = [5, 3, 1]
 DAMAGE_CATEGORIES = ['external', 'pluvial']
 PICKLES_DIR = CONFIG.get('PICKLES_DIR')
@@ -51,7 +51,7 @@ def get_damages_linked_to_events():
 
     print(f"Computing link for {CRITERIA}")
     damages = Damages(dir_contracts=CONFIG.get('DIR_CONTRACTS'),
-                                   dir_claims=CONFIG.get('DIR_CLAIMS'))
+                      dir_claims=CONFIG.get('DIR_CLAIMS'))
     damages.select_categories_type(DAMAGE_CATEGORIES)
 
     events = Events()
