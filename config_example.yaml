@@ -1,4 +1,5 @@
 OUTPUT_DIR: ''
+PICKLES_DIR: ''
 TMP_DIR: ''
 
 # General options

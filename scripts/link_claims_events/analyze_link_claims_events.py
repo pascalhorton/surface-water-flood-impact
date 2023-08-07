@@ -1,5 +1,3 @@
-import numpy as np
-import pandas as pd
 from swafi.config import Config
 from swafi.damages import Damages
 from swafi.events import Events
@@ -115,7 +113,7 @@ def compute_link_and_save_to_pickle():
 
         print(f"Assessing criteria {criteria}")
         damages = Damages(dir_contracts=CONFIG.get('DIR_CONTRACTS'),
-                                       dir_claims=CONFIG.get('DIR_CLAIMS'))
+                          dir_claims=CONFIG.get('DIR_CLAIMS'))
         damages.select_categories_type(DAMAGE_CATEGORIES)
 
         events = Events()
