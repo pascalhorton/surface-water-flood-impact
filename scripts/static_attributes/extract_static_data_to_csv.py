@@ -10,9 +10,11 @@ from pathlib import Path
 from swafi.config import Config
 from swafi.domain import Domain
 
-SRC_DIR = 'static_terrain'
+# Select the attributes of interest. Options are: static_terrain,
+# static_flowacc_pysheds, static_flowacc_richdem
+SRC_DIR = 'static_flowacc_pysheds'
 
-config = Config(output_dir='static_attributes')
+config = Config(output_dir='static_attributes_csv')
 base_dir = config.get('OUTPUT_DIR')
 data_dir = Path(base_dir + '/' + SRC_DIR)
 
@@ -41,7 +43,7 @@ def main():
             df = df.merge(df_new, on='cid', how='outer')
 
     # Save the DataFrame as csv
-    df.to_csv(str(config.output_dir) + '/static_attributes.csv', index=False)
+    df.to_csv(f'{config.output_dir}/{SRC_DIR}.csv', index=False)
 
 
 def extract_statistics(cids_path, data_path):
