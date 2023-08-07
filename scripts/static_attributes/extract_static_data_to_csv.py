@@ -12,7 +12,7 @@ from swafi.domain import Domain
 
 # Select the attributes of interest. Options are: static_terrain,
 # static_flowacc_pysheds, static_flowacc_richdem
-SRC_DIR = 'static_flowacc_pysheds'
+SRC_DIR = 'static_terrain'
 
 config = Config(output_dir='static_attributes_csv')
 base_dir = config.get('OUTPUT_DIR')
@@ -44,6 +44,8 @@ def main():
 
     # Save the DataFrame as csv
     df.to_csv(f'{config.output_dir}/{SRC_DIR}.csv', index=False)
+
+    print('Done.')
 
 
 def extract_statistics(cids_path, data_path):
@@ -87,11 +89,11 @@ def extract_statistics(cids_path, data_path):
 
                 # Calculate statistics and append them to the lists
                 cids_vals.append(int(cids_data[i, j]))
-                min_vals.append(np.min(data_cells))
-                max_vals.append(np.max(data_cells))
-                mean_vals.append(np.mean(data_cells))
-                std_vals.append(np.std(data_cells))
-                median_vals.append(np.median(data_cells))
+                min_vals.append(np.nanmin(data_cells))
+                max_vals.append(np.nanmax(data_cells))
+                mean_vals.append(np.nanmean(data_cells))
+                std_vals.append(np.nanstd(data_cells))
+                median_vals.append(np.nanmedian(data_cells))
 
     # Create a pandas DataFrame to store the statistics
     tag = data_path.stem
