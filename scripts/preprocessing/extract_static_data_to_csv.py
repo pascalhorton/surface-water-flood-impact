@@ -84,7 +84,7 @@ def extract_statistics(cids_path, data_path):
                     continue
 
                 # Calculate statistics and append them to the lists
-                cids_vals = int(cids_data[i, j])
+                cids_vals.append(int(cids_data[i, j]))
                 min_vals.append(np.min(data_cells))
                 max_vals.append(np.max(data_cells))
                 mean_vals.append(np.mean(data_cells))
