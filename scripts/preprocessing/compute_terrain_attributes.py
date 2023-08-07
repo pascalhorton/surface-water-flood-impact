@@ -4,7 +4,6 @@ config file. Save the results as tiff file.
 """
 
 from pathlib import Path
-import numpy as np
 import richdem as rd
 
 from swafi.config import Config
