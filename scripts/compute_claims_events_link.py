@@ -9,7 +9,7 @@ CRITERIA = ['prior', 'i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt']
 LABEL_DAMAGE_LINK = 'v5'
 WINDOW_DAYS = [5, 3, 1]
 DAMAGE_CATEGORIES = ['external', 'pluvial']
-TMP_DIR = CONFIG.get('TMP_DIR')
+PICKLE_DIR = CONFIG.get('PICKLE_DIR')
 EVENTS_PATH = CONFIG.get('EVENTS_PATH')
 LABEL_RESULTING_FILE = 'original_w_prior_pluvial'
 SAVE_AS_CSV = False
@@ -36,13 +36,13 @@ def main():
     if SAVE_AS_CSV:
         events.save_to_csv(filename=filename + '.csv')
 
-    print(f"Linked performed and saved to {CONFIG.get('TMP_DIR')}.")
+    print(f"Linked performed and saved to {CONFIG.get('PICKLE_DIR')}.")
 
 
 def get_damages_linked_to_events():
     label = LABEL_DAMAGE_LINK.replace(" ", "_")
     filename = f'damages_linked_{label}.pickle'
-    file_path = Path(TMP_DIR + '/' + filename)
+    file_path = Path(PICKLE_DIR + '/' + filename)
 
     if file_path.exists():
         print(f"Link for {CRITERIA} already computed.")

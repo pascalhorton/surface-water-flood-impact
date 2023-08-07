@@ -22,7 +22,7 @@ config = Config()
 class Damages:
     def __init__(self, cid_file=None, year_start=None, year_end=None, use_dump=True,
                  dataset='mobi_2023', dir_contracts=None, dir_claims=None,
-                 pickle_file=None, tmp_dir=None):
+                 pickle_file=None, pickle_dir=None):
         """
         The Damages class.
 
@@ -35,7 +35,7 @@ class Damages:
         year_end: int
             The ending year of the data.
         use_dump: bool
-            Dump the content to the TMP_DIR and load if available
+            Dump the content to the PICKLE_DIR and load if available
         dataset: str
             The dataset ID (default 'mobi_2023')
         dir_contracts: str
@@ -44,13 +44,13 @@ class Damages:
             The path to the directory containing the claim files.
         pickle_file: str
             The path to a pickle file to load.
-        tmp_dir: str
-            The path to the working temporary directory
+        pickle_dir: str
+            The path to the working directory for pickle files
         """
         self.use_dump = use_dump
-        self.tmp_dir = tmp_dir
-        if tmp_dir is None:
-            self.tmp_dir = config.get('TMP_DIR')
+        self.pickle_dir = pickle_dir
+        if pickle_dir is None:
+            self.pickle_dir = config.get('PICKLES_DIR')
 
         self.domain = Domain(cid_file)
         self.cids_list = None
@@ -144,7 +144,7 @@ class Damages:
         Parameters
         ----------
         filename: str
-            The name the pickle file in the project temporary directory (TMP_DIR)
+            The name the pickle file in the project temporary directory (PICKLE_DIR)
         """
         self._load_from_dump(filename=filename)
 
@@ -794,7 +794,7 @@ class Damages:
         """
         if not self.use_dump:
             return
-        file_path = Path(self.tmp_dir + '/' + filename)
+        file_path = Path(self.pickle_dir + '/' + filename)
         if file_path.is_file():
             with open(file_path, 'rb') as f:
                 values = pickle.load(f)
@@ -811,7 +811,7 @@ class Damages:
         """
         if not self.use_dump:
             return
-        file_path = Path(self.tmp_dir + '/' + filename)
+        file_path = Path(self.pickle_dir + '/' + filename)
         with open(file_path, 'wb') as f:
             pickle.dump(self, f)
 

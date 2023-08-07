@@ -30,7 +30,7 @@ PARAMETERS = [  # [label, [criteria], [window_days]]
 
 DAMAGE_CATEGORIES = ['external', 'pluvial']
 
-TMP_DIR = CONFIG.get('TMP_DIR')
+PICKLE_DIR = CONFIG.get('PICKLE_DIR')
 
 PLOT_HISTOGRAMS = False
 PLOT_MATRIX = True
@@ -107,7 +107,7 @@ def compute_link_and_save_to_pickle():
         criteria = params[1]
         window_days = params[2]
         filename = f'damages_linked_{label}.pickle'
-        file_path = Path(TMP_DIR + '/' + filename)
+        file_path = Path(PICKLE_DIR + '/' + filename)
 
         if file_path.exists():
             print(f"Criteria {criteria} already assessed.")
