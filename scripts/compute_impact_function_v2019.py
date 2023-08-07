@@ -7,7 +7,7 @@ from sklearn.model_selection import train_test_split
 
 CONFIG = Config()
 
-PICKLE_DIR = CONFIG.get('PICKLE_DIR')
+PICKLES_DIR = CONFIG.get('PICKLES_DIR')
 LABEL_RESULTING_FILE = 'original_w_prior_pluvial'
 THRESHOLD_I_MAX = 0.9
 THRESHOLD_P_SUM = 0.98

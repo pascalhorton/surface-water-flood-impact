@@ -105,7 +105,7 @@ class Domain:
         """
         Loads the object content from a pickle file.
         """
-        pickles_dir = config.get('PICKLE_DIR')
+        pickles_dir = config.get('PICKLES_DIR')
         file_path = Path(pickles_dir + '/' + filename)
         if file_path.is_file():
             with open(file_path, 'rb') as f:
@@ -117,7 +117,7 @@ class Domain:
         """
         Saves the object content to a pickle file.
         """
-        pickles_dir = config.get('pickle_dir')
+        pickles_dir = config.get('PICKLES_DIR')
         file_path = Path(pickles_dir + '/' + filename)
         with open(file_path, 'wb') as f:
             pickle.dump(self, f)

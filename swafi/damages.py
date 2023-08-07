@@ -35,7 +35,7 @@ class Damages:
         year_end: int
             The ending year of the data.
         use_dump: bool
-            Dump the content to the PICKLE_DIR and load if available
+            Dump the content to the PICKLES_DIR and load if available
         dataset: str
             The dataset ID (default 'mobi_2023')
         dir_contracts: str
@@ -144,7 +144,7 @@ class Damages:
         Parameters
         ----------
         filename: str
-            The name the pickle file in the project temporary directory (PICKLE_DIR)
+            The name the pickle file in the project temporary directory (PICKLES_DIR)
         """
         self._load_from_dump(filename=filename)
 

@@ -7,7 +7,7 @@ from sklearn.model_selection import train_test_split
 
 CONFIG = Config()
 
-PICKLE_DIR = CONFIG.get('PICKLE_DIR')
+PICKLES_DIR = CONFIG.get('PICKLES_DIR')
 LABEL_RESULTING_FILE = 'original_w_prior_pluvial'
 
 # Possible features: 'e_start', 'e_end', 'e_tot', 'p_sum', 'p_sum_q', 'i_max',
