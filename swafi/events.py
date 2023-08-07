@@ -71,8 +71,20 @@ class Events:
         damages: Damages instance
             The damages object containing the contracts and claims data.
         """
+
+        # First, select the events where there is a contract in any year
         cids = damages.cids_list
         self.events = self.events[self.events['cid'].isin(cids)]
+
+        # Second, remove cells where there is no annual contract
+        empty_cells = damages.contracts[damages.contracts['selection'] == 0]
+        for index, row in empty_cells.iterrows():
+            cid = cids[row['mask_index']]
+            self.events = self.events[
+                (self.events['cid'] != cid) |
+                (self.events['e_start'].dt.year != row['year'])
+                ]
+
         print(f"Number of events with contracts: {len(self.events)}")
 
     def set_target_values_from_damages(self, damages):
