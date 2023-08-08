@@ -36,8 +36,8 @@ class Domain:
         ----------
         dataset: rasterio dataset
             The dataset to test.
-        file: str
-            The file name.
+        file: str|Path
+            The file name or path.
         """
         if dataset.crs != self.crs:
             raise RuntimeError(
@@ -51,6 +51,8 @@ class Domain:
         ----------
         dataset: rasterio dataset
             The dataset to test.
+        file: str|Path
+            The file name or path.
         """
         if self.resolution is None:
             self.resolution = dataset.res

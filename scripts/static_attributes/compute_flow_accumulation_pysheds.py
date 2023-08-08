@@ -8,7 +8,7 @@ import numpy as np
 from pysheds.grid import Grid
 
 from swafi.config import Config
-from swafi.utils.spatial_operations import rasterize
+from swafi.utils.spatial import rasterize
 
 
 config = Config(output_dir='static_flowacc')

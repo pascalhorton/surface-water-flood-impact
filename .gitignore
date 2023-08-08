@@ -132,3 +132,4 @@ dmypy.json
 .idea/
 config.yaml
 *.whl
+*.pdf

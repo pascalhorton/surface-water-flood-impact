@@ -4,3 +4,4 @@ gdal
 xarray
 dask
 netcdf4
+geopandas
