@@ -27,3 +27,8 @@ DEM_PATHS:
 # Computation of the flow accumulation
 LAKES_PATH: ''
 FLOWACC_RIVER_THRESHOLD: 50000
+
+# Path to the static attributes as csv files
+CSV_FILE_SWF: 'cpc_grid_exposure_swf.csv'
+CSV_FILE_TERRAIN: 'static_terrain.csv'
+CSV_FILE_FLOWACC: 'static_flowacc.csv'

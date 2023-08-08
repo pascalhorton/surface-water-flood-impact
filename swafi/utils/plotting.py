@@ -7,6 +7,32 @@ from pathlib import Path
 import pandas as pd
 
 
+def plot_random_forest_feature_importance(rf, features, importances, filename,
+                                          dir_output=None, n_features=20):
+    std = np.std([tree.feature_importances_ for tree in rf.estimators_], axis=0)
+
+    # Sort indices based on feature importance
+    sorted_indices = np.argsort(importances)[::-1]
+
+    # Select the top n features
+    top_indices = sorted_indices[:n_features]
+    top_importances = importances[top_indices]
+    top_feature_names = [features[idx] for idx in top_indices]
+
+    # Plot feature importance
+    plt.figure(figsize=(10, 6))
+    plt.bar(range(len(top_indices)), top_importances, tick_label=top_feature_names,
+            yerr=std)
+    plt.title(f'Top {n_features} Feature Importance - Mean Decrease in Impurity')
+    plt.xlabel('Feature')
+    plt.ylabel('Mean Decrease in Impurity')
+    plt.xticks(rotation=90)
+    plt.ylim([0, None])
+    plt.tight_layout()
+
+    _save_or_show(dir_output, filename)
+
+
 def plot_heatmap_differences(data, total, labels, title, dir_output=None, fontsize=9):
     fig, ax = plt.subplots(figsize=(6, 6))
     im = ax.imshow(data)
