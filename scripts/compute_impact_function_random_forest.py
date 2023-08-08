@@ -19,7 +19,7 @@ def main():
     parser.add_argument("config", help="Configuration", type=int)
 
     args = parser.parse_args()
-    print("config:", args.config)
+    print("config: ", args.config)
 
     config = Config()
     tmp_dir = config.get('TMP_DIR')
@@ -158,7 +158,7 @@ def main():
     print("Feature importance based on mean decrease in impurity")
     importances = rf.feature_importances_
 
-    fig_filename = f'feature_importance_mdi_{hash}.pdf'
+    fig_filename = f'feature_importance_mdi_{args.config}_{hash}.pdf'
     plot_random_forest_feature_importance(rf, features, importances, fig_filename)
 
 
