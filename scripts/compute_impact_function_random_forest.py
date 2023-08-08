@@ -134,7 +134,8 @@ def main():
     class_weight = {0: weights[0], 1: weights[1] / 16}
 
     tag_model = pickle.dumps(static_files) + pickle.dumps(events_filename) + \
-                pickle.dumps(features) + pickle.dumps(class_weight)
+                pickle.dumps(features) + pickle.dumps(class_weight) + \
+                pickle.dumps(max_depth)
     model_hashed_name = f'rf_model_{hashlib.md5(tag_model).hexdigest()}.pickle'
     hash = hashlib.md5(tag_model).hexdigest()
     tmp_file = Path(tmp_dir) / model_hashed_name
