@@ -24,13 +24,14 @@ def main():
     config = Config()
     tmp_dir = config.get('TMP_DIR')
 
-    # Basic configuration
+    # Basic configuration - select hyperparameters and types of features
     max_depth = 6
     use_events_attributes = True
     use_swf_attributes = True
     use_terrain_attributes = True
     use_flowacc_attributes = True
 
+    # Basic configuration - select features
     features_events = [
         'i_max_q', 'p_sum_q', 'e_tot', 'i_mean_q', 'apireg_q'
     ]
@@ -45,6 +46,7 @@ def main():
         'dem_010m_flowacc_norivers_median'
     ]
 
+    # Configuration-specific changes
     if args.config == 1:
         features_swf = [
             'area_low', 'area_med', 'area_high', 'area_exposed'
@@ -60,6 +62,7 @@ def main():
     elif args.config == 5:
         max_depth = 20
 
+    # Create list of static files
     static_files = []
     if use_swf_attributes:
         static_files.append(config.get('CSV_FILE_SWF'))
@@ -68,6 +71,7 @@ def main():
     if use_flowacc_attributes:
         static_files.append(config.get('CSV_FILE_FLOWACC'))
 
+    # Create list of features
     features = []
     if use_events_attributes:
         features += features_events
@@ -138,11 +142,16 @@ def main():
     if tmp_file.exists():
         print(f"Loading model from {tmp_file}")
         rf = pickle.load(open(tmp_file, 'rb'))
-        assess_random_forest(rf, x_test, y_test)
+        assess_random_forest(rf, x_train, y_train, 'Train period')
+        assess_random_forest(rf, x_valid, y_valid, 'Validation period')
+        assess_random_forest(rf, x_test, y_test, 'Test period')
 
     else:
         print(f"Training model and saving to {tmp_file}")
-        rf = train_random_forest(x_train, y_train, x_test, y_test, class_weight, max_depth)
+        rf = train_random_forest(x_train, y_train, class_weight, max_depth)
+        assess_random_forest(rf, x_train, y_train, 'Train period')
+        assess_random_forest(rf, x_valid, y_valid, 'Validation period')
+        assess_random_forest(rf, x_test, y_test, 'Test period')
         pickle.dump(rf, open(tmp_file, "wb"))
 
     # Feature importance based on mean decrease in impurity
@@ -153,17 +162,13 @@ def main():
     plot_random_forest_feature_importance(rf, features, importances, fig_filename)
 
 
-def train_random_forest(x_train, y_train, x_test, y_test, class_weight='balanced',
-                        max_depth=10):
+def train_random_forest(x_train, y_train, class_weight='balanced', max_depth=10):
     print(f"Random forest with class weight: {class_weight}")
     rf = RandomForestClassifier(
         max_depth=max_depth, class_weight=class_weight, random_state=42,
         criterion='gini', n_jobs=20
     )
     rf.fit(x_train, y_train)
-
-    assess_random_forest(rf, x_train, y_train, 'Train period')
-    assess_random_forest(rf, x_test, y_test, 'Test period')
 
     return rf
 
