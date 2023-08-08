@@ -159,7 +159,8 @@ def main():
     importances = rf.feature_importances_
 
     fig_filename = f'feature_importance_mdi_{args.config}_{hash}.pdf'
-    plot_random_forest_feature_importance(rf, features, importances, fig_filename)
+    plot_random_forest_feature_importance(rf, features, importances, fig_filename,
+                                          dir_output=config.get('OUTPUT_DIR'))
 
 
 def train_random_forest(x_train, y_train, class_weight='balanced', max_depth=10):
