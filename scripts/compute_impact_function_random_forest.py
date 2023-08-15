@@ -30,6 +30,7 @@ def main():
     use_swf_attributes = True
     use_terrain_attributes = True
     use_flowacc_attributes = True
+    use_land_cover_attributes = True
 
     # Basic configuration - select features
     features_events = [
@@ -44,6 +45,9 @@ def main():
     ]
     features_flowacc = [
         'dem_010m_flowacc_norivers_median'
+    ]
+    features_land_cover = [
+        'runoff_coeff_max', 'runoff_coeff_mean'
     ]
 
     # Configuration-specific changes
@@ -70,6 +74,8 @@ def main():
         static_files.append(config.get('CSV_FILE_TERRAIN'))
     if use_flowacc_attributes:
         static_files.append(config.get('CSV_FILE_FLOWACC'))
+    if use_land_cover_attributes:
+        static_files.append(config.get('CSV_FILE_LAND_COVER'))
 
     # Create list of features
     features = []
@@ -81,6 +87,8 @@ def main():
         features += features_terrain
     if use_flowacc_attributes:
         features += features_flowacc
+    if use_land_cover_attributes:
+        features += features_land_cover
 
     # Load events
     events_filename = f'events_with_target_values_{LABEL_EVENT_FILE}.pickle'

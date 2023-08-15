@@ -10,7 +10,7 @@ from swafi.domain import Domain
 from swafi.utils.spatial import extract_statistics
 
 # Select the attributes of interest. Options are: static_terrain,
-# static_flowacc_pysheds, static_flowacc_richdem
+# static_flowacc_pysheds, static_flowacc_richdem, static_land_cover
 SRC_DIR = 'static_terrain'
 
 config = Config(output_dir='static_attributes_csv')
