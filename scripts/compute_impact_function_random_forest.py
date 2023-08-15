@@ -37,8 +37,7 @@ def main():
         'i_max_q', 'p_sum_q', 'e_tot', 'i_mean_q', 'apireg_q'
     ]
     features_swf = [
-        # 'area_low', 'area_med', 'area_high',
-        'area_exposed'
+        'area_low', 'area_med', 'area_high',
     ]
     features_terrain = [
         'dem_025m_slope_median', 'dem_010m_slope_min', 'dem_010m_curv_plan_std'
@@ -52,25 +51,21 @@ def main():
 
     # Configuration-specific changes
     if args.config == 1:
-        features_swf = [
-            'area_low', 'area_med', 'area_high', 'area_exposed'
+        features_events = [
+            'i_max_q', 'p_sum_q', 'e_tot', 'i_mean_q', 'apireg_q'
         ]
     elif args.config == 2:
-        features_swf = [
-            'area_low', 'area_med', 'area_high'
+        features_events = [
+            'i_max', 'p_sum', 'e_tot', 'i_mean', 'apireg'
         ]
     elif args.config == 3:
-        features_swf = [
-            'area_med', 'area_high'
+        features_events = [
+            'i_max_q', 'p_sum_q', 'e_tot', 'i_mean_q', 'apireg_q', 'i_max', 'p_sum', 'i_mean', 'apireg'
         ]
     elif args.config == 4:
-        features_swf = [
-            'area_med'
-        ]
+        quit()
     elif args.config == 5:
-        features_swf = [
-            'area_exposed'
-        ]
+        quit()
 
     # Create list of static files
     static_files = []
