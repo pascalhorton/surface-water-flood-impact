@@ -25,7 +25,7 @@ def main():
     tmp_dir = config.get('TMP_DIR')
 
     # Basic configuration - select hyperparameters and types of features
-    max_depth = 6
+    max_depth = 10
     use_events_attributes = True
     use_swf_attributes = True
     use_terrain_attributes = True
@@ -57,14 +57,20 @@ def main():
         ]
     elif args.config == 2:
         features_swf = [
-            'area_exposed'
+            'area_low', 'area_med', 'area_high'
         ]
     elif args.config == 3:
-        max_depth = 8
+        features_swf = [
+            'area_med', 'area_high'
+        ]
     elif args.config == 4:
-        max_depth = 10
+        features_swf = [
+            'area_med'
+        ]
     elif args.config == 5:
-        max_depth = 20
+        features_swf = [
+            'area_exposed'
+        ]
 
     # Create list of static files
     static_files = []
