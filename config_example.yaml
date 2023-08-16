@@ -32,3 +32,5 @@ FLOWACC_RIVER_THRESHOLD: 50000
 CSV_FILE_SWF: 'cpc_grid_exposure_swf.csv'
 CSV_FILE_TERRAIN: 'static_terrain.csv'
 CSV_FILE_FLOWACC: 'static_flowacc.csv'
+CSV_FILE_RUNOFF_COEFF: 'static_runoff_coeff.csv'
+CSV_FILE_LAND_COVER: 'static_land_cover.csv'

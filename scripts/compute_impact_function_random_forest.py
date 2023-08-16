@@ -30,11 +30,13 @@ def main():
     use_swf_attributes = True
     use_terrain_attributes = True
     use_flowacc_attributes = True
+    use_runoff_coeff_attributes = True
     use_land_cover_attributes = True
 
     # Basic configuration - select features
     features_events = [
-        'i_max_q', 'p_sum_q', 'e_tot', 'i_mean_q', 'apireg_q'
+        'i_max_q', 'p_sum_q', 'e_tot', 'i_mean_q', 'apireg_q',
+        'i_max', 'p_sum', 'i_mean', 'apireg'
     ]
     features_swf = [
         'area_low', 'area_med', 'area_high',
@@ -45,23 +47,23 @@ def main():
     features_flowacc = [
         'dem_010m_flowacc_norivers_median'
     ]
-    features_land_cover = [
+    features_runoff_coeff = [
         'runoff_coeff_max', 'runoff_coeff_mean'
+    ]
+    features_land_cover = [
+        'land_cover_cat_1', 'land_cover_cat_2', 'land_cover_cat_3', 'land_cover_cat_4',
+        'land_cover_cat_5', 'land_cover_cat_6', 'land_cover_cat_7', 'land_cover_cat_8',
+        'land_cover_cat_9', 'land_cover_cat_10', 'land_cover_cat_11',
+        'land_cover_cat_12'
     ]
 
     # Configuration-specific changes
     if args.config == 1:
-        features_events = [
-            'i_max_q', 'p_sum_q', 'e_tot', 'i_mean_q', 'apireg_q'
-        ]
+        pass
     elif args.config == 2:
-        features_events = [
-            'i_max', 'p_sum', 'e_tot', 'i_mean', 'apireg'
-        ]
+        use_runoff_coeff_attributes = False
     elif args.config == 3:
-        features_events = [
-            'i_max_q', 'p_sum_q', 'e_tot', 'i_mean_q', 'apireg_q', 'i_max', 'p_sum', 'i_mean', 'apireg'
-        ]
+        use_land_cover_attributes = False
     elif args.config == 4:
         quit()
     elif args.config == 5:
@@ -75,6 +77,8 @@ def main():
         static_files.append(config.get('CSV_FILE_TERRAIN'))
     if use_flowacc_attributes:
         static_files.append(config.get('CSV_FILE_FLOWACC'))
+    if use_runoff_coeff_attributes:
+        static_files.append(config.get('CSV_FILE_RUNOFF_COEFF'))
     if use_land_cover_attributes:
         static_files.append(config.get('CSV_FILE_LAND_COVER'))
 
@@ -88,6 +92,8 @@ def main():
         features += features_terrain
     if use_flowacc_attributes:
         features += features_flowacc
+    if use_runoff_coeff_attributes:
+        features += features_runoff_coeff
     if use_land_cover_attributes:
         features += features_land_cover
 
