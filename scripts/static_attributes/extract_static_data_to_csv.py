@@ -9,9 +9,15 @@ from swafi.config import Config
 from swafi.domain import Domain
 from swafi.utils.spatial import extract_statistics
 
-# Select the attributes of interest. Options are: static_terrain,
-# static_flowacc_pysheds, static_flowacc_richdem, static_land_cover
-SRC_DIR = 'static_terrain'
+# Select the attributes of interest. Options are:
+# static_terrain,
+# static_flowacc_pysheds,
+# static_flowacc_richdem,
+# static_runoff_coeff,
+# static_land_cover,
+SRC_DIR = 'static_runoff_coeff'
+CATEGORICAL = False
+CATEGORIES = range(1, 13)
 
 config = Config(output_dir='static_attributes_csv')
 base_dir = config.get('OUTPUT_DIR')
@@ -32,7 +38,11 @@ def main():
         with rasterio.open(f) as dataset:
             domain.check_projection(dataset, f)
 
-        df_new = extract_statistics(domain, f)
+        if CATEGORICAL:
+            df_new = extract_statistics(domain, f, categorical=True,
+                                        categories=CATEGORIES)
+        else:
+            df_new = extract_statistics(domain, f)
 
         # Merge the statistics to the DataFrame by the column cid
         if df.empty:

@@ -6,7 +6,7 @@ import rasterio
 from rasterio import features
 
 
-def extract_statistics(domain, data_path):
+def extract_statistics(domain, data_path, categorical=False, categories=None):
     """
     Extract statistics from a raster file for each cell in the domain.
     The statistics are: min, max, mean, std, median.
@@ -17,6 +17,10 @@ def extract_statistics(domain, data_path):
         The domain object.
     data_path : str|Path
         The path to the raster file.
+    categorical : bool
+        Whether the data is categorical or not.
+    categories : list
+        The list of categories if the data is categorical.
 
     Returns
     -------
@@ -27,11 +31,19 @@ def extract_statistics(domain, data_path):
     with rasterio.open(data_path) as data_ds:
         # Initialize empty lists to store statistics for each cell
         cids_vals = []
-        min_vals = []
-        max_vals = []
-        mean_vals = []
-        std_vals = []
-        median_vals = []
+        if categorical:
+            if categories is None:
+                raise ValueError("Categories must be provided when the "
+                                 "data is categorical.")
+            cat_vals = [None] * len(categories)
+            for i_cat, category in enumerate(categories):
+                cat_vals[i_cat] = []
+        else:
+            min_vals = []
+            max_vals = []
+            mean_vals = []
+            std_vals = []
+            median_vals = []
 
         # Iterate over each cell
         cids_map = domain.cids['ids_map']
@@ -62,22 +74,35 @@ def extract_statistics(domain, data_path):
 
                 # Calculate statistics and append them to the lists
                 cids_vals.append(int(cid))
-                min_vals.append(np.nanmin(data_cells))
-                max_vals.append(np.nanmax(data_cells))
-                mean_vals.append(np.nanmean(data_cells))
-                std_vals.append(np.nanstd(data_cells))
-                median_vals.append(np.nanmedian(data_cells))
+                if categorical:
+                    for i_cat, category in enumerate(categories):
+                        nb_cells_cat = np.nansum(data_cells == category)
+                        nb_cells_other = np.nansum(data_cells != category)
+                        ratio = nb_cells_cat / (nb_cells_cat + nb_cells_other)
+                        cat_vals[i_cat].append(ratio)
+                else:
+                    min_vals.append(np.nanmin(data_cells))
+                    max_vals.append(np.nanmax(data_cells))
+                    mean_vals.append(np.nanmean(data_cells))
+                    std_vals.append(np.nanstd(data_cells))
+                    median_vals.append(np.nanmedian(data_cells))
 
     # Create a pandas DataFrame to store the statistics
     tag = data_path.stem
-    df = pd.DataFrame({
-        'cid': cids_vals,
-        f'{tag}_min': min_vals,
-        f'{tag}_max': max_vals,
-        f'{tag}_mean': mean_vals,
-        f'{tag}_std': std_vals,
-        f'{tag}_median': median_vals,
-    })
+    if categorical:
+        df_dict = {'cid': cids_vals}
+        for i_cat, category in enumerate(categories):
+            df_dict[f'{tag}_cat_{category}'] = cat_vals[i_cat]
+        df = pd.DataFrame(df_dict)
+    else:
+        df = pd.DataFrame({
+            'cid': cids_vals,
+            f'{tag}_min': min_vals,
+            f'{tag}_max': max_vals,
+            f'{tag}_mean': mean_vals,
+            f'{tag}_std': std_vals,
+            f'{tag}_median': median_vals,
+        })
 
     return df
 
