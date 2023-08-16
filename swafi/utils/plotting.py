@@ -17,12 +17,13 @@ def plot_random_forest_feature_importance(rf, features, importances, filename,
     # Select the top n features
     top_indices = sorted_indices[:n_features]
     top_importances = importances[top_indices]
+    top_std = std[top_indices]
     top_feature_names = [features[idx] for idx in top_indices]
 
     # Plot feature importance
     plt.figure(figsize=(10, 6))
     plt.bar(range(len(top_indices)), top_importances, tick_label=top_feature_names,
-            yerr=std)
+            yerr=top_std)
     plt.title(f'Top {n_features} Feature Importance - Mean Decrease in Impurity')
     plt.xlabel('Feature')
     plt.ylabel('Mean Decrease in Impurity')
