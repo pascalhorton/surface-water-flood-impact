@@ -23,14 +23,14 @@ class Approach(Enum):
 
 N_JOBS = 20
 LABEL_EVENT_FILE = 'original_w_prior_pluvial'
-APPROACH = Approach.GRID_SEARCH_CV
+APPROACH = Approach.AUTO
 
 param_grid = {
     'n_estimators': [50, 100, 200],
     'max_depth': [None, 10, 20, 30],
     'min_samples_split': [2, 5, 10],
     'min_samples_leaf': [1, 2, 4],
-    'max_features': ['auto', 'sqrt', 'log2']
+    'max_features': [None, 'sqrt', 'log2']
 }
 
 
@@ -57,7 +57,8 @@ def main():
     # Basic configuration - select features
     features_events = [
         'i_max_q', 'p_sum_q', 'e_tot', 'i_mean_q', 'apireg_q',
-        'i_max', 'p_sum', 'i_mean', 'apireg', 'nb_contracts'
+        'i_max', 'p_sum', 'i_mean', 'apireg',
+        'nb_contracts'
     ]
     features_swf = [
         'area_low', 'area_med', 'area_high',
@@ -70,10 +71,13 @@ def main():
         'dem_010m_curv_plan_mean', 'dem_025m_curv_plan_mean', 'dem_050m_curv_plan_mean',
         'dem_100m_curv_plan_mean',
 
-        'dem_100m_slope_mean', 'dem_100m_slope_median',
-        'dem_050m_slope_mean', 'dem_050m_slope_median',
-        'dem_025m_slope_mean',
-        'dem_010m_slope_mean', 'dem_010m_slope_median',
+        #'dem_100m_slope_mean',
+        'dem_100m_slope_median',
+        #'dem_050m_slope_mean',
+        'dem_050m_slope_median',
+        #'dem_025m_slope_mean',
+        #'dem_010m_slope_mean',
+        'dem_010m_slope_median',
     ]
     features_flowacc = [
         #'dem_010m_flowacc_norivers_median'
