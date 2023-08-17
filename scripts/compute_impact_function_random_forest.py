@@ -37,90 +37,34 @@ def main():
     # Basic configuration - select features
     features_events = [
         'i_max_q', 'p_sum_q', 'e_tot', 'i_mean_q', 'apireg_q',
-        'i_max', 'p_sum', 'i_mean', 'apireg'
+        'i_max', 'p_sum', 'i_mean', 'apireg', 'nb_contracts'
     ]
     features_swf = [
-        #'area_low', 'area_med', 'area_high',
-        'area_low', 'area_med', 'area_high', 'area_exposed'
+        'area_low', 'area_med', 'area_high',
     ]
     features_terrain = [
-        #'dem_025m_slope_median', 'dem_010m_slope_min', 'dem_010m_curv_plan_std'
-        'dem_010m_aspect_min', 'dem_010m_aspect_max', 'dem_010m_aspect_mean',
-        'dem_010m_aspect_std', 'dem_010m_aspect_median', 'dem_010m_curv_plan_min',
-        'dem_010m_curv_plan_max', 'dem_010m_curv_plan_mean', 'dem_010m_curv_plan_std',
-        'dem_010m_curv_plan_median', 'dem_010m_curv_prof_min', 'dem_010m_curv_prof_max',
-        'dem_010m_curv_prof_mean', 'dem_010m_curv_prof_std',
-        'dem_010m_curv_prof_median',
-        'dem_010m_curv_tot_min', 'dem_010m_curv_tot_max', 'dem_010m_curv_tot_mean',
-        'dem_010m_curv_tot_std', 'dem_010m_curv_tot_median', 'dem_010m_slope_min',
-        'dem_010m_slope_max', 'dem_010m_slope_mean', 'dem_010m_slope_std',
-        'dem_010m_slope_median',
+        'dem_025m_slope_median', 'dem_010m_slope_min', 'dem_010m_curv_plan_std',
 
-        'dem_025m_aspect_min', 'dem_025m_aspect_max',
-        'dem_025m_aspect_mean', 'dem_025m_aspect_std', 'dem_025m_aspect_median',
-        'dem_025m_curv_plan_min', 'dem_025m_curv_plan_max', 'dem_025m_curv_plan_mean',
-        'dem_025m_curv_plan_std', 'dem_025m_curv_plan_median', 'dem_025m_curv_prof_min',
-        'dem_025m_curv_prof_max', 'dem_025m_curv_prof_mean', 'dem_025m_curv_prof_std',
-        'dem_025m_curv_prof_median', 'dem_025m_curv_tot_min', 'dem_025m_curv_tot_max',
-        'dem_025m_curv_tot_mean', 'dem_025m_curv_tot_std', 'dem_025m_curv_tot_median',
-        'dem_025m_slope_min', 'dem_025m_slope_max', 'dem_025m_slope_mean',
-        'dem_025m_slope_std', 'dem_025m_slope_median',
-
-        'dem_050m_aspect_min',
-        'dem_050m_aspect_max', 'dem_050m_aspect_mean', 'dem_050m_aspect_std',
-        'dem_050m_aspect_median', 'dem_050m_curv_plan_min', 'dem_050m_curv_plan_max',
-        'dem_050m_curv_plan_mean', 'dem_050m_curv_plan_std',
-        'dem_050m_curv_plan_median',
-        'dem_050m_curv_prof_min', 'dem_050m_curv_prof_max', 'dem_050m_curv_prof_mean',
-        'dem_050m_curv_prof_std', 'dem_050m_curv_prof_median', 'dem_050m_curv_tot_min',
-        'dem_050m_curv_tot_max', 'dem_050m_curv_tot_mean', 'dem_050m_curv_tot_std',
-        'dem_050m_curv_tot_median', 'dem_050m_slope_min', 'dem_050m_slope_max',
-        'dem_050m_slope_mean', 'dem_050m_slope_std', 'dem_050m_slope_median',
-
-        'dem_100m_aspect_min', 'dem_100m_aspect_max', 'dem_100m_aspect_mean',
-        'dem_100m_aspect_std', 'dem_100m_aspect_median', 'dem_100m_curv_plan_min',
-        'dem_100m_curv_plan_max', 'dem_100m_curv_plan_mean', 'dem_100m_curv_plan_std',
-        'dem_100m_curv_plan_median', 'dem_100m_curv_prof_min', 'dem_100m_curv_prof_max',
-        'dem_100m_curv_prof_mean', 'dem_100m_curv_prof_std',
-        'dem_100m_curv_prof_median',
-        'dem_100m_curv_tot_min', 'dem_100m_curv_tot_max', 'dem_100m_curv_tot_mean',
-        'dem_100m_curv_tot_std', 'dem_100m_curv_tot_median', 'dem_100m_slope_min',
-        'dem_100m_slope_max', 'dem_100m_slope_mean', 'dem_100m_slope_std',
-        'dem_100m_slope_median',
-
-        'dem_250m_aspect_min', 'dem_250m_aspect_max',
-        'dem_250m_aspect_mean', 'dem_250m_aspect_std', 'dem_250m_aspect_median',
-        'dem_250m_curv_plan_min', 'dem_250m_curv_plan_max', 'dem_250m_curv_plan_mean',
-        'dem_250m_curv_plan_std', 'dem_250m_curv_plan_median', 'dem_250m_curv_prof_min',
-        'dem_250m_curv_prof_max', 'dem_250m_curv_prof_mean', 'dem_250m_curv_prof_std',
-        'dem_250m_curv_prof_median', 'dem_250m_curv_tot_min', 'dem_250m_curv_tot_max',
-        'dem_250m_curv_tot_mean', 'dem_250m_curv_tot_std', 'dem_250m_curv_tot_median',
-        'dem_250m_slope_min', 'dem_250m_slope_max', 'dem_250m_slope_mean',
-        'dem_250m_slope_std', 'dem_250m_slope_median'
-
+        'dem_100m_slope_mean', 'dem_100m_slope_median',
+        'dem_050m_slope_mean', 'dem_050m_slope_median',
+        'dem_025m_slope_mean',
+        'dem_010m_slope_mean', 'dem_010m_slope_median',
     ]
     features_flowacc = [
         #'dem_010m_flowacc_norivers_median'
-        'dem_010m_flowacc_min', 'dem_010m_flowacc_max', 'dem_010m_flowacc_mean',
-        'dem_010m_flowacc_std', 'dem_010m_flowacc_median',
-        'dem_010m_flowacc_norivers_min', 'dem_010m_flowacc_norivers_max',
-        'dem_010m_flowacc_norivers_mean', 'dem_010m_flowacc_norivers_std',
-        'dem_010m_flowacc_norivers_median', 'dem_025m_flowacc_min',
-        'dem_025m_flowacc_max',
-        'dem_025m_flowacc_mean', 'dem_025m_flowacc_std', 'dem_025m_flowacc_median',
-        'dem_025m_flowacc_norivers_min',
-        'dem_025m_flowacc_norivers_max', 'dem_025m_flowacc_norivers_mean',
-        'dem_025m_flowacc_norivers_std', 'dem_025m_flowacc_norivers_median',
-        'dem_050m_flowacc_min', 'dem_050m_flowacc_max', 'dem_050m_flowacc_mean',
-        'dem_050m_flowacc_std', 'dem_050m_flowacc_median',
-        'dem_050m_flowacc_norivers_min', 'dem_050m_flowacc_norivers_max',
-        'dem_050m_flowacc_norivers_mean', 'dem_050m_flowacc_norivers_std',
-        'dem_050m_flowacc_norivers_median', 'dem_100m_flowacc_min',
-        'dem_100m_flowacc_max',
-        'dem_100m_flowacc_mean', 'dem_100m_flowacc_std', 'dem_100m_flowacc_median',
-        'dem_100m_flowacc_norivers_min',
-        'dem_100m_flowacc_norivers_max', 'dem_100m_flowacc_norivers_mean',
-        'dem_100m_flowacc_norivers_std', 'dem_100m_flowacc_norivers_median'
+
+        'dem_010m_flowacc_norivers_max',
+        'dem_010m_flowacc_norivers_mean',
+        'dem_010m_flowacc_norivers_median',
+        'dem_025m_flowacc_norivers_max',
+        'dem_025m_flowacc_norivers_mean',
+        'dem_025m_flowacc_norivers_median',
+        'dem_050m_flowacc_norivers_max',
+        'dem_050m_flowacc_norivers_mean',
+        'dem_050m_flowacc_norivers_median',
+        'dem_100m_flowacc_norivers_max',
+        'dem_100m_flowacc_norivers_mean',
+        'dem_100m_flowacc_norivers_median'
     ]
     features_runoff_coeff = [
         'runoff_coeff_max', 'runoff_coeff_mean'
@@ -136,20 +80,13 @@ def main():
     if args.config == 1:
         pass
     elif args.config == 2:
-        features_events = [
-            'i_max_q', 'p_sum_q', 'e_tot', 'i_mean_q', 'apireg_q',
-            'i_max', 'p_sum', 'i_mean', 'apireg', 'nb_contracts'
-        ]
-    elif args.config == 3:
         max_depth = 15
+    elif args.config == 3:
+        max_depth = 20
     elif args.config == 4:
-        max_depth = 20
+        quit()
     elif args.config == 5:
-        max_depth = 20
-        features_events = [
-            'i_max_q', 'p_sum_q', 'e_tot', 'i_mean_q', 'apireg_q',
-            'i_max', 'p_sum', 'i_mean', 'apireg', 'nb_contracts'
-        ]
+        quit()
 
     # Create list of static files
     static_files = []
@@ -258,7 +195,8 @@ def main():
 
     fig_filename = f'feature_importance_mdi_{args.config}_{hash}.pdf'
     plot_random_forest_feature_importance(rf, features, importances, fig_filename,
-                                          dir_output=config.get('OUTPUT_DIR'))
+                                          dir_output=config.get('OUTPUT_DIR'),
+                                          n_features=30)
 
 
 def train_random_forest(x_train, y_train, class_weight='balanced', max_depth=10):
