@@ -66,7 +66,8 @@ def main():
     elif args.config == 3:
         use_land_cover_attributes = False
     elif args.config == 4:
-        quit()
+        use_runoff_coeff_attributes = False
+        use_land_cover_attributes = False
     elif args.config == 5:
         quit()
 
