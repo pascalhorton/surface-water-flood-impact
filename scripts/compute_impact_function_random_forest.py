@@ -16,14 +16,14 @@ from pathlib import Path
 
 
 class Approach(Enum):
-    ASSESSMENT = auto()
+    MANUAL = auto()
     GRID_SEARCH_CV = auto()
     AUTO = auto()
 
 
 N_JOBS = 20
 LABEL_EVENT_FILE = 'original_w_prior_pluvial'
-APPROACH = Approach.AUTO
+APPROACH = Approach.MANUAL
 
 param_grid = {
     'n_estimators': [50, 100, 200],
@@ -57,7 +57,7 @@ def main():
     # Basic configuration - select features
     features_events = [
         'i_max_q', 'p_sum_q', 'e_tot', 'i_mean_q', 'apireg_q',
-        'i_max', 'p_sum', 'i_mean', 'apireg',
+        #'i_max', 'p_sum', 'i_mean', 'apireg',
         'nb_contracts'
     ]
     features_swf = [
@@ -196,7 +196,7 @@ def main():
     weights = len(y_train) / (2 * np.bincount(y_train))
     class_weight = {0: weights[0], 1: weights[1] / 16}
 
-    if APPROACH == Approach.ASSESSMENT:
+    if APPROACH == Approach.MANUAL:
         tag_model = pickle.dumps(static_files) + pickle.dumps(events_filename) + \
                     pickle.dumps(features) + pickle.dumps(class_weight) + \
                     pickle.dumps(max_depth)
