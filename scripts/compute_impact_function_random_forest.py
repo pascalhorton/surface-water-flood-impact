@@ -224,7 +224,7 @@ def main():
 
     elif APPROACH == Approach.GRID_SEARCH_CV:
         # Initialize Random Forest Classifier
-        rf = RandomForestClassifier(random_state=42)
+        rf = RandomForestClassifier(random_state=42, class_weight=class_weight)
 
         # Initialize GridSearchCV
         grid_search = GridSearchCV(estimator=rf, param_grid=param_grid,
@@ -251,7 +251,7 @@ def train_random_forest(X_train, y_train, class_weight='balanced', max_depth=10)
     print(f"Random forest with class weight: {class_weight}")
     rf = RandomForestClassifier(
         max_depth=max_depth, class_weight=class_weight, random_state=42,
-        criterion='gini', n_jobs=20
+        criterion='gini', n_jobs=N_JOBS
     )
     rf.fit(X_train, y_train)
 
