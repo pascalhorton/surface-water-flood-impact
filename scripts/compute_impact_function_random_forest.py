@@ -1,3 +1,4 @@
+from enum import Enum, auto
 from swafi.config import Config
 from swafi.events import load_events_from_pickle
 from swafi.utils.verification import compute_confusion_matrix, print_classic_scores, assess_roc_auc
@@ -8,10 +9,27 @@ import argparse
 import hashlib
 import pickle
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, GridSearchCV
 from pathlib import Path
 
+
+class Approach(Enum):
+    ASSESSMENT = auto()
+    GRID_SEARCH_CV = auto()
+    AUTO = auto()
+
+
+N_JOBS = 20
 LABEL_EVENT_FILE = 'original_w_prior_pluvial'
+APPROACH = Approach.GRID_SEARCH_CV
+
+param_grid = {
+    'n_estimators': [50, 100, 200],
+    'max_depth': [None, 10, 20, 30],
+    'min_samples_split': [2, 5, 10],
+    'min_samples_leaf': [1, 2, 4],
+    'max_features': ['auto', 'sqrt', 'log2']
+}
 
 
 def main():
@@ -80,13 +98,13 @@ def main():
     if args.config == 1:
         pass
     elif args.config == 2:
-        max_depth = 15
+        pass
     elif args.config == 3:
-        max_depth = 20
+        pass
     elif args.config == 4:
-        quit()
+        pass
     elif args.config == 5:
-        quit()
+        pass
 
     # Create list of static files
     static_files = []
@@ -145,74 +163,99 @@ def main():
 
         df.to_pickle(tmp_file)
 
-    x = df[features].to_numpy()
+    X = df[features].to_numpy()
     y = df['target'].to_numpy().astype(int)
 
     # Remove lines with NaN values
-    x_nan = np.argwhere(np.isnan(x))
-    rows_with_nan = np.unique(x_nan[:, 0])
+    X_nan = np.argwhere(np.isnan(X))
+    rows_with_nan = np.unique(X_nan[:, 0])
     print(f"Removing {len(rows_with_nan)} rows with NaN values")
-    x = np.delete(x, rows_with_nan, axis=0)
+    X = np.delete(X, rows_with_nan, axis=0)
     y = np.delete(y, rows_with_nan, axis=0)
 
-    assert len(np.argwhere(np.isnan(x))) == 0, f"NaN values in features: {features}"
+    assert len(np.argwhere(np.isnan(X))) == 0, f"NaN values in features: {features}"
 
     # Split the sample into training and test sets
-    x_train, x_tmp, y_train, y_tmp = train_test_split(
-        x, y, test_size=0.3, random_state=42)
-    x_test, x_valid, y_test, y_valid = train_test_split(
-        x_tmp, y_tmp, test_size=0.5, random_state=42)
+    X_train, X_tmp, y_train, y_tmp = train_test_split(
+        X, y, test_size=0.3, random_state=42)
+    X_test, X_valid, y_test, y_valid = train_test_split(
+        X_tmp, y_tmp, test_size=0.5, random_state=42)
 
     # Class weights
     weights = len(y_train) / (2 * np.bincount(y_train))
     class_weight = {0: weights[0], 1: weights[1] / 16}
 
-    tag_model = pickle.dumps(static_files) + pickle.dumps(events_filename) + \
-                pickle.dumps(features) + pickle.dumps(class_weight) + \
-                pickle.dumps(max_depth)
-    model_hashed_name = f'rf_model_{hashlib.md5(tag_model).hexdigest()}.pickle'
-    hash = hashlib.md5(tag_model).hexdigest()
-    tmp_file = Path(tmp_dir) / model_hashed_name
+    if APPROACH == Approach.ASSESSMENT:
+        tag_model = pickle.dumps(static_files) + pickle.dumps(events_filename) + \
+                    pickle.dumps(features) + pickle.dumps(class_weight) + \
+                    pickle.dumps(max_depth)
+        model_hashed_name = f'rf_model_{hashlib.md5(tag_model).hexdigest()}.pickle'
+        hash = hashlib.md5(tag_model).hexdigest()
+        tmp_file = Path(tmp_dir) / model_hashed_name
 
-    if tmp_file.exists():
-        print(f"Loading model from {tmp_file}")
-        rf = pickle.load(open(tmp_file, 'rb'))
-        assess_random_forest(rf, x_train, y_train, 'Train period')
-        assess_random_forest(rf, x_valid, y_valid, 'Validation period')
-        assess_random_forest(rf, x_test, y_test, 'Test period')
+        if tmp_file.exists():
+            print(f"Loading model from {tmp_file}")
+            rf = pickle.load(open(tmp_file, 'rb'))
+            assess_random_forest(rf, X_train, y_train, 'Train period')
+            assess_random_forest(rf, X_valid, y_valid, 'Validation period')
+            assess_random_forest(rf, X_test, y_test, 'Test period')
 
-    else:
-        print(f"Training model and saving to {tmp_file}")
-        rf = train_random_forest(x_train, y_train, class_weight, max_depth)
-        assess_random_forest(rf, x_train, y_train, 'Train period')
-        assess_random_forest(rf, x_valid, y_valid, 'Validation period')
-        assess_random_forest(rf, x_test, y_test, 'Test period')
-        pickle.dump(rf, open(tmp_file, "wb"))
+        else:
+            print(f"Training model and saving to {tmp_file}")
+            rf = train_random_forest(X_train, y_train, class_weight, max_depth)
+            assess_random_forest(rf, X_train, y_train, 'Train period')
+            assess_random_forest(rf, X_valid, y_valid, 'Validation period')
+            assess_random_forest(rf, X_test, y_test, 'Test period')
+            pickle.dump(rf, open(tmp_file, "wb"))
 
-    # Feature importance based on mean decrease in impurity
-    print("Feature importance based on mean decrease in impurity")
-    importances = rf.feature_importances_
+        # Feature importance based on mean decrease in impurity
+        print("Feature importance based on mean decrease in impurity")
+        importances = rf.feature_importances_
 
-    fig_filename = f'feature_importance_mdi_{args.config}_{hash}.pdf'
-    plot_random_forest_feature_importance(rf, features, importances, fig_filename,
-                                          dir_output=config.get('OUTPUT_DIR'),
-                                          n_features=30)
+        fig_filename = f'feature_importance_mdi_{args.config}_{hash}.pdf'
+        plot_random_forest_feature_importance(rf, features, importances, fig_filename,
+                                              dir_output=config.get('OUTPUT_DIR'),
+                                              n_features=30)
+
+    elif APPROACH == Approach.GRID_SEARCH_CV:
+        # Initialize Random Forest Classifier
+        rf = RandomForestClassifier(random_state=42)
+
+        # Initialize GridSearchCV
+        grid_search = GridSearchCV(estimator=rf, param_grid=param_grid,
+                                   scoring='accuracy', cv=5, n_jobs=N_JOBS)
+
+        # Perform grid search on training data
+        grid_search.fit(X_train, y_train)
+
+        # Print best parameters and corresponding accuracy score
+        print("Best Parameters:", grid_search.best_params_)
+        print("Best Accuracy:", grid_search.best_score_)
+
+        # Evaluate on test data using the best model
+        best_rf = grid_search.best_estimator_
+        test_accuracy = best_rf.score(X_test, y_test)
+        print("Test Accuracy with Best Model:", test_accuracy)
+
+        assess_random_forest(best_rf, X_train, y_train, 'Train period')
+        assess_random_forest(best_rf, X_valid, y_valid, 'Validation period')
+        assess_random_forest(best_rf, X_test, y_test, 'Test period')
 
 
-def train_random_forest(x_train, y_train, class_weight='balanced', max_depth=10):
+def train_random_forest(X_train, y_train, class_weight='balanced', max_depth=10):
     print(f"Random forest with class weight: {class_weight}")
     rf = RandomForestClassifier(
         max_depth=max_depth, class_weight=class_weight, random_state=42,
         criterion='gini', n_jobs=20
     )
-    rf.fit(x_train, y_train)
+    rf.fit(X_train, y_train)
 
     return rf
 
 
-def assess_random_forest(rf, x, y, title='Test period'):
-    y_pred = rf.predict(x)
-    y_pred_prob = rf.predict_proba(x)
+def assess_random_forest(rf, X, y, title='Test period'):
+    y_pred = rf.predict(X)
+    y_pred_prob = rf.predict_proba(X)
 
     print(f"Random forest - {title}")
 
