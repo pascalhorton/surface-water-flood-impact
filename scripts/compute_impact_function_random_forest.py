@@ -63,6 +63,11 @@ def main():
     features_terrain = [
         'dem_025m_slope_median', 'dem_010m_slope_min', 'dem_010m_curv_plan_std',
 
+        'dem_025m_curv_plan_std',
+
+        'dem_010m_curv_plan_mean', 'dem_025m_curv_plan_mean', 'dem_050m_curv_plan_mean',
+        'dem_100m_curv_plan_mean',
+
         'dem_100m_slope_mean', 'dem_100m_slope_median',
         'dem_050m_slope_mean', 'dem_050m_slope_median',
         'dem_025m_slope_mean',
