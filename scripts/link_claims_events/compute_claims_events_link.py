@@ -27,7 +27,7 @@ def main():
 
     # Assign the target value to the events
     events = Events()
-    events.load_events_and_select_locations_with_contracts(EVENTS_PATH, damages)
+    events.load_events_and_select_those_with_contracts(EVENTS_PATH, damages)
     events.set_target_values_from_damages(damages)
 
     # Save the events with target values to a pickle file
@@ -55,7 +55,7 @@ def get_damages_linked_to_events():
     damages.select_categories_type(DAMAGE_CATEGORIES)
 
     events = Events()
-    events.load_events_and_select_locations_with_contracts(EVENTS_PATH, damages)
+    events.load_events_and_select_those_with_contracts(EVENTS_PATH, damages)
 
     damages.link_with_events(events, criteria=CRITERIA, filename=filename,
                              window_days=WINDOW_DAYS)

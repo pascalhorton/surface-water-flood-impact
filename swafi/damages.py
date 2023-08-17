@@ -174,6 +174,8 @@ class Damages:
                 self._initialize_contracts_dataframe(contract_data_cat)
             self._set_to_contracts_dataframe(contract_data_cat, self.categories[idx])
 
+        self._set_contracts_cids()
+
         self._dump_object()
 
     def load_claims(self, directory=None):
@@ -194,7 +196,7 @@ class Damages:
 
         self._extract_claim_data(directory)
         self._clean_claims_dataframe()
-        self._set_cids()
+        self._set_claims_cids()
 
         self._dump_object()
 
@@ -846,7 +848,7 @@ class Damages:
         for category in self.categories:
             self.claims[category] = self.claims[category].astype('int32')
 
-    def _set_cids(self):
+    def _set_claims_cids(self):
         xs_mask_extracted = np.extract(self.mask['mask'], self.mask['xs'])
         ys_mask_extracted = np.extract(self.mask['mask'], self.mask['ys'])
         cids = self.cids_list[self.claims['mask_index']].astype(np.int32)
@@ -855,3 +857,13 @@ class Damages:
         self.claims.insert(2, 'cid', cids)
         self.claims.insert(3, 'x', x)
         self.claims.insert(4, 'y', y)
+
+    def _set_contracts_cids(self):
+        xs_mask_extracted = np.extract(self.mask['mask'], self.mask['xs'])
+        ys_mask_extracted = np.extract(self.mask['mask'], self.mask['ys'])
+        cids = self.cids_list[self.contracts['mask_index']].astype(np.int32)
+        x = xs_mask_extracted[self.contracts['mask_index']].astype(np.int32)
+        y = ys_mask_extracted[self.contracts['mask_index']].astype(np.int32)
+        self.contracts.insert(2, 'cid', cids)
+        self.contracts.insert(3, 'x', x)
+        self.contracts.insert(4, 'y', y)

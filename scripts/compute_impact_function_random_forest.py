@@ -16,7 +16,8 @@ LABEL_EVENT_FILE = 'original_w_prior_pluvial'
 
 def main():
     parser = argparse.ArgumentParser(description="SWAFI RF")
-    parser.add_argument("config", help="Configuration", type=int)
+    parser.add_argument("config", help="Configuration", type=int, default=1,
+                        nargs='?')
 
     args = parser.parse_args()
     print("config: ", args.config)
@@ -101,7 +102,7 @@ def main():
     events_filename = f'events_with_target_values_{LABEL_EVENT_FILE}.pickle'
     events = load_events_from_pickle(filename=events_filename)
 
-    # Create unqiue hash for the data dataframe
+    # Create unique hash for the data dataframe
     tag_data = pickle.dumps(static_files) + pickle.dumps(events_filename) + \
                pickle.dumps(features)
     df_hashed_name = f'rf_data_{hashlib.md5(tag_data).hexdigest()}.pickle'

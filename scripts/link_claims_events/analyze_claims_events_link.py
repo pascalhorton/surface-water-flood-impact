@@ -44,7 +44,7 @@ def main():
     damages = Damages(
         pickle_file=f'damages_linked_{PARAMETERS[0][0].replace(" ", "_")}.pickle')
     events = Events()
-    events.load_events_and_select_locations_with_contracts(CONFIG.get('EVENTS_PATH'), damages)
+    events.load_events_and_select_those_with_contracts(CONFIG.get('EVENTS_PATH'), damages)
     del damages
 
     precip = None
@@ -117,7 +117,7 @@ def compute_link_and_save_to_pickle():
         damages.select_categories_type(DAMAGE_CATEGORIES)
 
         events = Events()
-        events.load_events_and_select_locations_with_contracts(CONFIG.get('EVENTS_PATH'), damages)
+        events.load_events_and_select_those_with_contracts(CONFIG.get('EVENTS_PATH'), damages)
 
         damages.link_with_events(events, criteria=criteria, filename=filename,
                                  window_days=window_days)

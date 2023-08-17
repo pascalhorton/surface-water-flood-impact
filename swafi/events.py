@@ -28,7 +28,7 @@ class Events:
 
         self._load_from_dump()
 
-    def load_events_and_select_locations_with_contracts(self, path, damages):
+    def load_events_and_select_those_with_contracts(self, path, damages):
         """
         Load all events from a parquet file. Then, select only the events where there
         is a contract.
@@ -48,6 +48,7 @@ class Events:
         print("Events were loaded from parquet file.")
         print(f"Number of all events: {len(self.events)}")
 
+        self.select_years_with_contracts(damages)
         self.select_locations_with_contracts(damages)
         self._add_event_id()
         self._dump_object()
@@ -61,6 +62,23 @@ class Events:
         The first 100 rows of the events dataframe.
         """
         return self.events[0:100]
+
+    def select_years_with_contracts(self, damages):
+        """
+        Select only the years with a contract.
+
+        Parameters
+        ----------
+        damages: Damages instance
+            The damages object containing the contracts and claims data.
+        """
+        self.events = self.events[
+            (self.events['e_start'].dt.year >= damages.year_start) &
+            (self.events['e_start'].dt.year <= damages.year_end)
+            ]
+
+        print(f"Number of events with contracts in "
+              f"the selected years: {len(self.events)}")
 
     def select_locations_with_contracts(self, damages):
         """
@@ -103,6 +121,23 @@ class Events:
         self.events = pd.merge(self.events, target_values,
                                how="left", on=['eid'])
         self.events['target'] = self.events['target'].fillna(0)
+
+    def set_contracts_number(self, damages):
+        """
+        Set the number of contracts per cell.
+
+        Parameters
+        ----------
+        damages: Damages instance
+            An object containing the damages properties.
+        """
+        contracts_number = damages.contracts.loc[:, ['cid', 'year', 'selection']]
+        contracts_number.rename(columns={'selection': 'nb_contracts'}, inplace=True)
+
+        # Merge the target values with the events
+        self.events['year'] = pd.to_datetime(self.events['e_start']).dt.year
+        self.events = pd.merge(self.events, contracts_number,
+                               how="left", on=['cid', 'year'])
 
     def save_to_pickle(self, filename='events.pickle'):
         """
