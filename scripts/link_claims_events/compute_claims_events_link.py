@@ -29,6 +29,7 @@ def main():
     events = Events()
     events.load_events_and_select_those_with_contracts(EVENTS_PATH, damages)
     events.set_target_values_from_damages(damages)
+    events.set_contracts_number(damages)
 
     # Save the events with target values to a pickle file
     filename = f'events_with_target_values_{LABEL_RESULTING_FILE}'
