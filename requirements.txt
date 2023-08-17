@@ -5,3 +5,5 @@ rasterio
 tqdm
 pyarrow
 matplotlib
+scikit-learn
+optuna

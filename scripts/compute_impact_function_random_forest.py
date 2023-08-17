@@ -8,8 +8,10 @@ import pandas as pd
 import argparse
 import hashlib
 import pickle
+import optuna
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.metrics import accuracy_score
 from pathlib import Path
 
 
@@ -240,6 +242,62 @@ def main():
         # Evaluate on test data using the best model
         best_rf = grid_search.best_estimator_
         test_accuracy = best_rf.score(X_test, y_test)
+        print("Test Accuracy with Best Model:", test_accuracy)
+
+        assess_random_forest(best_rf, X_train, y_train, 'Train period')
+        assess_random_forest(best_rf, X_valid, y_valid, 'Validation period')
+        assess_random_forest(best_rf, X_test, y_test, 'Test period')
+
+    elif APPROACH == Approach.AUTO:
+        # Define objective function for Optuna
+        def objective(trial):
+            n_estimators = trial.suggest_int('n_estimators', 50, 200)
+            max_depth = trial.suggest_int('max_depth', 10, 30)
+            min_samples_split = trial.suggest_int('min_samples_split', 2, 10)
+            min_samples_leaf = trial.suggest_int('min_samples_leaf', 1, 4)
+            max_features = trial.suggest_categorical('max_features',
+                                                     [None, 'sqrt', 'log2'])
+
+            rf_classifier = RandomForestClassifier(
+                class_weight=class_weight,
+                n_estimators=n_estimators,
+                max_depth=max_depth,
+                min_samples_split=min_samples_split,
+                min_samples_leaf=min_samples_leaf,
+                max_features=max_features,
+                random_state=42
+            )
+
+            rf_classifier.fit(X_train, y_train)
+            y_pred = rf_classifier.predict(X_valid)
+            accuracy = accuracy_score(y_valid, y_pred)
+
+            return accuracy
+
+        # Create a study object and optimize the objective function
+        study = optuna.create_study(direction='maximize')
+        study.optimize(objective, n_trials=100)
+
+        # Record the value for the last time
+        study_file = Path(tmp_dir) / f'rf_study_{args.config}.pickle'
+        pickle.dump(study, open(study_file, "wb"))
+
+        # Print optimization results
+        print("Number of finished trials: ", len(study.trials))
+        print("Best trial:")
+        trial = study.best_trial
+
+        print("Value: ", trial.value)
+        print("Params: ")
+        for key, value in trial.params.items():
+            print(f"    {key}: {value}")
+
+        # Train and evaluate the best model on test data
+        best_params = study.best_params
+        best_rf = RandomForestClassifier(**best_params, random_state=42)
+        best_rf.fit(X_train, y_train)
+        y_pred = best_rf.predict(X_test)
+        test_accuracy = accuracy_score(y_test, y_pred)
         print("Test Accuracy with Best Model:", test_accuracy)
 
         assess_random_forest(best_rf, X_train, y_train, 'Train period')
