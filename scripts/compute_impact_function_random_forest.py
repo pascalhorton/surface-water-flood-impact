@@ -1,47 +1,26 @@
-from enum import Enum, auto
-from swafi.config import Config
+from swafi.impact_rf import ImpactRandomForest
+
 from swafi.events import load_events_from_pickle
+
 from swafi.utils.verification import compute_confusion_matrix, print_classic_scores, \
     assess_roc_auc, compute_score_binary
 from swafi.utils.plotting import plot_random_forest_feature_importance
-import numpy as np
-import pandas as pd
+
 import argparse
-import hashlib
 import pickle
 import optuna
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split, GridSearchCV, RandomizedSearchCV
+from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, f1_score
-from pathlib import Path
 
 
-class Approach(Enum):
-    MANUAL = auto()
-    GRID_SEARCH_CV = auto()
-    RANDOM_SEARCH_CV = auto()
-    AUTO = auto()
 
 
-class OptimizerMetric(Enum):
-    F1 = auto()
-    F1_WEIGHTED = auto()
-    CSI = auto()
 
 
-N_JOBS = 20
 LABEL_EVENT_FILE = 'original_w_prior_pluvial'
-APPROACH = Approach.MANUAL
-OPTIM_METRIC = OptimizerMetric.F1
-WEIGHT_DENOMINATOR = 16
 
-param_grid = {
-    'n_estimators': [50, 100, 200],
-    'max_depth': [5, 10, 20, 30],
-    'min_samples_split': [2, 5, 10],
-    'min_samples_leaf': [1, 2, 4],
-    'max_features': [None, 'sqrt', 'log2']
-}
+
 
 
 def main():
@@ -52,182 +31,57 @@ def main():
     args = parser.parse_args()
     print("config: ", args.config)
 
-    config = Config()
-    tmp_dir = config.get('TMP_DIR')
-
-    # Basic configuration - select hyperparameters and types of features
-    max_depth = 10
-    use_events_attributes = True
-    use_swf_attributes = True
-    use_terrain_attributes = True
-    use_flowacc_attributes = True
-    use_runoff_coeff_attributes = True
-    use_land_cover_attributes = True
-
-    # Basic configuration - select features
-    features_events = [
-        'i_max_q', 'p_sum_q', 'e_tot', 'i_mean_q', 'apireg_q',
-        #'i_max', 'p_sum', 'i_mean', 'apireg',
-        'nb_contracts'
-    ]
-    features_swf = [
-        'area_low', 'area_med', 'area_high',
-    ]
-    features_terrain = [
-        'dem_025m_slope_median', 'dem_010m_slope_min', 'dem_010m_curv_plan_std',
-
-        'dem_025m_curv_plan_std',
-
-        'dem_010m_curv_plan_mean', 'dem_025m_curv_plan_mean', 'dem_050m_curv_plan_mean',
-        'dem_100m_curv_plan_mean',
-
-        #'dem_100m_slope_mean',
-        'dem_100m_slope_median',
-        #'dem_050m_slope_mean',
-        'dem_050m_slope_median',
-        #'dem_025m_slope_mean',
-        #'dem_010m_slope_mean',
-        'dem_010m_slope_median',
-    ]
-    features_flowacc = [
-        #'dem_010m_flowacc_norivers_median'
-
-        'dem_010m_flowacc_norivers_max',
-        'dem_010m_flowacc_norivers_mean',
-        'dem_010m_flowacc_norivers_median',
-        'dem_025m_flowacc_norivers_max',
-        'dem_025m_flowacc_norivers_mean',
-        'dem_025m_flowacc_norivers_median',
-        'dem_050m_flowacc_norivers_max',
-        'dem_050m_flowacc_norivers_mean',
-        'dem_050m_flowacc_norivers_median',
-        'dem_100m_flowacc_norivers_max',
-        'dem_100m_flowacc_norivers_mean',
-        'dem_100m_flowacc_norivers_median'
-    ]
-    features_runoff_coeff = [
-        'runoff_coeff_max', 'runoff_coeff_mean'
-    ]
-    features_land_cover = [
-        'land_cover_cat_1', 'land_cover_cat_2', 'land_cover_cat_3', 'land_cover_cat_4',
-        'land_cover_cat_5', 'land_cover_cat_6', 'land_cover_cat_7', 'land_cover_cat_8',
-        'land_cover_cat_9', 'land_cover_cat_10', 'land_cover_cat_11',
-        'land_cover_cat_12'
-    ]
-
-    # Configuration-specific changes
-    if args.config == 1:
-        APPROACH = Approach.GRID_SEARCH_CV
-        OPTIM_METRIC = OptimizerMetric.F1
-    elif args.config == 2:
-        APPROACH = Approach.GRID_SEARCH_CV
-        OPTIM_METRIC = OptimizerMetric.F1_WEIGHTED
-    elif args.config == 3:
-        APPROACH = Approach.RANDOM_SEARCH_CV
-        OPTIM_METRIC = OptimizerMetric.F1
-    elif args.config == 4:
-        APPROACH = Approach.RANDOM_SEARCH_CV
-        OPTIM_METRIC = OptimizerMetric.F1_WEIGHTED
-    elif args.config == 5:
-        APPROACH = Approach.AUTO
-        OPTIM_METRIC = OptimizerMetric.F1
-    elif args.config == 6:
-        APPROACH = Approach.AUTO
-        OPTIM_METRIC = OptimizerMetric.F1_WEIGHTED
-    elif args.config == 7:
-        APPROACH = Approach.AUTO
-        OPTIM_METRIC = OptimizerMetric.CSI
-
-    # Create list of static files
-    static_files = []
-    if use_swf_attributes:
-        static_files.append(config.get('CSV_FILE_SWF'))
-    if use_terrain_attributes:
-        static_files.append(config.get('CSV_FILE_TERRAIN'))
-    if use_flowacc_attributes:
-        static_files.append(config.get('CSV_FILE_FLOWACC'))
-    if use_runoff_coeff_attributes:
-        static_files.append(config.get('CSV_FILE_RUNOFF_COEFF'))
-    if use_land_cover_attributes:
-        static_files.append(config.get('CSV_FILE_LAND_COVER'))
-
-    # Create list of features
-    features = []
-    if use_events_attributes:
-        features += features_events
-    if use_swf_attributes:
-        features += features_swf
-    if use_terrain_attributes:
-        features += features_terrain
-    if use_flowacc_attributes:
-        features += features_flowacc
-    if use_runoff_coeff_attributes:
-        features += features_runoff_coeff
-    if use_land_cover_attributes:
-        features += features_land_cover
-
     # Load events
     events_filename = f'events_with_target_values_{LABEL_EVENT_FILE}.pickle'
     events = load_events_from_pickle(filename=events_filename)
 
-    # Create unique hash for the data dataframe
-    tag_data = pickle.dumps(static_files) + pickle.dumps(events_filename) + \
-               pickle.dumps(features)
-    df_hashed_name = f'rf_data_{hashlib.md5(tag_data).hexdigest()}.pickle'
-    tmp_file = Path(tmp_dir) / df_hashed_name
+    rf = ImpactRandomForest(events)
 
-    if tmp_file.exists():
-        print(f"Loading data from {tmp_file}")
-        df = pd.read_pickle(tmp_file)
 
-    else:
-        print(f"Creating dataframe and saving to {tmp_file}")
-        df = events.events
+    # Configuration-specific changes
+    if args.config == 1:
+        rf.optim_approach = rf.OptimApproach.GRID_SEARCH_CV
+        rf.optim_metric = rf.OptimMetric.F1
+    elif args.config == 2:
+        rf.optim_approach = rf.OptimApproach.GRID_SEARCH_CV
+        rf.optim_metric = rf.OptimMetric.F1_WEIGHTED
+    elif args.config == 3:
+        rf.optim_approach = rf.OptimApproach.RANDOM_SEARCH_CV
+        rf.optim_metric = rf.OptimMetric.F1
+    elif args.config == 4:
+        rf.optim_approach = rf.OptimApproach.RANDOM_SEARCH_CV
+        rf.optim_metric = rf.OptimMetric.F1_WEIGHTED
+    elif args.config == 5:
+        rf.optim_approach = rf.OptimApproach.AUTO
+        rf.optim_metric = rf.OptimMetric.F1
+    elif args.config == 6:
+        rf.optim_approach = rf.OptimApproach.AUTO
+        rf.optim_metric = rf.OptimMetric.F1_WEIGHTED
+    elif args.config == 7:
+        rf.optim_approach = rf.OptimApproach.MANUAL
+        rf.optim_metric = rf.OptimMetric.CSI
 
-        for f in static_files:
-            df_new = pd.read_csv(f)
+    rf.load_features(['event', 'terrain', 'swf_map', 'flowacc',
+                      'land_cover', 'runoff_coeff'])
 
-            # Filter out valid column names
-            valid_columns = [col for col in features if col in df_new.columns] + ['cid']
-            df_new = df_new[valid_columns]
+    rf.split_sample()
 
-            df = df.merge(df_new, on='cid', how='left')
-
-        df.to_pickle(tmp_file)
-
-    X = df[features].to_numpy()
-    y = df['target'].to_numpy().astype(int)
-
-    # Remove lines with NaN values
-    X_nan = np.argwhere(np.isnan(X))
-    rows_with_nan = np.unique(X_nan[:, 0])
-    print(f"Removing {len(rows_with_nan)} rows with NaN values")
-    X = np.delete(X, rows_with_nan, axis=0)
-    y = np.delete(y, rows_with_nan, axis=0)
-
-    assert len(np.argwhere(np.isnan(X))) == 0, f"NaN values in features: {features}"
-
-    # Split the sample into training and test sets
-    X_train, X_tmp, y_train, y_tmp = train_test_split(
-        X, y, test_size=0.3, random_state=42)
-    X_test, X_valid, y_test, y_valid = train_test_split(
-        X_tmp, y_tmp, test_size=0.5, random_state=42)
 
     # Class weights
     weights = len(y_train) / (2 * np.bincount(y_train))
     class_weight = {0: weights[0], 1: weights[1] / WEIGHT_DENOMINATOR}
 
     # Scoring
-    if OPTIM_METRIC == OptimizerMetric.F1:
+    if OPTIM_METRIC == OptimMetric.F1:
         scoring = 'f1'
-    elif OPTIM_METRIC == OptimizerMetric.F1_WEIGHTED:
+    elif OPTIM_METRIC == OptimMetric.F1_WEIGHTED:
         scoring = 'f1_weighted'
-    elif OPTIM_METRIC == OptimizerMetric.CSI:
+    elif OPTIM_METRIC == OptimMetric.CSI:
         scoring = 'csi'
     else:
         raise ValueError(f"Unknown optimizer metric: {OPTIM_METRIC}")
 
-    if APPROACH == Approach.MANUAL:
+    if APPROACH == OptimApproach.MANUAL:
         tag_model = pickle.dumps(static_files) + pickle.dumps(events_filename) + \
                     pickle.dumps(features) + pickle.dumps(class_weight) + \
                     pickle.dumps(max_depth)
@@ -259,7 +113,7 @@ def main():
                                               dir_output=config.get('OUTPUT_DIR'),
                                               n_features=30)
 
-    elif APPROACH == Approach.GRID_SEARCH_CV:
+    elif APPROACH == OptimApproach.GRID_SEARCH_CV:
         # Initialize Random Forest Classifier
         rf = RandomForestClassifier(random_state=42, class_weight=class_weight)
 
@@ -283,7 +137,7 @@ def main():
         assess_random_forest(best_rf, X_valid, y_valid, 'Validation period')
         assess_random_forest(best_rf, X_test, y_test, 'Test period')
 
-    elif APPROACH == Approach.RANDOM_SEARCH_CV:
+    elif APPROACH == OptimApproach.RANDOM_SEARCH_CV:
         # Initialize Random Forest Classifier
         rf = RandomForestClassifier(random_state=42, class_weight=class_weight)
 
@@ -307,7 +161,7 @@ def main():
         assess_random_forest(best_rf, X_valid, y_valid, 'Validation period')
         assess_random_forest(best_rf, X_test, y_test, 'Test period')
 
-    elif APPROACH == Approach.AUTO:
+    elif APPROACH == OptimApproach.AUTO:
         # Define objective function for Optuna
         def objective(trial):
             weight_denominator = trial.suggest_int('weight_denominator', 1, 50)
@@ -333,11 +187,11 @@ def main():
             rf_classifier.fit(X_train, y_train)
             y_pred = rf_classifier.predict(X_valid)
 
-            if OPTIM_METRIC == OptimizerMetric.F1:
+            if OPTIM_METRIC == OptimMetric.F1:
                 return f1_score(y_valid, y_pred)
-            elif OPTIM_METRIC == OptimizerMetric.F1_WEIGHTED:
+            elif OPTIM_METRIC == OptimMetric.F1_WEIGHTED:
                 return f1_score(y_valid, y_pred, sample_weight=class_weight)
-            elif OPTIM_METRIC == OptimizerMetric.CSI:
+            elif OPTIM_METRIC == OptimMetric.CSI:
                 tp, tn, fp, fn = compute_confusion_matrix(y_valid, y_pred)
                 csi = compute_score_binary('CSI', tp, tn, fp, fn)
                 return csi

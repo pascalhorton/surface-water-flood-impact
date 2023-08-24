@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from swafi.config import Config
+from .config import Config
 
 config = Config()
 

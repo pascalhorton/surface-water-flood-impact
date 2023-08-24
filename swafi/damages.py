@@ -13,8 +13,8 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
-from swafi.config import Config
-from swafi.domain import Domain
+from .config import Config
+from .domain import Domain
 
 config = Config()
 
