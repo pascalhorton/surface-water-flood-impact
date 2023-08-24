@@ -118,15 +118,23 @@ def main():
     # Configuration-specific changes
     if args.config == 1:
         APPROACH = Approach.GRID_SEARCH_CV
+        OPTIM_METRIC = OptimizerMetric.F1
     elif args.config == 2:
-        APPROACH = Approach.RANDOM_SEARCH_CV
+        APPROACH = Approach.GRID_SEARCH_CV
+        OPTIM_METRIC = OptimizerMetric.F1_WEIGHTED
     elif args.config == 3:
-        APPROACH = Approach.AUTO
+        APPROACH = Approach.RANDOM_SEARCH_CV
         OPTIM_METRIC = OptimizerMetric.F1
     elif args.config == 4:
-        APPROACH = Approach.AUTO
+        APPROACH = Approach.RANDOM_SEARCH_CV
         OPTIM_METRIC = OptimizerMetric.F1_WEIGHTED
     elif args.config == 5:
+        APPROACH = Approach.AUTO
+        OPTIM_METRIC = OptimizerMetric.F1
+    elif args.config == 6:
+        APPROACH = Approach.AUTO
+        OPTIM_METRIC = OptimizerMetric.F1_WEIGHTED
+    elif args.config == 7:
         APPROACH = Approach.AUTO
         OPTIM_METRIC = OptimizerMetric.CSI
 
@@ -209,6 +217,16 @@ def main():
     weights = len(y_train) / (2 * np.bincount(y_train))
     class_weight = {0: weights[0], 1: weights[1] / WEIGHT_DENOMINATOR}
 
+    # Scoring
+    if OPTIM_METRIC == OptimizerMetric.F1:
+        scoring = 'f1'
+    elif OPTIM_METRIC == OptimizerMetric.F1_WEIGHTED:
+        scoring = 'f1_weighted'
+    elif OPTIM_METRIC == OptimizerMetric.CSI:
+        scoring = 'csi'
+    else:
+        raise ValueError(f"Unknown optimizer metric: {OPTIM_METRIC}")
+
     if APPROACH == Approach.MANUAL:
         tag_model = pickle.dumps(static_files) + pickle.dumps(events_filename) + \
                     pickle.dumps(features) + pickle.dumps(class_weight) + \
@@ -247,7 +265,7 @@ def main():
 
         # Initialize GridSearchCV
         grid_search = GridSearchCV(estimator=rf, param_grid=param_grid,
-                                   scoring=['f1', 'f1_samples'], cv=5, n_jobs=N_JOBS)
+                                   scoring=scoring, cv=5, n_jobs=N_JOBS)
 
         # Perform grid search on training data
         grid_search.fit(X_train, y_train)
@@ -271,8 +289,7 @@ def main():
 
         # Initialize RandomizedSearchCV
         rand_search = RandomizedSearchCV(estimator=rf, param_distributions=param_grid,
-                                         scoring=['f1', 'f1_samples'], cv=5,
-                                         n_jobs=N_JOBS)
+                                         scoring=scoring, cv=5, n_jobs=N_JOBS)
 
         # Perform grid search on training data
         rand_search.fit(X_train, y_train)
