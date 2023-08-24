@@ -1,7 +1,8 @@
 from enum import Enum, auto
 from swafi.config import Config
 from swafi.events import load_events_from_pickle
-from swafi.utils.verification import compute_confusion_matrix, print_classic_scores, assess_roc_auc
+from swafi.utils.verification import compute_confusion_matrix, print_classic_scores, \
+    assess_roc_auc, compute_score_binary
 from swafi.utils.plotting import plot_random_forest_feature_importance
 import numpy as np
 import pandas as pd
@@ -10,24 +11,33 @@ import hashlib
 import pickle
 import optuna
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split, GridSearchCV
-from sklearn.metrics import accuracy_score
+from sklearn.model_selection import train_test_split, GridSearchCV, RandomizedSearchCV
+from sklearn.metrics import accuracy_score, f1_score
 from pathlib import Path
 
 
 class Approach(Enum):
     MANUAL = auto()
     GRID_SEARCH_CV = auto()
+    RANDOM_SEARCH_CV = auto()
     AUTO = auto()
+
+
+class OptimizerMetric(Enum):
+    F1 = auto()
+    F1_WEIGHTED = auto()
+    CSI = auto()
 
 
 N_JOBS = 20
 LABEL_EVENT_FILE = 'original_w_prior_pluvial'
 APPROACH = Approach.MANUAL
+OPTIM_METRIC = OptimizerMetric.F1
+WEIGHT_DENOMINATOR = 16
 
 param_grid = {
     'n_estimators': [50, 100, 200],
-    'max_depth': [None, 10, 20, 30],
+    'max_depth': [5, 10, 20, 30],
     'min_samples_split': [2, 5, 10],
     'min_samples_leaf': [1, 2, 4],
     'max_features': [None, 'sqrt', 'log2']
@@ -107,15 +117,18 @@ def main():
 
     # Configuration-specific changes
     if args.config == 1:
-        pass
+        APPROACH = Approach.GRID_SEARCH_CV
     elif args.config == 2:
-        pass
+        APPROACH = Approach.RANDOM_SEARCH_CV
     elif args.config == 3:
-        pass
+        APPROACH = Approach.AUTO
+        OPTIM_METRIC = OptimizerMetric.F1
     elif args.config == 4:
-        pass
+        APPROACH = Approach.AUTO
+        OPTIM_METRIC = OptimizerMetric.F1_WEIGHTED
     elif args.config == 5:
-        pass
+        APPROACH = Approach.AUTO
+        OPTIM_METRIC = OptimizerMetric.CSI
 
     # Create list of static files
     static_files = []
@@ -194,7 +207,7 @@ def main():
 
     # Class weights
     weights = len(y_train) / (2 * np.bincount(y_train))
-    class_weight = {0: weights[0], 1: weights[1] / 16}
+    class_weight = {0: weights[0], 1: weights[1] / WEIGHT_DENOMINATOR}
 
     if APPROACH == Approach.MANUAL:
         tag_model = pickle.dumps(static_files) + pickle.dumps(events_filename) + \
@@ -234,19 +247,44 @@ def main():
 
         # Initialize GridSearchCV
         grid_search = GridSearchCV(estimator=rf, param_grid=param_grid,
-                                   scoring='accuracy', cv=5, n_jobs=N_JOBS)
+                                   scoring=['f1', 'f1_samples'], cv=5, n_jobs=N_JOBS)
 
         # Perform grid search on training data
         grid_search.fit(X_train, y_train)
 
         # Print best parameters and corresponding accuracy score
         print("Best Parameters:", grid_search.best_params_)
-        print("Best Accuracy:", grid_search.best_score_)
+        print("Best Score:", grid_search.best_score_)
 
         # Evaluate on test data using the best model
         best_rf = grid_search.best_estimator_
         test_accuracy = best_rf.score(X_test, y_test)
-        print("Test Accuracy with Best Model:", test_accuracy)
+        print("Test Score with Best Model:", test_accuracy)
+
+        assess_random_forest(best_rf, X_train, y_train, 'Train period')
+        assess_random_forest(best_rf, X_valid, y_valid, 'Validation period')
+        assess_random_forest(best_rf, X_test, y_test, 'Test period')
+
+    elif APPROACH == Approach.RANDOM_SEARCH_CV:
+        # Initialize Random Forest Classifier
+        rf = RandomForestClassifier(random_state=42, class_weight=class_weight)
+
+        # Initialize RandomizedSearchCV
+        rand_search = RandomizedSearchCV(estimator=rf, param_distributions=param_grid,
+                                         scoring=['f1', 'f1_samples'], cv=5,
+                                         n_jobs=N_JOBS)
+
+        # Perform grid search on training data
+        rand_search.fit(X_train, y_train)
+
+        # Print best parameters and corresponding accuracy score
+        print("Best Parameters:", rand_search.best_params_)
+        print("Best Score:", rand_search.best_score_)
+
+        # Evaluate on test data using the best model
+        best_rf = rand_search.best_estimator_
+        test_accuracy = best_rf.score(X_test, y_test)
+        print("Test Score with Best Model:", test_accuracy)
 
         assess_random_forest(best_rf, X_train, y_train, 'Train period')
         assess_random_forest(best_rf, X_valid, y_valid, 'Validation period')
@@ -255,12 +293,15 @@ def main():
     elif APPROACH == Approach.AUTO:
         # Define objective function for Optuna
         def objective(trial):
+            weight_denominator = trial.suggest_int('weight_denominator', 1, 50)
             n_estimators = trial.suggest_int('n_estimators', 50, 200)
-            max_depth = trial.suggest_int('max_depth', 10, 30)
+            max_depth = trial.suggest_int('max_depth', 5, 30)
             min_samples_split = trial.suggest_int('min_samples_split', 2, 10)
             min_samples_leaf = trial.suggest_int('min_samples_leaf', 1, 4)
             max_features = trial.suggest_categorical('max_features',
                                                      [None, 'sqrt', 'log2'])
+
+            class_weight = {0: weights[0], 1: weights[1] / weight_denominator}
 
             rf_classifier = RandomForestClassifier(
                 class_weight=class_weight,
@@ -274,9 +315,17 @@ def main():
 
             rf_classifier.fit(X_train, y_train)
             y_pred = rf_classifier.predict(X_valid)
-            accuracy = accuracy_score(y_valid, y_pred)
 
-            return accuracy
+            if OPTIM_METRIC == OptimizerMetric.F1:
+                return f1_score(y_valid, y_pred)
+            elif OPTIM_METRIC == OptimizerMetric.F1_WEIGHTED:
+                return f1_score(y_valid, y_pred, sample_weight=class_weight)
+            elif OPTIM_METRIC == OptimizerMetric.CSI:
+                tp, tn, fp, fn = compute_confusion_matrix(y_valid, y_pred)
+                csi = compute_score_binary('CSI', tp, tn, fp, fn)
+                return csi
+            else:
+                raise ValueError(f"Unknown optimizer metric: {OPTIM_METRIC}")
 
         # Create a study object and optimize the objective function
         study = optuna.create_study(direction='maximize')
