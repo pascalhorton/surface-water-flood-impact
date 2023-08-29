@@ -22,6 +22,7 @@ def main():
     events_filename = f'events_with_target_values_{LABEL_EVENT_FILE}.pickle'
     events = load_events_from_pickle(filename=events_filename)
 
+    # Create the impact function
     rf = ImpactRandomForest(events)
 
     # Configuration-specific changes

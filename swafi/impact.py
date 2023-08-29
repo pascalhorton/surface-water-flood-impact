@@ -123,6 +123,21 @@ class Impact:
         self.x_test, self.x_valid, self.y_test, self.y_valid = train_test_split(
             x_tmp, y_tmp, test_size=0.5, random_state=self.random_state)
 
+    def normalize_features(self):
+        """
+        Normalize the features.
+        """
+        epsilon = 1e-8  # A small constant to avoid division by zero
+
+        # Calculate mean and std only on the training data
+        mean = np.mean(self.x_train, axis=0)
+        std = np.std(self.x_train, axis=0) + epsilon
+
+        # Normalize all splits using training mean and std
+        self.x_train = (self.x_train - mean) / std
+        self.x_valid = (self.x_valid - mean) / std
+        self.x_test = (self.x_test - mean) / std
+
     def compute_balanced_class_weights(self):
         """
         Compute balanced the class weights.
@@ -158,7 +173,7 @@ class Impact:
         y_pred = self.model.predict(x)
         y_pred_prob = self.model.predict_proba(x)
 
-        print(f"Split: {period_name}")
+        print(f"\nSplit: {period_name}")
 
         # Compute the scores
         tp, tn, fp, fn = compute_confusion_matrix(y, y_pred)
