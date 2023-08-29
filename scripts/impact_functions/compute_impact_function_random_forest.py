@@ -12,7 +12,7 @@ config = Config()
 
 def main():
     parser = argparse.ArgumentParser(description="SWAFI RF")
-    parser.add_argument("config", help="Configuration", type=int, default=1,
+    parser.add_argument("config", help="Configuration", type=int, default=0,
                         nargs='?')
 
     args = parser.parse_args()
@@ -26,7 +26,10 @@ def main():
     rf = ImpactRandomForest(events)
 
     # Configuration-specific changes
-    if args.config == 1:
+    if args.config == 0:  # Manual configuration
+        rf.optim_approach = rf.OptimApproach.MANUAL
+        rf.optim_metric = rf.OptimMetric.CSI
+    elif args.config == 1:
         rf.optim_approach = rf.OptimApproach.GRID_SEARCH_CV
         rf.optim_metric = rf.OptimMetric.F1
     elif args.config == 2:

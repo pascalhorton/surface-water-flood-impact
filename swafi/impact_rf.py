@@ -50,19 +50,19 @@ class ImpactRandomForest(Impact):
 
         # Hyperparameters - set parameter ranges for Optuna
         self.param_ranges = {
-            'weight_denominator': (1, 50),
+            'weight_denominator': (15, 60),
             'n_estimators': (50, 200),
-            'max_depth': (5, 30),
-            'min_samples_split': (2, 10),
+            'max_depth': (10, 25),
+            'min_samples_split': (4, 10),
             'min_samples_leaf': (1, 4),
             'max_features': [None, 'sqrt', 'log2']
         }
 
         # Hyperparameters - set default parameters
         self.n_estimators = 100
-        self.max_depth = 10
+        self.max_depth = 18
         self.min_samples_split = 2
-        self.min_samples_leaf = 1
+        self.min_samples_leaf = 4
         self.max_features = None
 
     def fit(self, tag=None):
@@ -218,8 +218,9 @@ class ImpactRandomForest(Impact):
                 raise ValueError(f"Unknown optimizer metric: {self.optim_metric}")
 
         # Create a study object and optimize the objective function
+        print(f"Optimizing hyperparameters for {self.optim_metric}")
         study = optuna.create_study(direction='maximize')
-        study.optimize(objective, n_trials=100)
+        study.optimize(objective, n_trials=25)
 
         # Record the value for the last time
         study_file = self.tmp_dir / f'rf_study_{tag}.pickle'
