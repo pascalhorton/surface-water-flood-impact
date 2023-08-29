@@ -215,4 +215,7 @@ def load_events_from_pickle(filename='events.pickle'):
         values = pickle.load(f)
         events.events = values.events
 
+        # Check that there is no event without contract
+        assert not (events.events['nb_contracts'] == 0).any()
+
     return events

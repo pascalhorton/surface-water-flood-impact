@@ -152,13 +152,23 @@ class Impact:
         self.class_weight = {0: self.weights[0],
                              1: self.weights[1] / weight_denominator}
 
+    def show_target_stats(self):
+        # Count the number of events with and without damages
+        for split in ['train', 'valid', 'test']:
+            y = getattr(self, f'y_{split}')
+            if y is None:
+                raise ValueError(f"Split {split} not defined")
+            events_with_damages = y[y > 0]
+            events_without_damages = y[y == 0]
+            print(f"Number of events with damages ({split}): "
+                  f"{len(events_with_damages)}")
+            print(f"Number of events without damages ({split}): "
+                  f"{len(events_without_damages)}")
+
     def assess_model_on_all_periods(self):
         """
         Assess the model on all periods.
         """
-        if self.model is None:
-            raise ValueError("Model not defined")
-
         self._assess_model(self.x_train, self.y_train, 'Train period')
         self._assess_model(self.x_valid, self.y_valid, 'Validation period')
         self._assess_model(self.x_test, self.y_test, 'Test period')
@@ -179,6 +189,8 @@ class Impact:
         tp, tn, fp, fn = compute_confusion_matrix(y, y_pred)
         print_classic_scores(tp, tn, fp, fn)
         assess_roc_auc(y, y_pred_prob[:, 1])
+        print(f"\n----------------------------------------\n")
+
 
     def _create_data_tmp_file_name(self, feature_files):
         """

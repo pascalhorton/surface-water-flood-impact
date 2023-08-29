@@ -4,13 +4,7 @@ Class to compute the impact function.
 
 from .impact import Impact
 
-import hashlib
-import pickle
-from sklearn.metrics import f1_score
 from sklearn.linear_model import LogisticRegression
-
-from .utils.plotting import plot_random_forest_feature_importance
-from .utils.verification import compute_confusion_matrix, compute_score_binary
 
 
 class ImpactLogisticRegression(Impact):
