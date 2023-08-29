@@ -4,8 +4,16 @@ Class to compute the impact function.
 
 from .impact import Impact
 
+import hashlib
+import pickle
+import optuna
 from enum import Enum, auto
+from sklearn.metrics import f1_score
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
+
+from .utils.plotting import plot_random_forest_feature_importance
+from .utils.verification import compute_confusion_matrix, compute_score_binary
 
 
 class ImpactRandomForest(Impact):
@@ -24,8 +32,8 @@ class ImpactRandomForest(Impact):
         F1_WEIGHTED = auto()
         CSI = auto()
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, events):
+        super().__init__(events)
 
         # Set default options
         self.optim_approach = self.OptimApproach.AUTO
@@ -40,6 +48,16 @@ class ImpactRandomForest(Impact):
             'max_features': [None, 'sqrt', 'log2']
         }
 
+        # Hyperparameters - set parameter ranges for Optuna
+        self.param_ranges = {
+            'weight_denominator': (1, 50),
+            'n_estimators': (50, 200),
+            'max_depth': (5, 30),
+            'min_samples_split': (2, 10),
+            'min_samples_leaf': (1, 4),
+            'max_features': [None, 'sqrt', 'log2']
+        }
+
         # Hyperparameters - set default parameters
         self.n_estimators = 100
         self.max_depth = 10
@@ -47,33 +65,225 @@ class ImpactRandomForest(Impact):
         self.min_samples_leaf = 1
         self.max_features = None
 
-
-
-
-
-
-    def optimize(self, x_train, y_train, x_test, y_test):
+    def fit(self, tag=None):
         """
         Optimize the hyperparameters of the model.
 
         Parameters
         ----------
-        x_train: np.array
-            The training features
-        y_train: np.array
-            The training labels
-        x_test: np.array
-            The testing features
-        y_test: np.array
-            The testing labels
+        tag: str
+            The tag to add to the file name.
         """
-        if self.optim_approach == self.OptimApproach.GRID_SEARCH_CV:
-            self._optimize_grid_search_cv(x_train, y_train, x_test, y_test)
+        if self.optim_approach == self.OptimApproach.MANUAL:
+            self._fit_manual()
+        elif self.optim_approach == self.OptimApproach.GRID_SEARCH_CV:
+            self._fit_grid_search_cv()
         elif self.optim_approach == self.OptimApproach.RANDOM_SEARCH_CV:
-            self._optimize_random_search_cv(x_train, y_train, x_test, y_test)
+            self._fit_random_search_cv()
         elif self.optim_approach == self.OptimApproach.AUTO:
-            self._optimize_auto(x_train, y_train, x_test, y_test)
+            self._fit_auto(tag)
         else:
             raise ValueError(f"Unknown optimization approach: {self.optim_approach}")
+
+    def plot_feature_importance(self, tag, dir_output=None):
+        """
+        Plot the feature importance.
+
+        Parameters
+        ----------
+        tag: str
+            The tag to add to the file name.
+        dir_output: str
+            The output directory. If None, it will be shown and not saved.
+             (default: None)
+        """
+        importances = self.model.feature_importances_
+        fig_filename = f'feature_importance_mdi_{tag}.pdf'
+        plot_random_forest_feature_importance(
+            self.model, self.features, importances, fig_filename,
+            dir_output=dir_output, n_features=30)
+
+    def _fit_manual(self):
+        """
+        Fit the model with the given hyperparameters.
+        """
+        tmp_filename = self._create_model_tmp_file_name()
+        if tmp_filename.exists():
+            print(f"Loading model from {tmp_filename}")
+            self.model = pickle.load(open(tmp_filename, 'rb'))
+        else:
+            print(f"Training model and saving to {tmp_filename}")
+            self._define_model()
+            self.model.fit(self.x_train, self.y_train)
+            pickle.dump(self.model, open(tmp_filename, 'wb'))
+
+    def _fit_grid_search_cv(self):
+        """
+        Fit the model with grid search cross validation.
+        """
+        self.model = RandomForestClassifier(random_state=self.random_state,
+                                            class_weight=self.class_weight)
+        grid_search = GridSearchCV(
+            estimator=self.model,
+            param_grid=self.param_grid,
+            scoring=self._get_scoring(),
+            n_jobs=self.n_jobs,
+            cv=5)
+        grid_search.fit(self.x_train, self.y_train)
+
+        # Print best parameters and corresponding accuracy score
+        print("Best Parameters:", grid_search.best_params_)
+        print("Best Score:", grid_search.best_score_)
+
+        self.model = grid_search.best_estimator_
+        tmp_filename = self._create_model_tmp_file_name()
+        print(f"Saving model to {tmp_filename}")
+        pickle.dump(self.model, open(tmp_filename, 'wb'))
+
+    def _fit_random_search_cv(self):
+        """
+        Fit the model with random search cross validation.
+        """
+        self.model = RandomForestClassifier(random_state=self.random_state,
+                                            class_weight=self.class_weight)
+        rand_search = RandomizedSearchCV(
+            estimator=self.model,
+            param_distributions=self.param_grid,
+            scoring=self._get_scoring(),
+            n_jobs=self.n_jobs,
+            cv=5)
+        rand_search.fit(self.x_train, self.y_train)
+
+        # Print best parameters and corresponding accuracy score
+        print("Best Parameters:", rand_search.best_params_)
+        print("Best Score:", rand_search.best_score_)
+
+        self.model = rand_search.best_estimator_
+        tmp_filename = self._create_model_tmp_file_name()
+        print(f"Saving model to {tmp_filename}")
+        pickle.dump(self.model, open(tmp_filename, 'wb'))
+
+    def _fit_auto(self, tag):
+        # Define objective function for Optuna
+        def objective(trial):
+            weight_denominator = trial.suggest_int(
+                'weight_denominator',
+                self.param_ranges['weight_denominator'][0],
+                self.param_ranges['weight_denominator'][1])
+            n_estimators = trial.suggest_int(
+                'n_estimators',
+                self.param_ranges['n_estimators'][0],
+                self.param_ranges['n_estimators'][1])
+            max_depth = trial.suggest_int(
+                'max_depth',
+                self.param_ranges['max_depth'][0],
+                self.param_ranges['max_depth'][1])
+            min_samples_split = trial.suggest_int(
+                'min_samples_split',
+                self.param_ranges['min_samples_split'][0],
+                self.param_ranges['min_samples_split'][1])
+            min_samples_leaf = trial.suggest_int(
+                'min_samples_leaf',
+                self.param_ranges['min_samples_leaf'][0],
+                self.param_ranges['min_samples_leaf'][1])
+            max_features = trial.suggest_categorical(
+                'max_features',
+                self.param_ranges['max_features'])
+
+            class_weight = {0: self.weights[0],
+                            1: self.weights[1] / weight_denominator}
+
+            rf = RandomForestClassifier(
+                class_weight=class_weight,
+                n_estimators=n_estimators,
+                max_depth=max_depth,
+                min_samples_split=min_samples_split,
+                min_samples_leaf=min_samples_leaf,
+                max_features=max_features,
+                random_state=42
+            )
+
+            rf.fit(self.x_train, self.y_train)
+            y_pred = rf.predict(self.x_valid)
+
+            if self.optim_metric ==self.OptimMetric.F1:
+                return f1_score(self.y_valid, y_pred)
+            elif self.optim_metric == self.OptimMetric.F1_WEIGHTED:
+                return f1_score(self.y_valid, y_pred, sample_weight=class_weight)
+            elif self.optim_metric == self.OptimMetric.CSI:
+                tp, tn, fp, fn = compute_confusion_matrix(self.y_valid, y_pred)
+                csi = compute_score_binary('CSI', tp, tn, fp, fn)
+                return csi
+            else:
+                raise ValueError(f"Unknown optimizer metric: {self.optim_metric}")
+
+        # Create a study object and optimize the objective function
+        study = optuna.create_study(direction='maximize')
+        study.optimize(objective, n_trials=100)
+
+        # Record the value for the last time
+        study_file = self.tmp_dir / f'rf_study_{tag}.pickle'
+        pickle.dump(study, open(study_file, "wb"))
+
+        # Print optimization results
+        print("Number of finished trials: ", len(study.trials))
+        print("Best trial:")
+        trial = study.best_trial
+
+        print("Value: ", trial.value)
+        print("Params: ")
+        for key, value in trial.params.items():
+            print(f"    {key}: {value}")
+
+        # Train and evaluate the best model on test data
+        best_params = study.best_params
+        self.model = RandomForestClassifier(**best_params, random_state=42)
+
+        tmp_filename = self._create_model_tmp_file_name()
+        print(f"Training best model and saving to {tmp_filename}")
+        self._define_model()
+        self.model.fit(self.x_train, self.y_train)
+        pickle.dump(self.model, open(tmp_filename, 'wb'))
+
+    def _get_scoring(self):
+        """
+        Get the scoring function.
+        """
+        if self.optim_metric == self.OptimMetric.F1:
+            scoring = 'f1'
+        elif self.optim_metric == self.OptimMetric.F1_WEIGHTED:
+            scoring = 'f1_weighted'
+        elif self.optim_metric == self.OptimMetric.CSI:
+            scoring = 'csi'
+        else:
+            raise ValueError(f"Unknown optimizer metric: {self.optim_metric}")
+
+        return scoring
+
+    def _define_model(self):
+        """
+        Define the model.
+        """
+        self.model = RandomForestClassifier(
+            n_estimators=self.n_estimators,
+            max_depth=self.max_depth,
+            min_samples_split=self.min_samples_split,
+            min_samples_leaf=self.min_samples_leaf,
+            max_features=self.max_features,
+            class_weight=self.class_weight,
+            random_state=self.random_state,
+            n_jobs=self.n_jobs)
+
+    def _create_model_tmp_file_name(self):
+        """
+        Create the temporary file name for the model.
+        """
+        tag_model = pickle.dumps(self.df) + pickle.dumps(self.features) + pickle.dumps(
+            self.optim_metric) + pickle.dumps(self.n_estimators) + pickle.dumps(
+            self.max_depth) + pickle.dumps(self.min_samples_split) + pickle.dumps(
+            self.min_samples_leaf) + pickle.dumps(self.max_features)
+        model_hashed_name = f'rf_model_{hashlib.md5(tag_model).hexdigest()}.pickle'
+        tmp_filename = self.tmp_dir / model_hashed_name
+        return tmp_filename
 
 

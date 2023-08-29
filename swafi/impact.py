@@ -11,6 +11,9 @@ import pandas as pd
 from pathlib import Path
 from sklearn.model_selection import train_test_split
 
+from .utils.verification import compute_confusion_matrix, print_classic_scores, \
+    assess_roc_auc, compute_score_binary
+
 
 class Impact:
     """
@@ -19,6 +22,7 @@ class Impact:
 
     def __init__(self, events):
         self.df = events.events
+        self.model = None
         self.x_train = None
         self.x_test = None
         self.x_valid = None
@@ -26,12 +30,11 @@ class Impact:
         self.y_test = None
         self.y_valid = None
         self.features = []
+        self.weights = None
+        self.class_weight = None
 
         self.config = Config()
         self.tmp_dir = Path(self.config.get('TMP_DIR'))
-
-        # Set default options
-        self.weight_denominator = 16
 
         # Computing options
         self.n_jobs = 20
@@ -75,7 +78,7 @@ class Impact:
                 raise ValueError(f"Unknown file for feature type: {feature_type}")
 
         # Create unique hash for the data dataframe
-        tmp_filename = self._create_tmp_file_name(feature_files)
+        tmp_filename = self._create_data_tmp_file_name(feature_files)
 
         if tmp_filename.exists():
             print(f"Loading data from {tmp_filename}")
@@ -95,14 +98,14 @@ class Impact:
 
             self.df.to_pickle(tmp_filename)
 
-    def split_sample(self, test_size=0.3):
+    def split_sample(self, valid_test_size=0.3):
         """
         Split the sample into training, validation and test sets.
 
         Parameters
         ----------
-        test_size: float
-            The size of the test set (default: 0.33)
+        valid_test_size: float
+            The size of the set for validation and testing (default: 0.3)
         """
         x = self.df[self.features].to_numpy()
         y = self.df['target'].to_numpy().astype(int)
@@ -116,11 +119,53 @@ class Impact:
 
         # Split the sample into training and test sets
         self.x_train, x_tmp, self.y_train, y_tmp = train_test_split(
-            x, y, test_size=test_size, random_state=self.random_state)
+            x, y, test_size=valid_test_size, random_state=self.random_state)
         self.x_test, self.x_valid, self.y_test, self.y_valid = train_test_split(
             x_tmp, y_tmp, test_size=0.5, random_state=self.random_state)
 
-    def _create_tmp_file_name(self, feature_files):
+    def compute_balanced_class_weights(self):
+        """
+        Compute balanced the class weights.
+        """
+        n_classes = len(np.unique(self.y_train))
+        self.weights = len(self.y_train) / (n_classes * np.bincount(self.y_train))
+
+    def compute_corrected_class_weights(self, weight_denominator):
+        """
+        Compute the corrected class weights.
+        """
+        self.class_weight = {0: self.weights[0],
+                             1: self.weights[1] / weight_denominator}
+
+    def assess_model_on_all_periods(self):
+        """
+        Assess the model on all periods.
+        """
+        if self.model is None:
+            raise ValueError("Model not defined")
+
+        self._assess_model(self.x_train, self.y_train, 'Train period')
+        self._assess_model(self.x_valid, self.y_valid, 'Validation period')
+        self._assess_model(self.x_test, self.y_test, 'Test period')
+
+    def _assess_model(self, x, y, period_name):
+        """
+        Assess the model on a single period.
+        """
+        if self.model is None:
+            raise ValueError("Model not defined")
+
+        y_pred = self.model.predict(x)
+        y_pred_prob = self.model.predict_proba(x)
+
+        print(f"Split: {period_name}")
+
+        # Compute the scores
+        tp, tn, fp, fn = compute_confusion_matrix(y, y_pred)
+        print_classic_scores(tp, tn, fp, fn)
+        assess_roc_auc(y, y_pred_prob[:, 1])
+
+    def _create_data_tmp_file_name(self, feature_files):
         """
         Create a unique file name for the given features.
 
@@ -135,8 +180,8 @@ class Impact:
             The unique file name
         """
         # Create unique hash for the data dataframe
-        tag_data = pickle.dumps(feature_files) + pickle.dumps(self.df) + \
-                   pickle.dumps(self.features)
+        tag_data = pickle.dumps(feature_files) + pickle.dumps(self.df) + pickle.dumps(
+            self.features)
         df_hashed_name = f'data_{hashlib.md5(tag_data).hexdigest()}.pickle'
         tmp_filename = self.tmp_dir / df_hashed_name
         return tmp_filename
