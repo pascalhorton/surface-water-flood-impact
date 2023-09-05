@@ -206,7 +206,7 @@ class ImpactRandomForest(Impact):
             rf.fit(self.x_train, self.y_train)
             y_pred = rf.predict(self.x_valid)
 
-            if self.optim_metric ==self.OptimMetric.F1:
+            if self.optim_metric == self.OptimMetric.F1:
                 return f1_score(self.y_valid, y_pred)
             elif self.optim_metric == self.OptimMetric.F1_WEIGHTED:
                 return f1_score(self.y_valid, y_pred, sample_weight=class_weight)
