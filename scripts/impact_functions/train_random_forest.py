@@ -30,23 +30,23 @@ def main():
         rf.optim_approach = rf.OptimApproach.MANUAL
         rf.optim_metric = rf.OptimMetric.CSI
     elif args.config == 1:
-        rf.optim_approach = rf.OptimApproach.GRID_SEARCH_CV
+        rf.optim_approach = rf.OptimApproach.MANUAL
         rf.optim_metric = rf.OptimMetric.F1
     elif args.config == 2:
-        rf.optim_approach = rf.OptimApproach.GRID_SEARCH_CV
+        rf.optim_approach = rf.OptimApproach.MANUAL
         rf.optim_metric = rf.OptimMetric.F1_WEIGHTED
     elif args.config == 3:
-        rf.optim_approach = rf.OptimApproach.RANDOM_SEARCH_CV
-        rf.optim_metric = rf.OptimMetric.F1
+        rf.optim_approach = rf.OptimApproach.MANUAL
+        rf.optim_metric = rf.OptimMetric.CSI
     elif args.config == 4:
-        rf.optim_approach = rf.OptimApproach.RANDOM_SEARCH_CV
-        rf.optim_metric = rf.OptimMetric.F1_WEIGHTED
-    elif args.config == 5:
-        rf.optim_approach = rf.OptimApproach.AUTO
+        rf.optim_approach = rf.OptimApproach.MANUAL
         rf.optim_metric = rf.OptimMetric.F1
-    elif args.config == 6:
-        rf.optim_approach = rf.OptimApproach.AUTO
+    elif args.config == 5:
+        rf.optim_approach = rf.OptimApproach.MANUAL
         rf.optim_metric = rf.OptimMetric.F1_WEIGHTED
+    elif args.config == 6:
+        rf.optim_approach = rf.OptimApproach.MANUAL
+        rf.optim_metric = rf.OptimMetric.CSI
     elif args.config == 7:
         rf.optim_approach = rf.OptimApproach.MANUAL
         rf.optim_metric = rf.OptimMetric.CSI
@@ -56,7 +56,7 @@ def main():
 
     rf.split_sample()
     rf.compute_balanced_class_weights()
-    rf.compute_corrected_class_weights(weight_denominator=36)
+    rf.compute_corrected_class_weights(weight_denominator=27)
     rf.fit()
     rf.assess_model_on_all_periods()
     rf.plot_feature_importance(args.config, config.get('OUTPUT_DIR'))

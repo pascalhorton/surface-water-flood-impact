@@ -15,6 +15,7 @@ def plot_random_forest_feature_importance(rf, features, importances, filename,
     sorted_indices = np.argsort(importances)[::-1]
 
     # Select the top n features
+    n_features = min(n_features, len(features))
     top_indices = sorted_indices[:n_features]
     top_importances = importances[top_indices]
     top_std = std[top_indices]

@@ -59,9 +59,9 @@ class ImpactRandomForest(Impact):
         }
 
         # Hyperparameters - set default parameters
-        self.n_estimators = 100
-        self.max_depth = 18
-        self.min_samples_split = 2
+        self.n_estimators = 150
+        self.max_depth = 15
+        self.min_samples_split = 5
         self.min_samples_leaf = 4
         self.max_features = None
 
