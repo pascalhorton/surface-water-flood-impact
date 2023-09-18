@@ -27,7 +27,7 @@ def main():
     events = load_events_from_pickle(filename=events_filename)
 
     # Create the impact function
-    rf = ImpactRandomForest(events, target_type='occurrence', random_state=None)
+    rf = ImpactRandomForest(events, target_type='occurrence', random_state=42)
 
     # Configuration-specific changes
     if args.config == 0:  # Manual configuration
