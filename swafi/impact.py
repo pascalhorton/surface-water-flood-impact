@@ -150,7 +150,7 @@ class Impact:
         """
         Compute balanced the class weights.
         """
-        if self.target_type is not 'occurrence':
+        if self.target_type != 'occurrence':
             raise NotImplemented("Class weights are only available for occurrence")
 
         n_classes = len(np.unique(self.y_train))
@@ -160,7 +160,7 @@ class Impact:
         """
         Compute the corrected class weights.
         """
-        if self.target_type is not 'occurrence':
+        if self.target_type != 'occurrence':
             raise NotImplemented("Class weights are only available for occurrence")
 
         self.class_weight = {0: self.weights[0],

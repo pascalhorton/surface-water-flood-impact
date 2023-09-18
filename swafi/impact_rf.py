@@ -9,7 +9,7 @@ import pickle
 import optuna
 from enum import Enum, auto
 from sklearn.metrics import f1_score
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
 
 from .utils.plotting import plot_random_forest_feature_importance
@@ -131,8 +131,8 @@ class ImpactRandomForest(Impact):
         """
         Fit the model with grid search cross validation.
         """
-        self.model = RandomForestClassifier(random_state=self.random_state,
-                                            class_weight=self.class_weight)
+        self._define_model()
+
         grid_search = GridSearchCV(
             estimator=self.model,
             param_grid=self.param_grid,
@@ -154,8 +154,8 @@ class ImpactRandomForest(Impact):
         """
         Fit the model with random search cross validation.
         """
-        self.model = RandomForestClassifier(random_state=self.random_state,
-                                            class_weight=self.class_weight)
+        self._define_model()
+
         rand_search = RandomizedSearchCV(
             estimator=self.model,
             param_distributions=self.param_grid,
@@ -203,15 +203,25 @@ class ImpactRandomForest(Impact):
             class_weight = {0: self.weights[0],
                             1: self.weights[1] / weight_denominator}
 
-            rf = RandomForestClassifier(
-                class_weight=class_weight,
-                n_estimators=n_estimators,
-                max_depth=max_depth,
-                min_samples_split=min_samples_split,
-                min_samples_leaf=min_samples_leaf,
-                max_features=max_features,
-                random_state=42
-            )
+            if self.target_type == 'occurrence':
+                rf = RandomForestClassifier(
+                    class_weight=class_weight,
+                    n_estimators=n_estimators,
+                    max_depth=max_depth,
+                    min_samples_split=min_samples_split,
+                    min_samples_leaf=min_samples_leaf,
+                    max_features=max_features,
+                    random_state=self.random_state
+                )
+            elif self.target_type == 'damage_ratio':
+                rf = RandomForestRegressor(
+                    n_estimators=n_estimators,
+                    max_depth=max_depth,
+                    min_samples_split=min_samples_split,
+                    min_samples_leaf=min_samples_leaf,
+                    max_features=max_features,
+                    random_state=self.random_state
+                )
 
             rf.fit(self.x_train, self.y_train)
             y_pred = rf.predict(self.x_valid)
@@ -248,11 +258,17 @@ class ImpactRandomForest(Impact):
 
         # Train and evaluate the best model on test data
         best_params = study.best_params
-        self.model = RandomForestClassifier(**best_params, random_state=42)
+        if self.target_type == 'occurrence':
+            self.model = RandomForestClassifier(
+                **best_params, random_state=self.random_state)
+        elif self.target_type == 'damage_ratio':
+            self.model = RandomForestRegressor(
+                **best_params, random_state=self.random_state)
+        else:
+            raise ValueError(f"Unknown target type: {self.target_type}")
 
         tmp_filename = self._create_model_tmp_file_name()
         print(f"Training best model and saving to {tmp_filename}")
-        self._define_model()
         self.model.fit(self.x_train, self.y_train)
         pickle.dump(self.model, open(tmp_filename, 'wb'))
 
@@ -275,15 +291,27 @@ class ImpactRandomForest(Impact):
         """
         Define the model.
         """
-        self.model = RandomForestClassifier(
-            n_estimators=self.n_estimators,
-            max_depth=self.max_depth,
-            min_samples_split=self.min_samples_split,
-            min_samples_leaf=self.min_samples_leaf,
-            max_features=self.max_features,
-            class_weight=self.class_weight,
-            random_state=self.random_state,
-            n_jobs=self.n_jobs)
+        if self.target_type == 'occurrence':
+            self.model = RandomForestClassifier(
+                n_estimators=self.n_estimators,
+                max_depth=self.max_depth,
+                min_samples_split=self.min_samples_split,
+                min_samples_leaf=self.min_samples_leaf,
+                max_features=self.max_features,
+                class_weight=self.class_weight,
+                random_state=self.random_state,
+                n_jobs=self.n_jobs)
+        elif self.target_type == 'damage_ratio':
+            self.model = RandomForestRegressor(
+                n_estimators=self.n_estimators,
+                max_depth=self.max_depth,
+                min_samples_split=self.min_samples_split,
+                min_samples_leaf=self.min_samples_leaf,
+                max_features=self.max_features,
+                random_state=self.random_state,
+                n_jobs=self.n_jobs)
+        else:
+            raise ValueError(f"Unknown target type: {self.target_type}")
 
     def _create_model_tmp_file_name(self):
         """
