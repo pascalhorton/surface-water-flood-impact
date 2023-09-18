@@ -227,8 +227,9 @@ class Impact:
             The unique file name
         """
         # Create unique hash for the data dataframe
-        tag_data = pickle.dumps(feature_files) + pickle.dumps(self.df) + pickle.dumps(
-            self.features)
+        tag_data = (pickle.dumps(feature_files) + pickle.dumps(self.df.shape) +
+                    pickle.dumps(self.df.columns) + pickle.dumps(self.df.iloc[0]) +
+                    pickle.dumps(self.features))
         df_hashed_name = f'data_{hashlib.md5(tag_data).hexdigest()}.pickle'
         tmp_filename = self.tmp_dir / df_hashed_name
         return tmp_filename

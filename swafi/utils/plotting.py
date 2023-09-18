@@ -19,6 +19,10 @@ def plot_random_forest_feature_importance(rf, features, importances, filename,
     top_indices = sorted_indices[:n_features]
     top_importances = importances[top_indices]
     top_std = std[top_indices]
+    print(len(features))
+    print(features)
+    print(len(top_indices))
+    print(top_indices)
     top_feature_names = [features[idx] for idx in top_indices]
 
     # Plot feature importance
