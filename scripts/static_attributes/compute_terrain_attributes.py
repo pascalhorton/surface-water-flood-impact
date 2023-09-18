@@ -1,6 +1,6 @@
 """
-Computes the flow accumulation (in m2) for all files listed under "DEM_PATHS" in the
-config file. Save the results as tiff file.
+Computes terrain attributes for all files listed under "DEM_PATHS" in the config file.
+Save the results as tiff file.
 """
 
 from pathlib import Path

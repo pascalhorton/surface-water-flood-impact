@@ -1,3 +1,7 @@
+"""
+Train a logistic regression model to predict the occurrence of damages.
+"""
+
 from swafi.config import Config
 from swafi.events import load_events_from_pickle
 from swafi.impact_lr import ImpactLogisticRegression

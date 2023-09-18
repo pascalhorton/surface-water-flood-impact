@@ -1,3 +1,7 @@
+"""
+This script is used to analyze the results of the link between claims and events.
+"""
+
 from swafi.config import Config
 from swafi.damages import Damages
 from swafi.events import Events

@@ -1,3 +1,7 @@
+"""
+Train a random forest model to predict the occurrence of damages.
+"""
+
 import argparse
 
 from swafi.config import Config
@@ -23,33 +27,25 @@ def main():
     events = load_events_from_pickle(filename=events_filename)
 
     # Create the impact function
-    rf = ImpactRandomForest(events)
+    rf = ImpactRandomForest(events, target_type='occurrence')
 
     # Configuration-specific changes
     if args.config == 0:  # Manual configuration
         rf.optim_approach = rf.OptimApproach.MANUAL
-        rf.optim_metric = rf.OptimMetric.CSI
     elif args.config == 1:
-        rf.optim_approach = rf.OptimApproach.GRID_SEARCH_CV
-        rf.optim_metric = rf.OptimMetric.F1
+        rf.optim_approach = rf.OptimApproach.MANUAL
     elif args.config == 2:
-        rf.optim_approach = rf.OptimApproach.GRID_SEARCH_CV
-        rf.optim_metric = rf.OptimMetric.F1_WEIGHTED
+        rf.optim_approach = rf.OptimApproach.MANUAL
     elif args.config == 3:
-        rf.optim_approach = rf.OptimApproach.RANDOM_SEARCH_CV
-        rf.optim_metric = rf.OptimMetric.F1
+        rf.optim_approach = rf.OptimApproach.MANUAL
     elif args.config == 4:
-        rf.optim_approach = rf.OptimApproach.RANDOM_SEARCH_CV
-        rf.optim_metric = rf.OptimMetric.F1_WEIGHTED
+        rf.optim_approach = rf.OptimApproach.MANUAL
     elif args.config == 5:
-        rf.optim_approach = rf.OptimApproach.AUTO
-        rf.optim_metric = rf.OptimMetric.F1
+        rf.optim_approach = rf.OptimApproach.MANUAL
     elif args.config == 6:
-        rf.optim_approach = rf.OptimApproach.AUTO
-        rf.optim_metric = rf.OptimMetric.F1_WEIGHTED
+        rf.optim_approach = rf.OptimApproach.MANUAL
     elif args.config == 7:
         rf.optim_approach = rf.OptimApproach.MANUAL
-        rf.optim_metric = rf.OptimMetric.CSI
 
     rf.load_features(['event', 'terrain', 'swf_map', 'flowacc',
                       'land_cover', 'runoff_coeff'])

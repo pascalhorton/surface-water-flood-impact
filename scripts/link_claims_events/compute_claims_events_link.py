@@ -1,3 +1,16 @@
+"""
+This script computes the link between the claims and the events. The link is
+computed using the following criteria:
+    - i_mean: mean intensity of the event
+    - i_max: max intensity of the event
+    - p_sum: sum of the event precipitation
+    - r_ts_win: ratio of the event time steps within the temporal window on the
+      total window duration
+    - r_ts_evt: ratio of the event time steps within the temporal window on the
+      total event duration
+    - prior: put more weights on events occurring prior to the claim
+"""
+
 from swafi.config import Config
 from swafi.damages import Damages
 from swafi.events import Events

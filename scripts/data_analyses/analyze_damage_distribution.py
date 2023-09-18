@@ -1,3 +1,7 @@
+"""
+This script analyzes the distribution of the number of contracts and claims per cell.
+"""
+
 from swafi.config import Config
 from swafi.damages import Damages
 import matplotlib.pyplot as plt
