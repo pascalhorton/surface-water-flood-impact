@@ -18,10 +18,18 @@ from .utils.verification import compute_confusion_matrix, print_classic_scores, 
 class Impact:
     """
     The generic Impact class.
+
+    Parameters
+    ----------
+    events: Events
+        The events object.
+    target_type: str
+        The target type. Options are: 'occurrence', 'damage_ratio'
     """
 
-    def __init__(self, events):
+    def __init__(self, events, target_type='occurrence'):
         self.df = events.events
+        self.target_type = target_type
         self.model = None
         self.x_train = None
         self.x_test = None
@@ -142,6 +150,9 @@ class Impact:
         """
         Compute balanced the class weights.
         """
+        if self.target_type is not 'occurrence':
+            raise NotImplemented("Class weights are only available for occurrence")
+
         n_classes = len(np.unique(self.y_train))
         self.weights = len(self.y_train) / (n_classes * np.bincount(self.y_train))
 
@@ -149,6 +160,9 @@ class Impact:
         """
         Compute the corrected class weights.
         """
+        if self.target_type is not 'occurrence':
+            raise NotImplemented("Class weights are only available for occurrence")
+
         self.class_weight = {0: self.weights[0],
                              1: self.weights[1] / weight_denominator}
 
@@ -186,11 +200,14 @@ class Impact:
         print(f"\nSplit: {period_name}")
 
         # Compute the scores
-        tp, tn, fp, fn = compute_confusion_matrix(y, y_pred)
-        print_classic_scores(tp, tn, fp, fn)
-        assess_roc_auc(y, y_pred_prob[:, 1])
+        if self.target_type == 'occurrence':
+            tp, tn, fp, fn = compute_confusion_matrix(y, y_pred)
+            print_classic_scores(tp, tn, fp, fn)
+            assess_roc_auc(y, y_pred_prob[:, 1])
+        else:
+            rmse = np.sqrt(np.mean((y - y_pred) ** 2))
+            print(f"RMSE: {rmse}")
         print(f"\n----------------------------------------\n")
-
 
     def _create_data_tmp_file_name(self, feature_files):
         """

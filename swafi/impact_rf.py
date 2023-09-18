@@ -19,6 +19,15 @@ from .utils.verification import compute_confusion_matrix, compute_score_binary
 class ImpactRandomForest(Impact):
     """
     The generic Random Forest Impact class.
+
+    Parameters
+    ----------
+    events: Events
+        The events object.
+    target_type: str
+        The target type. Options are: 'occurrence', 'damage_ratio'
+    reload_trained_models: bool
+        Whether to reload the previously trained models or not.
     """
 
     class OptimApproach(Enum):
@@ -32,8 +41,9 @@ class ImpactRandomForest(Impact):
         F1_WEIGHTED = auto()
         CSI = auto()
 
-    def __init__(self, events):
-        super().__init__(events)
+    def __init__(self, events, target_type='occurrence', reload_trained_models=False):
+        super().__init__(events, target_type=target_type)
+        self.reload_trained_models = reload_trained_models
 
         # Set default options
         self.optim_approach = self.OptimApproach.AUTO
@@ -101,14 +111,14 @@ class ImpactRandomForest(Impact):
         fig_filename = f'feature_importance_mdi_{tag}.pdf'
         plot_random_forest_feature_importance(
             self.model, self.features, importances, fig_filename,
-            dir_output=dir_output, n_features=30)
+            dir_output=dir_output, n_features=20)
 
     def _fit_manual(self):
         """
         Fit the model with the given hyperparameters.
         """
         tmp_filename = self._create_model_tmp_file_name()
-        if tmp_filename.exists():
+        if self.reload_trained_models and tmp_filename.exists():
             print(f"Loading model from {tmp_filename}")
             self.model = pickle.load(open(tmp_filename, 'rb'))
         else:
@@ -279,12 +289,12 @@ class ImpactRandomForest(Impact):
         """
         Create the temporary file name for the model.
         """
-        tag_model = pickle.dumps(self.df) + pickle.dumps(self.features) + pickle.dumps(
-            self.optim_metric) + pickle.dumps(self.n_estimators) + pickle.dumps(
-            self.max_depth) + pickle.dumps(self.min_samples_split) + pickle.dumps(
-            self.min_samples_leaf) + pickle.dumps(self.max_features)
+        tag_model = (
+                pickle.dumps(self.df.shape) + pickle.dumps(self.df.columns) +
+                pickle.dumps(self.df.iloc[0]) + pickle.dumps(self.features) +
+                pickle.dumps(self.optim_metric) + pickle.dumps(self.n_estimators) +
+                pickle.dumps(self.max_depth) + pickle.dumps(self.min_samples_split) +
+                pickle.dumps(self.min_samples_leaf) + pickle.dumps(self.max_features))
         model_hashed_name = f'rf_model_{hashlib.md5(tag_model).hexdigest()}.pickle'
         tmp_filename = self.tmp_dir / model_hashed_name
         return tmp_filename
-
-

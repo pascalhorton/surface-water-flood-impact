@@ -13,7 +13,7 @@ class ImpactLogisticRegression(Impact):
     """
 
     def __init__(self, events):
-        super().__init__(events)
+        super().__init__(events, target_type='occurrence')
 
     def fit(self):
         """

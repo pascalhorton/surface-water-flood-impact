@@ -4,8 +4,8 @@ Class to compute the impact function.
 import numpy as np
 
 from .impact import Impact
-from .utils.verification import compute_confusion_matrix, print_classic_scores, \
-    assess_roc_auc
+from .utils.verification import compute_confusion_matrix, print_classic_scores
+
 
 class ImpactThresholds(Impact):
     """
@@ -13,11 +13,11 @@ class ImpactThresholds(Impact):
     """
 
     def __init__(self, events):
-        super().__init__(events)
+        super().__init__(events, target_type='occurrence')
 
-        self.thr_i_max=0.9
-        self.thr_p_sum=0.98
-        self.method='union'
+        self.thr_i_max = 0.9
+        self.thr_p_sum = 0.98
+        self.method = 'union'
 
     def set_thresholds(self, thr_i_max=0.9, thr_p_sum=0.98, method='union'):
         """
