@@ -10,10 +10,18 @@ from sklearn.linear_model import LogisticRegression
 class ImpactLogisticRegression(Impact):
     """
     The generic Logistic Regression Impact class.
+
+    Parameters
+    ----------
+    events: Events
+        The events object.
+    random_state: int|None
+        The random state to use for the random number generator.
+        Default: 42. Set to None to not set the random seed.
     """
 
-    def __init__(self, events):
-        super().__init__(events, target_type='occurrence')
+    def __init__(self, events, random_state=42):
+        super().__init__(events, target_type='occurrence', random_state=random_state)
 
     def fit(self):
         """

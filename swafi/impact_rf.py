@@ -26,6 +26,9 @@ class ImpactRandomForest(Impact):
         The events object.
     target_type: str
         The target type. Options are: 'occurrence', 'damage_ratio'
+    random_state: int|None
+        The random state to use for the random number generator.
+        Default: 42. Set to None to not set the random seed.
     reload_trained_models: bool
         Whether to reload the previously trained models or not.
     """
@@ -41,8 +44,9 @@ class ImpactRandomForest(Impact):
         F1_WEIGHTED = auto()
         CSI = auto()
 
-    def __init__(self, events, target_type='occurrence', reload_trained_models=False):
-        super().__init__(events, target_type=target_type)
+    def __init__(self, events, target_type='occurrence', random_state=42,
+                 reload_trained_models=False):
+        super().__init__(events, target_type=target_type, random_state=random_state)
         self.reload_trained_models = reload_trained_models
 
         # Set default options
