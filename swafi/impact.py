@@ -109,6 +109,18 @@ class Impact:
 
             self.df.to_pickle(tmp_filename)
 
+    def select_nb_contracts_greater_or_equal_to(self, threshold):
+        """
+        Select only events with a number of contracts above or equal to the given
+        threshold.
+
+        Parameters
+        ----------
+        threshold: int
+            The threshold
+        """
+        self.df = self.df[self.df['nb_contracts'] >= threshold]
+
     def split_sample(self, valid_test_size=0.3):
         """
         Split the sample into training, validation and test sets.

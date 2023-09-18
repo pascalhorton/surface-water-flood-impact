@@ -36,16 +36,22 @@ def main():
         rf.optim_approach = rf.OptimApproach.MANUAL
     elif args.config == 2:
         rf.optim_approach = rf.OptimApproach.MANUAL
+        rf.select_nb_contracts_greater_or_equal_to(2)
     elif args.config == 3:
         rf.optim_approach = rf.OptimApproach.MANUAL
+        rf.select_nb_contracts_greater_or_equal_to(5)
     elif args.config == 4:
         rf.optim_approach = rf.OptimApproach.MANUAL
+        rf.select_nb_contracts_greater_or_equal_to(10)
     elif args.config == 5:
         rf.optim_approach = rf.OptimApproach.MANUAL
+        rf.select_nb_contracts_greater_or_equal_to(20)
     elif args.config == 6:
         rf.optim_approach = rf.OptimApproach.MANUAL
+        rf.select_nb_contracts_greater_or_equal_to(50)
     elif args.config == 7:
         rf.optim_approach = rf.OptimApproach.MANUAL
+        rf.select_nb_contracts_greater_or_equal_to(100)
 
     rf.load_features(['event', 'terrain', 'swf_map', 'flowacc',
                       'land_cover', 'runoff_coeff'])
