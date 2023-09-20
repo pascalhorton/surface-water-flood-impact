@@ -16,7 +16,7 @@ config = Config()
 
 def main():
     parser = argparse.ArgumentParser(description="SWAFI RF")
-    parser.add_argument("config", help="Configuration", type=int, default=0,
+    parser.add_argument("config", help="Configuration", type=int, default=10,
                         nargs='?')
 
     args = parser.parse_args()
@@ -30,21 +30,21 @@ def main():
     rf = ImpactRandomForest(events, target_type='damage_ratio', random_state=42)
 
     # Configuration-specific changes
-    if args.config == 0:  # Manual configuration
+    if args.config == 10:  # Manual configuration
         pass
-    elif args.config == 1:
+    elif args.config == 11:
         pass
-    elif args.config == 2:
+    elif args.config == 12:
         rf.select_nb_contracts_greater_or_equal_to(2)
-    elif args.config == 3:
+    elif args.config == 13:
         rf.select_nb_contracts_greater_or_equal_to(5)
-    elif args.config == 4:
+    elif args.config == 14:
         rf.select_nb_contracts_greater_or_equal_to(10)
-    elif args.config == 5:
+    elif args.config == 15:
         rf.select_nb_contracts_greater_or_equal_to(20)
-    elif args.config == 6:
+    elif args.config == 16:
         rf.select_nb_contracts_greater_or_equal_to(50)
-    elif args.config == 7:
+    elif args.config == 17:
         rf.select_nb_contracts_greater_or_equal_to(100)
 
     rf.load_features(['event', 'terrain', 'swf_map', 'flowacc',
