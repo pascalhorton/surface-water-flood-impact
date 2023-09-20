@@ -7,7 +7,7 @@ from swafi.events import load_events_from_pickle
 from swafi.impact_thr import ImpactThresholds
 
 
-LABEL_EVENT_FILE = 'original_w_prior_pluvial'
+LABEL_EVENT_FILE = 'original_w_prior_pluvial_occurrence'
 
 config = Config()
 

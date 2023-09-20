@@ -112,7 +112,7 @@ class ImpactRandomForest(Impact):
              (default: None)
         """
         importances = self.model.feature_importances_
-        fig_filename = f'feature_importance_mdi_{tag}.pdf'
+        fig_filename = f'feature_importance_mdi_{tag}'
         plot_random_forest_feature_importance(
             self.model, self.features, importances, fig_filename,
             dir_output=dir_output, n_features=20)

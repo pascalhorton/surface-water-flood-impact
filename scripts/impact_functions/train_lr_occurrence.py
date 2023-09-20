@@ -7,7 +7,7 @@ from swafi.events import load_events_from_pickle
 from swafi.impact_lr import ImpactLogisticRegression
 
 
-LABEL_EVENT_FILE = 'original_w_prior_pluvial'
+LABEL_EVENT_FILE = 'original_w_prior_pluvial_occurrence'
 
 config = Config()
 
@@ -24,7 +24,7 @@ def main():
     lr.split_sample()
     lr.normalize_features()
     lr.compute_balanced_class_weights()
-    lr.compute_corrected_class_weights(weight_denominator=36)
+    lr.compute_corrected_class_weights(weight_denominator=27)
     lr.fit()
     lr.assess_model_on_all_periods()
 

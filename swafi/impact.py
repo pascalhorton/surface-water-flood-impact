@@ -6,6 +6,7 @@ from .config import Config
 
 import pickle
 import hashlib
+import random
 import numpy as np
 import pandas as pd
 from pathlib import Path
@@ -138,9 +139,10 @@ class Impact:
         # Remove lines with NaN values
         x_nan = np.argwhere(np.isnan(x))
         rows_with_nan = np.unique(x_nan[:, 0])
-        print(f"Removing {len(rows_with_nan)} rows with NaN values")
-        x = np.delete(x, rows_with_nan, axis=0)
-        y = np.delete(y, rows_with_nan, axis=0)
+        if len(rows_with_nan) > 0:
+            print(f"Removing {len(rows_with_nan)} rows with NaN values")
+            x = np.delete(x, rows_with_nan, axis=0)
+            y = np.delete(y, rows_with_nan, axis=0)
 
         # Split the sample into training and test sets
         self.x_train, x_tmp, self.y_train, y_tmp = train_test_split(
@@ -196,6 +198,49 @@ class Impact:
             print(f"Number of events without damages ({split}): "
                   f"{len(events_without_damages)}")
 
+    def create_benchmark_model(self, model_type='random'):
+        """
+        Create a benchmark model that predicts the occurrence of damages randomly or
+        according to other rules.
+
+        Parameters
+        ----------
+        model_type: str
+            The type of benchmark model to create. Options are: 'random', 'always_true',
+            'always_false'
+        """
+        class BenchmarkModel:
+            def __init__(self, model_type, target_type):
+                self.model_type = model_type
+                self.target_type = target_type
+
+            def predict(self, x):
+                if self.model_type == 'random':
+                    if self.target_type == 'occurrence':
+                        return np.array(random.choices([0, 1], k=len(x)))
+                    elif self.target_type == 'damage_ratio':
+                        return np.random.rand(len(x))
+                    else:
+                        raise ValueError(f"Unknown target type: {self.target_type}")
+                elif self.model_type == 'always_true':
+                    return np.ones(len(x))
+                elif self.model_type == 'always_false':
+                    return np.zeros(len(x))
+                else:
+                    raise ValueError(f"Unknown model type: {model_type}")
+
+            def predict_proba(self, x):
+                if self.model_type == 'random':
+                    return np.random.rand(len(x), 2)
+                elif self.model_type == 'always_true':
+                    return np.ones((len(x), 2))
+                elif self.model_type == 'always_false':
+                    return np.zeros((len(x), 2))
+                else:
+                    raise ValueError(f"Unknown model type: {model_type}")
+
+        self.model = BenchmarkModel(model_type, self.target_type)
+
     def assess_model_on_all_periods(self):
         """
         Assess the model on all periods.
@@ -224,7 +269,7 @@ class Impact:
         else:
             rmse = np.sqrt(np.mean((y - y_pred) ** 2))
             print(f"RMSE: {rmse}")
-        print(f"\n----------------------------------------\n")
+        print(f"----------------------------------------")
 
     def _create_data_tmp_file_name(self, feature_files):
         """
