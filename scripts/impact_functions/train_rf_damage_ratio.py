@@ -51,8 +51,6 @@ def main():
                       'land_cover', 'runoff_coeff'])
 
     rf.split_sample()
-    rf.compute_balanced_class_weights()
-    rf.compute_corrected_class_weights(weight_denominator=27)
     rf.fit()
     rf.assess_model_on_all_periods()
     rf.plot_feature_importance(args.config, config.get('OUTPUT_DIR'))

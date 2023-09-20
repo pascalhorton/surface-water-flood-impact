@@ -131,7 +131,9 @@ class Impact:
             The size of the set for validation and testing (default: 0.3)
         """
         x = self.df[self.features].to_numpy()
-        y = self.df['target'].to_numpy().astype(int)
+        y = self.df['target'].to_numpy()
+        if self.target_type == 'occurrence':
+            y = y.astype(int)
 
         # Remove lines with NaN values
         x_nan = np.argwhere(np.isnan(x))
@@ -210,7 +212,6 @@ class Impact:
             raise ValueError("Model not defined")
 
         y_pred = self.model.predict(x)
-        y_pred_prob = self.model.predict_proba(x)
 
         print(f"\nSplit: {period_name}")
 
@@ -218,6 +219,7 @@ class Impact:
         if self.target_type == 'occurrence':
             tp, tn, fp, fn = compute_confusion_matrix(y, y_pred)
             print_classic_scores(tp, tn, fp, fn)
+            y_pred_prob = self.model.predict_proba(x)
             assess_roc_auc(y, y_pred_prob[:, 1])
         else:
             rmse = np.sqrt(np.mean((y - y_pred) ** 2))

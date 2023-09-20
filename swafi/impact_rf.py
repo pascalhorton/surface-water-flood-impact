@@ -122,7 +122,8 @@ class ImpactRandomForest(Impact):
         Fit the model with the given hyperparameters.
         """
         tmp_filename = self._create_model_tmp_file_name()
-        if self.reload_trained_models and tmp_filename.exists():
+        if (self.reload_trained_models and self.random_state is not None and
+                tmp_filename.exists()):
             print(f"Loading model from {tmp_filename}")
             self.model = pickle.load(open(tmp_filename, 'rb'))
         else:
@@ -326,7 +327,9 @@ class ImpactRandomForest(Impact):
                 pickle.dumps(self.df.iloc[0]) + pickle.dumps(self.features) +
                 pickle.dumps(self.optim_metric) + pickle.dumps(self.n_estimators) +
                 pickle.dumps(self.max_depth) + pickle.dumps(self.min_samples_split) +
-                pickle.dumps(self.min_samples_leaf) + pickle.dumps(self.max_features))
+                pickle.dumps(self.min_samples_leaf) + pickle.dumps(self.max_features) +
+                pickle.dumps(self.class_weight) + pickle.dumps(self.random_state) +
+                pickle.dumps(self.target_type))
         model_hashed_name = f'rf_model_{hashlib.md5(tag_model).hexdigest()}.pickle'
         tmp_filename = self.tmp_dir / model_hashed_name
         return tmp_filename
