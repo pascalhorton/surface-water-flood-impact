@@ -10,7 +10,7 @@ from swafi.impact_rf import ImpactRandomForest
 from swafi.events import load_events_from_pickle
 
 
-LABEL_EVENT_FILE = 'original_w_prior_pluvial'
+LABEL_EVENT_FILE = 'original_w_prior_pluvial_occurrence'
 
 config = Config()
 

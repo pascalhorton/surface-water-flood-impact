@@ -24,7 +24,8 @@ WINDOW_DAYS = [5, 3, 1]
 DAMAGE_CATEGORIES = ['external', 'pluvial']
 PICKLES_DIR = CONFIG.get('PICKLES_DIR')
 EVENTS_PATH = CONFIG.get('EVENTS_PATH')
-LABEL_RESULTING_FILE = 'original_w_prior_pluvial'
+TARGET_TYPE = 'occurrence'  # 'occurrence' or 'damage_ratio'
+LABEL_RESULTING_FILE = 'original_w_prior_pluvial_' + TARGET_TYPE
 SAVE_AS_CSV = False
 
 
@@ -35,8 +36,8 @@ def main():
     # Check that the damage categories are the same
     assert damages.categories_are_for_type(DAMAGE_CATEGORIES)
 
-    # Set the target variable value
-    damages.set_target_variable_value(mode='occurrence')
+    # Set the target variable value (occurrence or ratio)
+    damages.set_target_variable_value(mode=TARGET_TYPE)
 
     # Assign the target value to the events
     events = Events()

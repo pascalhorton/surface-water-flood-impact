@@ -50,7 +50,7 @@ class ImpactRandomForest(Impact):
         self.reload_trained_models = reload_trained_models
 
         # Set default options
-        self.optim_approach = self.OptimApproach.AUTO
+        self.optim_approach = self.OptimApproach.MANUAL
         self.optim_metric = self.OptimMetric.F1
 
         # Hyperparameters - set grid search parameters

@@ -207,14 +207,13 @@ class Damages:
         Parameters
         ----------
         mode : str
-            The mode to set the target variable. Can be 'occurrence' or 'ratio'.
+            The mode to set the target variable. Can be 'occurrence' or 'damage_ratio'.
         """
         self.claims['target'] = 0
         if mode == 'occurrence':
             self.claims.loc[self.claims.selection > 0, 'target'] = 1
-        elif mode == 'ratio':
-            self.claims.target = self.claims.selection
-            raise NotImplementedError
+        elif mode == 'damage_ratio':
+            self._compute_claim_contract_ratio()
 
     def select_all_categories(self):
         """
@@ -433,6 +432,30 @@ class Damages:
         self.claims = self.claims[self.claims.selection != 0]
         self.claims.reset_index(inplace=True, drop=True)
         self.selected_categories = categories
+
+    def _compute_claim_contract_ratio(self):
+        # Check for duplicate keys in self.contract
+        duplicate_keys_contract = self.contracts[
+            self.contracts.duplicated(subset=['year', 'cid'], keep=False)]
+        if not duplicate_keys_contract.empty:
+            raise ValueError("Duplicate keys in self.contracts")
+
+        # If column nb_contracts does not exist
+        if 'nb_contracts' not in self.claims.columns:
+            # Extract the fields to compute the ratio
+            contracts = self.contracts[['year', 'cid', 'selection']]
+            contracts.rename(columns={'selection': 'nb_contracts'}, inplace=True)
+
+            # Extract year from the 'date_claim' column in self.claims
+            self.claims['year'] = pd.to_datetime(self.claims['date_claim'])
+            self.claims['year'] = self.claims['year'].dt.year
+
+            # Merge the two dataframes
+            self.claims = pd.merge(self.claims, contracts, how='left', on=['year', 'cid'])
+            self.claims.drop('year', axis=1, inplace=True)
+
+        self.claims.target = self.claims.selection / self.claims.nb_contracts
+        self.claims.loc[self.claims['target'] > 1, 'target'] = 1
 
     def _add_event_matching_fields(self, events, window_days, criteria):
         self.claims.reset_index(inplace=True, drop=True)
@@ -770,7 +793,7 @@ class Damages:
         xs_mask = np.extract(self.mask['mask'], self.mask['xs'])
         ys_mask = np.extract(self.mask['mask'], self.mask['ys'])
 
-        cids = np.zeros(len(xs_mask))
+        cids = np.ones(len(xs_mask)) * np.nan
         xs_cid = self.domain.cids['xs'][0, :]
         ys_cid = self.domain.cids['ys'][:, 0]
 
@@ -867,3 +890,7 @@ class Damages:
         self.contracts.insert(2, 'cid', cids)
         self.contracts.insert(3, 'x', x)
         self.contracts.insert(4, 'y', y)
+
+        # Remove rows with cid = nan or 0
+        self.contracts = self.contracts[self.contracts.cid.notnull()]
+        self.contracts = self.contracts[self.contracts.cid != 0]

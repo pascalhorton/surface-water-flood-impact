@@ -131,7 +131,7 @@ class Events:
         damages: Damages instance
             An object containing the damages properties.
         """
-        contracts_number = damages.contracts.loc[:, ['cid', 'year', 'selection']]
+        contracts_number = damages.contracts[['cid', 'year', 'selection']].copy()
         contracts_number.rename(columns={'selection': 'nb_contracts'}, inplace=True)
 
         # Merge the target values with the events
