@@ -32,5 +32,10 @@ FLOWACC_RIVER_THRESHOLD: 50000
 CSV_FILE_SWF: 'cpc_grid_exposure_swf.csv'
 CSV_FILE_TERRAIN: 'static_terrain.csv'
 CSV_FILE_FLOWACC: 'static_flowacc.csv'
+CSV_FILE_TWI: 'static_twi.csv'
 CSV_FILE_RUNOFF_COEFF: 'static_runoff_coeff.csv'
 CSV_FILE_LAND_COVER: 'static_land_cover.csv'
+
+# Path to the buildings layer
+BUILDINGS_GPKG: 'SWISSTLM3D_2023_LV95_LN02.gpkg'
+BUILDINGS_LAYER: 'tlm_bauten_gebaeude_footprint'
