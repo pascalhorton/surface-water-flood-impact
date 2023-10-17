@@ -10,8 +10,9 @@ import numpy as np
 CONFIG = Config()
 
 LABEL_EVENT_FILE = 'original_w_prior_pluvial_occurrence'
+DO_PRINT = True
 
-config = Config(output_dir='analysis_damage_distribution')
+config = Config(output_dir='analysis_event_properties_with_damages')
 output_dir = config.output_dir
 
 
@@ -82,7 +83,12 @@ def plot_histo(df_claims, df_no_claims, param, log_scale=False):
         axs[0].set_yscale('log')
         axs[1].set_yscale('log')
     plt.tight_layout()
-    plt.show()
+    if DO_PRINT:
+        plt.savefig(f'{output_dir}/histo_{param}_{"log" if log_scale else ""}.png')
+        plt.savefig(f'{output_dir}/histo_{param}_{"log" if log_scale else ""}.pdf')
+        plt.close()
+    else:
+        plt.show()
 
 
 if __name__ == '__main__':
