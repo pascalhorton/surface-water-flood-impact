@@ -82,6 +82,8 @@ class Impact:
                 feature_files.append(self.config.get('CSV_FILE_SWF'))
             elif feature_type == 'flowacc':
                 feature_files.append(self.config.get('CSV_FILE_FLOWACC'))
+            elif feature_type == 'twi':
+                feature_files.append(self.config.get('CSV_FILE_TWI'))
             elif feature_type == 'land_cover':
                 feature_files.append(self.config.get('CSV_FILE_LAND_COVER'))
             elif feature_type == 'runoff_coeff':
@@ -305,6 +307,9 @@ class Impact:
                         'dem_050m_flowacc_norivers_max',
                         'dem_100m_flowacc_norivers_max',
                         'dem_010m_flowacc_norivers_median'],
+            'twi': ['dem_010m_twi_max', 'dem_010m_twi_mean',
+                    'dem_025m_twi_max', 'dem_025m_twi_mean',
+                    'dem_050m_twi_max', 'dem_050m_twi_mean'],
             'land_cover': ['land_cover_cat_7', 'land_cover_cat_11',
                            'land_cover_cat_12'],
             'runoff_coeff': ['runoff_coeff_mean']

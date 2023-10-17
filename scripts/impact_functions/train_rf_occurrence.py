@@ -47,7 +47,7 @@ def main():
     elif args.config == 7:
         rf.select_nb_contracts_greater_or_equal_to(100)
 
-    rf.load_features(['event', 'terrain', 'swf_map', 'flowacc',
+    rf.load_features(['event', 'terrain', 'swf_map', 'flowacc', 'twi',
                       'land_cover', 'runoff_coeff'])
 
     rf.split_sample()

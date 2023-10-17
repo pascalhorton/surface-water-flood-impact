@@ -15,7 +15,8 @@ from swafi.utils.spatial import extract_statistics
 # static_flowacc_richdem,
 # static_runoff_coeff,
 # static_land_cover,
-SRC_DIR = 'static_runoff_coeff'
+# static_twi,
+SRC_DIR = 'static_twi'
 CATEGORICAL = False
 CATEGORIES = range(1, 13)
 
