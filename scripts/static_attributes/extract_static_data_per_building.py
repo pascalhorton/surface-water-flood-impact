@@ -2,10 +2,11 @@
 Extract static data from geotiff files for each building from the TLM geopackage.
 """
 
-import geopandas as gpd
+import argparse
 import rasterio
-from rasterio.features import geometry_mask
+import geopandas as gpd
 import numpy as np
+from rasterio.features import geometry_mask
 from swafi.config import Config
 
 config = Config(output_dir='static_attributes_buildings')
@@ -42,42 +43,50 @@ attribute_names = [
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Link buildings with attributes")
+    parser.add_argument("index", help="Configuration", type=int, default=0,
+                        nargs='?')
+
+    args = parser.parse_args()
+    print("index: ", args.index)
+
+    attribute_name = attribute_names[args.index]
+    attribute_file = attribute_files[args.index]
+
     # Read the GeoPackage and raster data
     gdf = gpd.read_file(config.get('BUILDINGS_GPKG'),
                         layer=config.get('BUILDINGS_LAYER'))
 
     # Add the attribute columns to the GeoDataFrame
-    for attribute_name in attribute_names:
-        gdf[attribute_name] = np.nan
+    gdf[attribute_name] = np.nan
 
     # Loop through each attribute file
-    for attribute_file, attribute_name in zip(attribute_files, attribute_names):
-        print(f'Extracting data from {attribute_file}...')
+    print(f'Extracting data from {attribute_file}...')
 
-        # Open the attribute file
-        with rasterio.open(attribute_file) as attribute_src:
-            # Read the raster data within the polygon using the mask
-            values = attribute_src.read(1, masked=True)
+    # Open the attribute file
+    with rasterio.open(attribute_file) as attribute_src:
+        # Read the raster data within the polygon using the mask
+        values = attribute_src.read(1, masked=True)
 
-            # Iterate through each polygon in the GeoPackage
-            for index, row in gdf.iterrows():
-                # Get the geometry of the polygon
-                geom = row['geometry']
+        # Iterate through each polygon in the GeoPackage
+        for index, row in gdf.iterrows():
+            # Get the geometry of the polygon
+            geom = row['geometry']
 
-                # Use geometry mask to create a mask for the polygon
-                mask = geometry_mask([geom], out_shape=attribute_src.shape,
-                                     transform=attribute_src.transform, invert=True)
+            # Use geometry mask to create a mask for the polygon
+            mask = geometry_mask([geom], out_shape=attribute_src.shape,
+                                 transform=attribute_src.transform, invert=True)
 
-                masked_values = np.ma.array(values, mask=~mask)
+            masked_values = np.ma.array(values, mask=~mask)
 
-                # Find the mean value within the polygon
-                max_val = np.max(masked_values)
+            # Find the mean value within the polygon
+            max_val = np.max(masked_values)
 
-                # Save the mean value to the GeoDataFrame
-                gdf.at[index, attribute_name] = max_val
+            # Save the mean value to the GeoDataFrame
+            gdf.at[index, attribute_name] = max_val
 
     # Save the updated GeoDataFrame back to the GeoPackage
-    gdf.to_file(f'{config.output_dir}/buildings_with_attributes.gpkg',
+    gdf.to_file(f'{config.output_dir}/buildings_with_attributes_{attribute_name}.gpkg',
                 layer='buildings', driver='GPKG')
 
     print('Done.')
