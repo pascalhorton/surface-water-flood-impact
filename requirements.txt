@@ -7,3 +7,4 @@ pyarrow
 matplotlib
 scikit-learn
 optuna
+tensorflow

@@ -332,4 +332,5 @@ class ImpactRandomForest(Impact):
                 pickle.dumps(self.target_type))
         model_hashed_name = f'rf_model_{hashlib.md5(tag_model).hexdigest()}.pickle'
         tmp_filename = self.tmp_dir / model_hashed_name
+
         return tmp_filename
