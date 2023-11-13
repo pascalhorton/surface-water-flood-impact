@@ -3,10 +3,8 @@ Class to handle all exposure and claims.
 """
 
 import glob
-import pickle
 import ntpath
-from datetime import datetime, timedelta, date
-from pathlib import Path
+from datetime import datetime
 
 import rasterio
 import numpy as np
@@ -15,7 +13,6 @@ from tqdm import tqdm
 
 from .damages import Damages
 from .config import Config
-from .domain import Domain
 
 config = Config()
 

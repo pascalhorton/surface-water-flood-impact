@@ -2,10 +2,8 @@
 Class to handle all exposure and claims.
 """
 
-import glob
 import pickle
-import ntpath
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import rasterio
@@ -56,8 +54,6 @@ class Damages:
             self.year_end = config.get('YEAR_END', 2022)
 
         self.categories = ['claims']
-        self.tags_exposure = ['*']
-        self.tags_claims = ['*']
 
     def load_from_pickle(self, filename):
         """
