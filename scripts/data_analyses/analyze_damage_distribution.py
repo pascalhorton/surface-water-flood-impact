@@ -16,7 +16,7 @@ output_dir = config.output_dir
 
 
 def main():
-    damages = Damages(dir_exposure=CONFIG.get('DIR_CONTRACTS'),
+    damages = Damages(dir_exposure=CONFIG.get('DIR_EXPOSURE'),
                       dir_claims=CONFIG.get('DIR_CLAIMS'))
     damages.select_categories_type(DAMAGE_CATEGORIES)
 

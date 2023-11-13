@@ -12,7 +12,7 @@ computed using the following criteria:
 """
 
 from swafi.config import Config
-from swafi.damages import Damages
+from swafi.damages_mobiliar import DamagesMobiliar
 from swafi.events import Events
 from pathlib import Path
 
@@ -27,6 +27,7 @@ EVENTS_PATH = CONFIG.get('EVENTS_PATH')
 TARGET_TYPE = 'occurrence'  # 'occurrence' or 'damage_ratio'
 LABEL_RESULTING_FILE = 'original_w_prior_pluvial_' + TARGET_TYPE
 SAVE_AS_CSV = False
+DAMAGE_DATASET = 'mobiliar'  # 'mobiliar' or 'gwz'
 
 
 def main():
@@ -46,7 +47,7 @@ def main():
     events.set_contracts_number(damages)
 
     # Save the events with target values to a pickle file
-    filename = f'events_with_target_values_{LABEL_RESULTING_FILE}'
+    filename = f'events_with_{DAMAGE_DATASET}_target_values_{LABEL_RESULTING_FILE}'
     events.save_to_pickle(filename=filename + '.pickle')
     if SAVE_AS_CSV:
         events.save_to_csv(filename=filename + '.csv')
@@ -56,17 +57,17 @@ def main():
 
 def get_damages_linked_to_events():
     label = LABEL_DAMAGE_LINK.replace(" ", "_")
-    filename = f'damages_linked_{label}.pickle'
+    filename = f'damages_{DAMAGE_DATASET}_linked_{label}.pickle'
     file_path = Path(PICKLES_DIR + '/' + filename)
 
     if file_path.exists():
         print(f"Link for {CRITERIA} already computed.")
-        damages = Damages(pickle_file=filename)
+        damages = DamagesMobiliar(pickle_file=filename)
         return damages
 
     print(f"Computing link for {CRITERIA}")
-    damages = Damages(dir_exposure=CONFIG.get('DIR_CONTRACTS'),
-                      dir_claims=CONFIG.get('DIR_CLAIMS'))
+    damages = DamagesMobiliar(dir_exposure=CONFIG.get('DIR_EXPOSURE'),
+                              dir_claims=CONFIG.get('DIR_CLAIMS'))
     damages.select_categories_type(DAMAGE_CATEGORIES)
 
     events = Events()

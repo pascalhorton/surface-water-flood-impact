@@ -3,7 +3,7 @@ This script is used to analyze the results of the link between claims and events
 """
 
 from swafi.config import Config
-from swafi.damages import Damages
+from swafi.damages_mobiliar import DamagesMobiliar
 from swafi.events import Events
 from swafi.precipitation import Precipitation
 from swafi.utils.plotting import *
@@ -45,10 +45,11 @@ def main():
     compute_link_and_save_to_pickle()
 
     # Load the first pickle file and do some common work
-    damages = Damages(
+    damages = DamagesMobiliar(
         pickle_file=f'damages_linked_{PARAMETERS[0][0].replace(" ", "_")}.pickle')
     events = Events()
-    events.load_events_and_select_those_with_contracts(CONFIG.get('EVENTS_PATH'), damages)
+    events.load_events_and_select_those_with_contracts(
+        CONFIG.get('EVENTS_PATH'), damages)
     del damages
 
     precip = None
@@ -62,7 +63,7 @@ def main():
     for i_ref, params_ref in enumerate(PARAMETERS):
         label_ref = params_ref[0].replace(" ", "_")
         filename_ref = f'damages_linked_{label_ref}.pickle'
-        df_ref = Damages(pickle_file=filename_ref)
+        df_ref = DamagesMobiliar(pickle_file=filename_ref)
         total.append(df_ref.claims.eid.astype(bool).sum())
 
         # Compute and plot the time difference between the event and the claim date
@@ -80,7 +81,7 @@ def main():
         for i_diff, params_diff in enumerate(PARAMETERS):
             label_diff = params_diff[0].replace(" ", "_")
             filename_diff = f'damages_linked_{label_diff}.pickle'
-            df_comp = Damages(pickle_file=filename_diff)
+            df_comp = DamagesMobiliar(pickle_file=filename_diff)
             if len(df_ref.claims) >= len(df_comp.claims):
                 df_merged_claims = pd.merge(df_ref.claims, df_comp.claims,
                                             how="left", on=['date_claim', 'cid'])
@@ -116,12 +117,13 @@ def compute_link_and_save_to_pickle():
             continue
 
         print(f"Assessing criteria {criteria}")
-        damages = Damages(dir_exposure=CONFIG.get('DIR_CONTRACTS'),
-                          dir_claims=CONFIG.get('DIR_CLAIMS'))
+        damages = DamagesMobiliar(dir_exposure=CONFIG.get('DIR_EXPOSURE'),
+                                  dir_claims=CONFIG.get('DIR_CLAIMS'))
         damages.select_categories_type(DAMAGE_CATEGORIES)
 
         events = Events()
-        events.load_events_and_select_those_with_contracts(CONFIG.get('EVENTS_PATH'), damages)
+        events.load_events_and_select_those_with_contracts(
+            CONFIG.get('EVENTS_PATH'), damages)
 
         damages.link_with_events(events, criteria=criteria, filename=filename,
                                  window_days=window_days)
