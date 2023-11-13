@@ -95,7 +95,7 @@ class Events:
         self.events = self.events[self.events['cid'].isin(cids)]
 
         # Second, remove cells where there is no annual contract
-        empty_cells = damages.contracts[damages.contracts['selection'] == 0]
+        empty_cells = damages.exposure[damages.exposure['selection'] == 0]
         for index, row in empty_cells.iterrows():
             cid = cids[row['mask_index']]
             self.events = self.events[
@@ -131,7 +131,7 @@ class Events:
         damages: Damages instance
             An object containing the damages properties.
         """
-        contracts_number = damages.contracts[['cid', 'year', 'selection']].copy()
+        contracts_number = damages.exposure[['cid', 'year', 'selection']].copy()
         contracts_number.rename(columns={'selection': 'nb_contracts'}, inplace=True)
 
         # Merge the target values with the events

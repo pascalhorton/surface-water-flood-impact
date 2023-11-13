@@ -65,7 +65,7 @@ def get_damages_linked_to_events():
         return damages
 
     print(f"Computing link for {CRITERIA}")
-    damages = Damages(dir_contracts=CONFIG.get('DIR_CONTRACTS'),
+    damages = Damages(dir_exposure=CONFIG.get('DIR_CONTRACTS'),
                       dir_claims=CONFIG.get('DIR_CLAIMS'))
     damages.select_categories_type(DAMAGE_CATEGORIES)
 

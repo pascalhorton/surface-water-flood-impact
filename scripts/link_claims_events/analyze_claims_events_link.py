@@ -116,7 +116,7 @@ def compute_link_and_save_to_pickle():
             continue
 
         print(f"Assessing criteria {criteria}")
-        damages = Damages(dir_contracts=CONFIG.get('DIR_CONTRACTS'),
+        damages = Damages(dir_exposure=CONFIG.get('DIR_CONTRACTS'),
                           dir_claims=CONFIG.get('DIR_CLAIMS'))
         damages.select_categories_type(DAMAGE_CATEGORIES)
 

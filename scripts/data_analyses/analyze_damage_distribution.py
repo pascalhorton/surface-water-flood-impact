@@ -16,11 +16,11 @@ output_dir = config.output_dir
 
 
 def main():
-    damages = Damages(dir_contracts=CONFIG.get('DIR_CONTRACTS'),
+    damages = Damages(dir_exposure=CONFIG.get('DIR_CONTRACTS'),
                       dir_claims=CONFIG.get('DIR_CLAIMS'))
     damages.select_categories_type(DAMAGE_CATEGORIES)
 
-    df_contracts = damages.contracts
+    df_contracts = damages.exposure
     df_contracts = df_contracts[['mask_index', 'selection', 'cid']]
 
     # Average the number of annual contracts per location

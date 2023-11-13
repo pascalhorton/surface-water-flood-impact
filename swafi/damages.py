@@ -1,5 +1,5 @@
 """
-Class to handle all contracts and claims.
+Class to handle all exposure and claims.
 """
 
 import glob
@@ -21,7 +21,7 @@ config = Config()
 
 class Damages:
     def __init__(self, cid_file=None, year_start=None, year_end=None, use_dump=True,
-                 dataset='mobi_2023', dir_contracts=None, dir_claims=None,
+                 dataset='mobi_2023', dir_exposure=None, dir_claims=None,
                  pickle_file=None, pickle_dir=None):
         """
         The Damages class.
@@ -38,8 +38,8 @@ class Damages:
             Dump the content to the PICKLES_DIR and load if available
         dataset: str
             The dataset ID (default 'mobi_2023')
-        dir_contracts: str
-            The path to the directory containing the contract files.
+        dir_exposure: str
+            The path to the directory containing the exposure/contract files.
         dir_claims: str
             The path to the directory containing the claim files.
         pickle_file: str
@@ -65,7 +65,7 @@ class Damages:
             self.year_end = config.get('YEAR_END', 2022)
 
         self.categories = ['claims']
-        self.tags_contracts = ['*']
+        self.tags_exposure = ['*']
         self.tags_claims = ['*']
 
         if dataset == 'mobi_2023':
@@ -89,7 +89,7 @@ class Damages:
                 'priv_ext_cont_pluv',
                 'priv_ext_struc_pluv']
 
-            self.tags_contracts = [
+            self.tags_exposure = [
                 'KMU_ES_FH',
                 'KMU_ES_FH',
                 'KMU_ES_GB',
@@ -117,19 +117,19 @@ class Damages:
                 'Wasser_Privat_FH',
                 'Wasser_Privat_GB']
 
-        self.contracts = pd.DataFrame(
+        self.exposure = pd.DataFrame(
             columns=['year', 'mask_index', 'selection'] + self.categories)
         self.claims = pd.DataFrame(
             columns=['date_claim', 'mask_index', 'selection'])
 
-        self.contracts = self.contracts.astype('int32')
+        self.exposure = self.exposure.astype('int32')
         self.claims = self.claims.astype('int32')
         self.claims['date_claim'] = pd.to_datetime(self.claims['date_claim'])
 
         self._load_from_dump()
 
-        if dir_contracts is not None:
-            self.load_contracts(dir_contracts)
+        if dir_exposure is not None:
+            self.load_exposure(dir_exposure)
 
         if dir_claims is not None:
             self.load_claims(dir_claims)
@@ -148,9 +148,9 @@ class Damages:
         """
         self._load_from_dump(filename=filename)
 
-    def load_contracts(self, directory=None):
+    def load_exposure(self, directory=None):
         """
-        Load the contract data from geotiff files.
+        Load the exposure data from geotiff files.
 
         Parameters
         ----------
@@ -158,23 +158,23 @@ class Damages:
             The path to the directory containing the files.
         """
         if self.use_dump and self.mask['mask'].size > 0:
-            print("Contracts reloaded from pickle file.")
+            print("Exposure files reloaded from pickle file.")
             return
 
         if not directory:
-            directory = config.get('DIR_CONTRACTS')
+            directory = config.get('DIR_EXPOSURE')
 
-        contract_data = self._extract_contract_data(directory)
-        self._create_mask(contract_data)
+        exposure_data = self._extract_exposure_data(directory)
+        self._create_mask(exposure_data)
         self._create_cids_list()
 
-        for idx, contracts in enumerate(contract_data):
-            contract_data_cat = self._extract_data_with_mask(contracts)
+        for idx, contracts in enumerate(exposure_data):
+            exposure_data_cat = self._extract_data_with_mask(contracts)
             if idx == 0:
-                self._initialize_contracts_dataframe(contract_data_cat)
-            self._set_to_contracts_dataframe(contract_data_cat, self.categories[idx])
+                self._initialize_exposure_dataframe(exposure_data_cat)
+            self._set_to_exposure_dataframe(exposure_data_cat, self.categories[idx])
 
-        self._set_contracts_cids()
+        self._set_exposure_cids()
 
         self._dump_object()
 
@@ -213,14 +213,14 @@ class Damages:
         if mode == 'occurrence':
             self.claims.loc[self.claims.selection > 0, 'target'] = 1
         elif mode == 'damage_ratio':
-            self._compute_claim_contract_ratio()
+            self._compute_claim_exposure_ratio()
 
     def select_all_categories(self):
         """
         Select all the damage categories.
         """
         columns = self.categories
-        self.contracts['selection'] = self.contracts[columns].sum(axis=1)
+        self.exposure['selection'] = self.exposure[columns].sum(axis=1)
         self.claims['selection'] = self.claims[columns].sum(axis=1)
 
     def categories_are_for_type(self, types):
@@ -303,7 +303,7 @@ class Damages:
         The list of selected categories.
         """
         columns = self.get_categories_from_type(types)
-        self.contracts['selection'] = self.contracts[columns].sum(axis=1)
+        self.exposure['selection'] = self.exposure[columns].sum(axis=1)
         self._apply_categories_selection(columns)
 
         return columns
@@ -320,7 +320,7 @@ class Damages:
             'sme_int_cont', 'sme_int_struc', 'priv_ext_cont', 'priv_ext_struc',
             'priv_int_cont', 'priv_int_struc'
         """
-        self.contracts['selection'] = self.contracts[categories].sum(axis=1)
+        self.exposure['selection'] = self.exposure[categories].sum(axis=1)
         self._apply_categories_selection(categories)
 
     def link_with_events(self, events, criteria=None, window_days=None,
@@ -426,32 +426,32 @@ class Damages:
         self.claims[field_name] = claims[field_name].apply(lambda x: x.days)
 
     def _apply_categories_selection(self, categories):
-        self.contracts = self.contracts[self.contracts.selection != 0]
-        self.contracts.reset_index(inplace=True, drop=True)
+        self.exposure = self.exposure[self.exposure.selection != 0]
+        self.exposure.reset_index(inplace=True, drop=True)
         self.claims['selection'] = self.claims[categories].sum(axis=1)
         self.claims = self.claims[self.claims.selection != 0]
         self.claims.reset_index(inplace=True, drop=True)
         self.selected_categories = categories
 
-    def _compute_claim_contract_ratio(self):
-        # Check for duplicate keys in self.contract
-        duplicate_keys_contract = self.contracts[
-            self.contracts.duplicated(subset=['year', 'cid'], keep=False)]
-        if not duplicate_keys_contract.empty:
-            raise ValueError("Duplicate keys in self.contracts")
+    def _compute_claim_exposure_ratio(self):
+        # Check for duplicate keys in self.exposure
+        duplicate_keys_exposure = self.exposure[
+            self.exposure.duplicated(subset=['year', 'cid'], keep=False)]
+        if not duplicate_keys_exposure.empty:
+            raise ValueError("Duplicate keys in self.exposure")
 
         # If column nb_contracts does not exist
         if 'nb_contracts' not in self.claims.columns:
             # Extract the fields to compute the ratio
-            contracts = self.contracts[['year', 'cid', 'selection']]
-            contracts.rename(columns={'selection': 'nb_contracts'}, inplace=True)
+            exposure = self.exposure[['year', 'cid', 'selection']]
+            exposure.rename(columns={'selection': 'nb_contracts'}, inplace=True)
 
             # Extract year from the 'date_claim' column in self.claims
             self.claims['year'] = pd.to_datetime(self.claims['date_claim'])
             self.claims['year'] = self.claims['year'].dt.year
 
             # Merge the two dataframes
-            self.claims = pd.merge(self.claims, contracts, how='left', on=['year', 'cid'])
+            self.claims = pd.merge(self.claims, exposure, how='left', on=['year', 'cid'])
             self.claims.drop('year', axis=1, inplace=True)
 
         self.claims.target = self.claims.selection / self.claims.nb_contracts
@@ -638,23 +638,23 @@ class Damages:
 
         return date_window_end, date_window_start
 
-    def _extract_contract_data(self, directory):
+    def _extract_exposure_data(self, directory):
         """
         Extract all contract data.
         """
         contracts = glob.glob(directory + '/*.tif')
-        contract_data = []
-        for idx in tqdm(range(len(self.tags_contracts)), desc="Extracting contracts"):
-            tag = self.tags_contracts[idx]
+        exposure_data = []
+        for idx in tqdm(range(len(self.tags_exposure)), desc="Extracting exposure"):
+            tag = self.tags_exposure[idx]
             files = [s for s in contracts if tag in s]
-            data = self._parse_contract_files(files)
-            contract_data.append(data)
+            data = self._parse_exposure_files(files)
+            exposure_data.append(data)
 
-        return contract_data
+        return exposure_data
 
-    def _parse_contract_files(self, files):
+    def _parse_exposure_files(self, files):
         """
-        Parse the provided contract files.
+        Parse the provided exposure files.
         """
         all_data = None
         for year in range(self.year_start, self.year_end + 1):
@@ -777,12 +777,12 @@ class Damages:
         elif self.mask['shape'] != data.shape:
             raise RuntimeError(f"The shape of {file} differs from other files.")
 
-    def _create_mask(self, contract_data):
+    def _create_mask(self, exposure_data):
         """
-        Creates a mask with True for all pixels containing at least 1 annual contract.
+        Creates a mask with True for all pixels containing at least 1 annual exposure.
         """
         self.mask['mask'] = np.zeros(self.mask['shape'][1:], dtype=bool)
-        for arr in contract_data:
+        for arr in exposure_data:
             max_value = arr.max(axis=0)
             self.mask['mask'][max_value > 0] = True
 
@@ -824,7 +824,7 @@ class Damages:
             with open(file_path, 'rb') as f:
                 values = pickle.load(f)
                 self.mask = values.mask
-                self.contracts = values.contracts
+                self.exposure = values.exposure
                 self.claims = values.claims
                 self.cids_list = values.cids_list
                 if hasattr(values, 'selected_categories'):
@@ -840,24 +840,24 @@ class Damages:
         with open(file_path, 'wb') as f:
             pickle.dump(self, f)
 
-    def _initialize_contracts_dataframe(self, contract_data_cat):
+    def _initialize_exposure_dataframe(self, exposure_data_cat):
         """
-        Initializes the contracts dataframe by filling the year and the mask_index columns.
+        Initializes the exposure dataframe by filling the year and the mask_index columns.
         The mask_index column refers to the 1-D array after extraction by the mask.
         """
         n_years = self.year_end - self.year_start + 1
-        n_annual_rows = contract_data_cat.shape[1]
+        n_annual_rows = exposure_data_cat.shape[1]
         years = np.repeat(np.arange(self.year_start, self.year_end + 1), n_annual_rows)
-        self.contracts['year'] = years
+        self.exposure['year'] = years
         indices = np.tile(np.arange(n_annual_rows), n_years)
-        self.contracts['mask_index'] = indices
+        self.exposure['mask_index'] = indices
 
-    def _set_to_contracts_dataframe(self, contract_data_cat, category):
+    def _set_to_exposure_dataframe(self, exposure_data_cat, category):
         """
-        Sets the contract data to the dataframe for the given category.
+        Sets the exposure data to the dataframe for the given category.
         """
-        contracts = np.reshape(contract_data_cat, contract_data_cat.size)
-        self.contracts[category] = contracts
+        exposure = np.reshape(exposure_data_cat, exposure_data_cat.size)
+        self.exposure[category] = exposure
 
     def _clean_claims_dataframe(self):
         """
@@ -881,16 +881,16 @@ class Damages:
         self.claims.insert(3, 'x', x)
         self.claims.insert(4, 'y', y)
 
-    def _set_contracts_cids(self):
+    def _set_exposure_cids(self):
         xs_mask_extracted = np.extract(self.mask['mask'], self.mask['xs'])
         ys_mask_extracted = np.extract(self.mask['mask'], self.mask['ys'])
-        cids = self.cids_list[self.contracts['mask_index']].astype(np.int32)
-        x = xs_mask_extracted[self.contracts['mask_index']].astype(np.int32)
-        y = ys_mask_extracted[self.contracts['mask_index']].astype(np.int32)
-        self.contracts.insert(2, 'cid', cids)
-        self.contracts.insert(3, 'x', x)
-        self.contracts.insert(4, 'y', y)
+        cids = self.cids_list[self.exposure['mask_index']].astype(np.int32)
+        x = xs_mask_extracted[self.exposure['mask_index']].astype(np.int32)
+        y = ys_mask_extracted[self.exposure['mask_index']].astype(np.int32)
+        self.exposure.insert(2, 'cid', cids)
+        self.exposure.insert(3, 'x', x)
+        self.exposure.insert(4, 'y', y)
 
         # Remove rows with cid = nan or 0
-        self.contracts = self.contracts[self.contracts.cid.notnull()]
-        self.contracts = self.contracts[self.contracts.cid != 0]
+        self.exposure = self.exposure[self.exposure.cid.notnull()]
+        self.exposure = self.exposure[self.exposure.cid != 0]

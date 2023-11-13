@@ -11,7 +11,7 @@ YEAR_END: 2022
 CID_PATH: '..\files\cids.tif'
 
 # Contract and damage data directories
-DIR_CONTRACTS: ''
+DIR_EXPOSURE: ''
 DIR_CLAIMS: ''
 
 # Path to the events parquet file
