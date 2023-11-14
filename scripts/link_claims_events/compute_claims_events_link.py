@@ -12,7 +12,9 @@ computed using the following criteria:
 """
 
 from swafi.config import Config
+from swafi.damages import Damages
 from swafi.damages_mobiliar import DamagesMobiliar
+from swafi.damages_gvz import DamagesGvz
 from swafi.events import Events
 from pathlib import Path
 
@@ -21,13 +23,28 @@ CONFIG = Config()
 CRITERIA = ['prior', 'i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt']
 LABEL_DAMAGE_LINK = 'original_w_prior_pluvial'
 WINDOW_DAYS = [5, 3, 1]
-DAMAGE_CATEGORIES = ['external', 'pluvial']
 PICKLES_DIR = CONFIG.get('PICKLES_DIR')
 EVENTS_PATH = CONFIG.get('EVENTS_PATH')
 TARGET_TYPE = 'occurrence'  # 'occurrence' or 'damage_ratio'
 LABEL_RESULTING_FILE = 'original_w_prior_pluvial_' + TARGET_TYPE
 SAVE_AS_CSV = False
-DAMAGE_DATASET = 'mobiliar'  # 'mobiliar' or 'gwz'
+
+DAMAGE_DATASET = 'gvz'  # 'mobiliar' or 'gvz'
+
+if DAMAGE_DATASET == 'mobiliar':
+    DAMAGE_CATEGORIES = ['external', 'pluvial']
+    CONFIG.set('DIR_EXPOSURE', CONFIG.get('DIR_EXPOSURE_MOBILIAR'))
+    CONFIG.set('DIR_CLAIMS', CONFIG.get('DIR_CLAIMS_MOBILIAR'))
+    CONFIG.set('YEAR_START', CONFIG.get('YEAR_START_MOBILIAR'))
+    CONFIG.set('YEAR_END', CONFIG.get('YEAR_END_MOBILIAR'))
+elif DAMAGE_DATASET == 'gvz':
+    DAMAGE_CATEGORIES = ['likely_pluvial']
+    CONFIG.set('DIR_EXPOSURE', CONFIG.get('DIR_EXPOSURE_GVZ'))
+    CONFIG.set('DIR_CLAIMS', CONFIG.get('DIR_CLAIMS_GVZ'))
+    CONFIG.set('YEAR_START', CONFIG.get('YEAR_START_GVZ'))
+    CONFIG.set('YEAR_END', CONFIG.get('YEAR_END_GVZ'))
+else:
+    raise ValueError(f"Unknown damage dataset: {DAMAGE_DATASET}")
 
 
 def main():
@@ -62,12 +79,32 @@ def get_damages_linked_to_events():
 
     if file_path.exists():
         print(f"Link for {CRITERIA} already computed.")
-        damages = DamagesMobiliar(pickle_file=filename)
+        if DAMAGE_DATASET == 'mobiliar':
+            damages = DamagesMobiliar(pickle_file=filename,
+                                      year_start=CONFIG.get('YEAR_START'),
+                                      year_end=CONFIG.get('YEAR_END'))
+        elif DAMAGE_DATASET == 'gvz':
+            damages = DamagesGvz(pickle_file=filename,
+                                 year_start=CONFIG.get('YEAR_START'),
+                                 year_end=CONFIG.get('YEAR_END'))
+        else:
+            raise ValueError(f"Unknown damage dataset: {DAMAGE_DATASET}")
         return damages
 
     print(f"Computing link for {CRITERIA}")
-    damages = DamagesMobiliar(dir_exposure=CONFIG.get('DIR_EXPOSURE'),
-                              dir_claims=CONFIG.get('DIR_CLAIMS'))
+    if DAMAGE_DATASET == 'mobiliar':
+        damages = DamagesMobiliar(dir_exposure=CONFIG.get('DIR_EXPOSURE'),
+                                  dir_claims=CONFIG.get('DIR_CLAIMS'),
+                                  year_start=CONFIG.get('YEAR_START'),
+                                  year_end=CONFIG.get('YEAR_END'))
+    elif DAMAGE_DATASET == 'gvz':
+        damages = DamagesGvz(dir_exposure=CONFIG.get('DIR_EXPOSURE'),
+                             dir_claims=CONFIG.get('DIR_CLAIMS'),
+                             year_start=CONFIG.get('YEAR_START'),
+                             year_end=CONFIG.get('YEAR_END'))
+    else:
+        raise ValueError(f"Unknown damage dataset: {DAMAGE_DATASET}")
+
     damages.select_categories_type(DAMAGE_CATEGORIES)
 
     events = Events()

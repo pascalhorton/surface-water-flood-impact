@@ -42,3 +42,6 @@ class Config:
                 return default
             raise RuntimeError(f"The entry '{key}' was not found in the config file.")
         return self.config[key]
+
+    def set(self, key, value):
+        self.config[key] = value

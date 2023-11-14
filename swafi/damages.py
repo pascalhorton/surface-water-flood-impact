@@ -691,3 +691,9 @@ class Damages:
         # Remove rows with cid = nan or 0
         self.exposure = self.exposure[self.exposure.cid.notnull()]
         self.exposure = self.exposure[self.exposure.cid != 0]
+
+    def _extract_exposure_data(self, directory):
+        raise NotImplementedError("This method should be implemented in a child class.")
+
+    def _extract_claim_data(self, directory):
+        raise NotImplementedError("This method should be implemented in a child class.")

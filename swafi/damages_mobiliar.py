@@ -93,15 +93,6 @@ class DamagesMobiliar(Damages):
             'Wasser_Privat_FH',
             'Wasser_Privat_GB']
 
-        self.exposure = pd.DataFrame(
-            columns=['year', 'mask_index', 'selection'] + self.categories)
-        self.claims = pd.DataFrame(
-            columns=['date_claim', 'mask_index', 'selection'])
-
-        self.exposure = self.exposure.astype('int32')
-        self.claims = self.claims.astype('int32')
-        self.claims['date_claim'] = pd.to_datetime(self.claims['date_claim'])
-
         self._create_exposure_claims_df()
         self._load_from_dump('damages_mobiliar')
 

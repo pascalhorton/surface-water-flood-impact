@@ -9,6 +9,7 @@ from datetime import datetime
 import rasterio
 import numpy as np
 import pandas as pd
+import netCDF4 as nc4
 from tqdm import tqdm
 
 from .damages import Damages
@@ -56,15 +57,6 @@ class DamagesGvz(Damages):
             'a',
             'b']
 
-        self.exposure = pd.DataFrame(
-            columns=['year', 'mask_index', 'selection'] + self.categories)
-        self.claims = pd.DataFrame(
-            columns=['date_claim', 'mask_index', 'selection'])
-
-        self.exposure = self.exposure.astype('int32')
-        self.claims = self.claims.astype('int32')
-        self.claims['date_claim'] = pd.to_datetime(self.claims['date_claim'])
-
         self._create_exposure_claims_df()
         self._load_from_dump('damages_gvz')
 
@@ -84,9 +76,9 @@ class DamagesGvz(Damages):
         Parameters
         ----------
         types: str or list
-            The types of categories to get. Can be 'most_likely_surface_flood',
-            'likely_surface_flood', 'possibly_surface_flood', 'likely_fluvial_flood',
-            'most_likely_fluvial_flood'.
+            The types of categories to get. Can be 'most_likely_pluvial',
+            'likely_pluvial', 'fluvial_or_pluvial', 'likely_fluvial',
+            'most_likely_fluvial'.
 
         Returns
         -------
@@ -98,19 +90,19 @@ class DamagesGvz(Damages):
             types = [types]
 
         for cat_type in types:
-            if cat_type.lower() == 'most_likely_surface_flood':
+            if cat_type.lower() == 'most_likely_pluvial':
                 columns = [i for i in columns if i in ['a']]
                 continue
-            if cat_type.lower() == 'likely_surface_flood':
+            if cat_type.lower() == 'likely_pluvial':
                 columns = [i for i in columns if i in ['a', 'b']]
                 continue
-            if cat_type.lower() == 'possibly_surface_flood':
+            if cat_type.lower() == 'fluvial_or_pluvial':
                 columns = [i for i in columns if i in ['a', 'b', 'c']]
                 continue
-            if cat_type.lower() == 'likely_fluvial_flood':
+            if cat_type.lower() == 'likely_fluvial':
                 columns = [i for i in columns if i in ['d', 'e']]
                 continue
-            if cat_type.lower() == 'most_likely_fluvial_flood':
+            if cat_type.lower() == 'most_likely_fluvial':
                 columns = [i for i in columns if i in ['e']]
                 continue
 
