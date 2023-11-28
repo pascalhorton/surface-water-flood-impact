@@ -112,13 +112,45 @@ class DamagesGvz(Damages):
         """
         Extract all contract data.
         """
-        pass
+        exposure_file = glob.glob(directory + '/gvz_exposure*.nc')
+        assert len(exposure_file) == 1
+        data = self._parse_exposure_files(exposure_file)
+
+        return [data]
 
     def _parse_exposure_files(self, files):
         """
         Parse the provided exposure files.
         """
-        pass
+        file = files[0]
+        with nc4.Dataset(file) as dataset:
+            self.domain.check_resolution(dataset, file)
+            self._check_extent(dataset, file)
+            data = dataset.variables['number_of_buildings'][:]
+            self._check_shape(data, file)
+
+            # Convert dates to datetime
+            time_data = dataset.variables['time']
+            time_units = time_data.units
+            time_calendar = time_data.calendar
+            time = nc4.num2date(time_data[:], units=time_units, calendar=time_calendar)
+
+            # Extract years and check with the period of interest
+            years = [t.year for t in time]
+
+            if self.year_start < min(years):
+                raise RuntimeError(f"The starting year {self.year_start} is before the "
+                                   f"first year of the data {min(years)}.")
+            if self.year_end > max(years):
+                raise RuntimeError(f"The ending year {self.year_end} is after the "
+                                   f"last year of the data {max(years)}.")
+
+            # Extract the data for the period of interest
+            i_start = years.index(self.year_start)
+            i_end = years.index(self.year_end)
+            data = data[i_start:i_end + 1, :, :]
+
+            return data
 
     def _extract_claim_data(self, directory):
         """

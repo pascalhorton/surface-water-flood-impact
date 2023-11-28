@@ -7,6 +7,11 @@ import rasterio
 import numpy as np
 from pathlib import Path
 
+try:
+    import netCDF4 as nc4
+except ImportError:
+    nc4 = None
+
 from .config import Config
 
 config = Config()
@@ -39,9 +44,12 @@ class Domain:
         file: str|Path
             The file name or path.
         """
-        if dataset.crs != self.crs:
-            raise RuntimeError(
-                f"The projection of {file} differs from the project one.")
+        if isinstance(dataset, rasterio.DatasetReader):
+            if dataset.crs != self.crs:
+                raise RuntimeError(
+                    f"The projection of {file} differs from the project one.")
+        else:
+            raise ValueError("The dataset type is not supported.")
 
     def check_resolution(self, dataset, file):
         """
@@ -49,16 +57,25 @@ class Domain:
 
         Parameters
         ----------
-        dataset: rasterio dataset
+        dataset: rasterio dataset|netCDF4 dataset
             The dataset to test.
         file: str|Path
             The file name or path.
         """
-        if self.resolution is None:
-            self.resolution = dataset.res
-        if dataset.res != self.resolution:
-            raise RuntimeError(
-                f"The resolution of {file} differs from the project one.")
+        if isinstance(dataset, rasterio.DatasetReader):
+            if self.resolution is None:
+                self.resolution = dataset.res
+            if dataset.res != self.resolution:
+                raise RuntimeError(
+                    f"The resolution of {file} differs from the project one.")
+        elif isinstance(dataset, nc4.Dataset):
+            x_res = abs(dataset.variables['x'][1] - dataset.variables['x'][0])
+            y_res = abs(dataset.variables['y'][1] - dataset.variables['y'][0])
+            if self.resolution is None:
+                self.resolution = (x_res, y_res)
+            if x_res != self.resolution[0] or y_res != self.resolution[1]:
+                raise RuntimeError(
+                    f"The resolution of {file} differs from the project one.")
 
     def get_cid_coordinates(self, cid):
         """

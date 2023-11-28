@@ -11,6 +11,11 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
+try:
+    import netCDF4 as nc4
+except ImportError:
+    nc4 = None
+
 from .config import Config
 from .domain import Domain
 
@@ -43,8 +48,8 @@ class Damages:
 
         self.domain = Domain(cid_file)
         self.cids_list = None
-        self.mask = dict(extent=None, shape=None, mask=np.array([]), xs=np.array([]),
-                         ys=np.array([]))
+        self.mask = dict(extent=(None, None, None, None), shape=None, mask=np.array([]),
+                         xs=np.array([]), ys=np.array([]))
 
         self.year_start = year_start
         if not self.year_start:
@@ -549,26 +554,50 @@ class Damages:
         """
         Check extent consistency with other files.
         """
-        if self.mask['extent'] is None:
-            self.mask['extent'] = dataset.bounds
+        if self.mask['extent'] == (None, None, None, None):
+            if isinstance(dataset, rasterio.DatasetReader):
+                self.mask['extent'] = dataset.bounds
+                # Extract the axes
+                data = dataset.read()
+                data = data.squeeze(axis=0)
+                height = data.shape[0]
+                width = data.shape[1]
+                cols, rows = np.meshgrid(np.arange(width), np.arange(height))
+                xs, ys = rasterio.transform.xy(dataset.transform, rows, cols)
+                self.mask['xs'] = np.array(xs)
+                self.mask['ys'] = np.array(ys)
+            elif isinstance(dataset, nc4.Dataset):
+                self.mask['extent'] = (
+                    dataset.variables['x'][:].min(),
+                    dataset.variables['y'][:].min(),
+                    dataset.variables['x'][:].max(),
+                    dataset.variables['y'][:].max())
+                # Extract the axes
+                xs = dataset.variables['x'][:]
+                ys = dataset.variables['y'][:]
+                ys = ys.reshape(-1, 1)
+                self.mask['xs'] = np.tile(xs, (len(ys), 1))
+                self.mask['ys'] = np.tile(ys, (1, len(xs)))
+            else:
+                raise RuntimeError(f"Unknown dataset type for {file}.")
 
-            # Extract the axes
-            data = dataset.read()
-            data = data.squeeze(axis=0)
-            height = data.shape[0]
-            width = data.shape[1]
-            cols, rows = np.meshgrid(np.arange(width), np.arange(height))
-            xs, ys = rasterio.transform.xy(dataset.transform, rows, cols)
-            self.mask['xs'] = np.array(xs)
-            self.mask['ys'] = np.array(ys)
-
-        elif self.mask['extent'] != dataset.bounds:
-            raise RuntimeError(f"The extent of {file} differs from other files.")
+        else:
+            if isinstance(dataset, rasterio.DatasetReader):
+                if self.mask['extent'] != dataset.bounds:
+                    raise RuntimeError(f"The extent of {file} differs from others.")
+            elif isinstance(dataset, nc4.Dataset):
+                if self.mask['extent'] != (
+                        dataset.variables['x'][:].min(),
+                        dataset.variables['y'][:].min(),
+                        dataset.variables['x'][:].max(),
+                        dataset.variables['y'][:].max()):
+                    raise RuntimeError(f"The extent of {file} differs from others.")
 
     def _check_shape(self, data, file):
         """
         Check shape consistency with other files.
         """
+        assert data.ndim == 3, f"Data should be 3D in _check_shape()."
         if self.mask['shape'] is None:
             self.mask['shape'] = data.shape
         elif self.mask['shape'] != data.shape:
@@ -585,7 +614,7 @@ class Damages:
 
     def _create_cids_list(self):
         """
-        Creates the CIDs list for cells where we have damages
+        Creates the CIDs list for cells where we have exposure
         """
         xs_mask = np.extract(self.mask['mask'], self.mask['xs'])
         ys_mask = np.extract(self.mask['mask'], self.mask['ys'])
@@ -601,7 +630,7 @@ class Damages:
 
     def _extract_data_with_mask(self, data):
         """
-        Extracts data according to the mask and returns a 1-D array.
+        Extracts data according to the mask and returns a 2-D array.
         """
         if self.mask['mask'].size == 0:
             raise RuntimeError("The mask for extraction was not defined.")
