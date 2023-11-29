@@ -32,13 +32,15 @@ SAVE_AS_CSV = False
 DAMAGE_DATASET = 'gvz'  # 'mobiliar' or 'gvz'
 
 if DAMAGE_DATASET == 'mobiliar':
-    DAMAGE_CATEGORIES = ['external', 'pluvial']
+    EXPOSURE_CATEGORIES = ['external']
+    CLAIM_CATEGORIES = ['external', 'pluvial']
     CONFIG.set('DIR_EXPOSURE', CONFIG.get('DIR_EXPOSURE_MOBILIAR'))
     CONFIG.set('DIR_CLAIMS', CONFIG.get('DIR_CLAIMS_MOBILIAR'))
     CONFIG.set('YEAR_START', CONFIG.get('YEAR_START_MOBILIAR'))
     CONFIG.set('YEAR_END', CONFIG.get('YEAR_END_MOBILIAR'))
 elif DAMAGE_DATASET == 'gvz':
-    DAMAGE_CATEGORIES = ['likely_pluvial']
+    EXPOSURE_CATEGORIES = ['all_buildings']
+    CLAIM_CATEGORIES = ['likely_pluvial']
     CONFIG.set('DIR_EXPOSURE', CONFIG.get('DIR_EXPOSURE_GVZ'))
     CONFIG.set('DIR_CLAIMS', CONFIG.get('DIR_CLAIMS_GVZ'))
     CONFIG.set('YEAR_START', CONFIG.get('YEAR_START_GVZ'))
@@ -52,7 +54,8 @@ def main():
     damages = get_damages_linked_to_events()
 
     # Check that the damage categories are the same
-    assert damages.categories_are_for_type(DAMAGE_CATEGORIES)
+    assert damages.claim_categories_are_for_type(CLAIM_CATEGORIES)
+    assert damages.exposure_categories_are_for_type(EXPOSURE_CATEGORIES)
 
     # Set the target variable value (occurrence or ratio)
     damages.set_target_variable_value(mode=TARGET_TYPE)
@@ -105,7 +108,7 @@ def get_damages_linked_to_events():
     else:
         raise ValueError(f"Unknown damage dataset: {DAMAGE_DATASET}")
 
-    damages.select_categories_type(DAMAGE_CATEGORIES)
+    damages.select_categories_type(EXPOSURE_CATEGORIES, CLAIM_CATEGORIES)
 
     events = Events()
     events.load_events_and_select_those_with_contracts(EVENTS_PATH, damages)

@@ -58,7 +58,8 @@ class Damages:
         if not self.year_end:
             self.year_end = config.get('YEAR_END', 2022)
 
-        self.categories = ['claims']
+        self.claim_categories = []
+        self.exposure_categories = []
 
     def load_from_pickle(self, filename):
         """
@@ -95,7 +96,8 @@ class Damages:
             exposure_data_cat = self._extract_data_with_mask(contracts)
             if idx == 0:
                 self._initialize_exposure_dataframe(exposure_data_cat)
-            self._set_to_exposure_dataframe(exposure_data_cat, self.categories[idx])
+            self._set_to_exposure_dataframe(
+                exposure_data_cat, self.exposure_categories[idx])
 
         self._set_exposure_cids()
 
@@ -142,66 +144,94 @@ class Damages:
         """
         Select all the damage categories.
         """
-        columns = self.categories
-        self.exposure['selection'] = self.exposure[columns].sum(axis=1)
-        self.claims['selection'] = self.claims[columns].sum(axis=1)
+        self.exposure['selection'] = self.exposure[self.claim_categories].sum(axis=1)
+        self.claims['selection'] = self.claims[self.exposure_categories].sum(axis=1)
 
-    def categories_are_for_type(self, types):
+    def exposure_categories_are_for_type(self, types):
         """
-        Check if the categories are for a given type.
+        Check if the exposure categories are for a given type.
 
         Parameters
         ----------
         types: str or list
-            The types of categories to check. Can be 'external', 'internal', 'sme',
-            'private', 'content', 'structure'.
+            The types of exposure categories to check. Depends on the dataset.
 
         Returns
         -------
-        True if the categories are for the given type, False otherwise.
+        True if the exposure categories are for the given type, False otherwise.
         """
-        categories = self.get_categories_from_type(types)
+        categories = self.get_exposure_categories_from_type(types)
 
-        return categories == self.selected_categories
+        return categories == self.selected_exposure_categories
 
-    def select_categories_type(self, types):
+    def claim_categories_are_for_type(self, types):
+        """
+        Check if the claim categories are for a given type.
+
+        Parameters
+        ----------
+        types: str or list
+            The types of claim categories to check. Depends on the dataset.
+
+        Returns
+        -------
+        True if the claim categories are for the given type, False otherwise.
+        """
+        categories = self.get_claim_categories_from_type(types)
+
+        return categories == self.selected_claim_categories
+
+    def get_exposure_categories_from_type(self, types):
+        raise NotImplementedError("This method should be implemented "
+                                  "in the child class.")
+
+    def get_claim_categories_from_type(self, types):
+        raise NotImplementedError("This method should be implemented "
+                                  "in the child class.")
+
+    def select_categories_type(self, exposure_types, claim_types):
         """
         Select the damage categories corresponding to a certain type.
 
         Parameters
         ----------
-        types: list|str
-            The types of the damage categories to select. The type are exclusive.
+        exposure_types: list|str
+            The types of the claim categories to select. The type are exclusive.
             For example : ['external', 'structure'].
-            Options are:
-            - 'external' vs 'internal' (the building)
-            - 'SME' vs 'private'
-            - 'content' vs 'structure' (of the building)
-
-        Returns
-        -------
-        The list of selected categories.
+            Options are dependent on the dataset.
+        claim_types: list|str
+            The types of the exposure categories to select. The type are exclusive.
+            Options are dependent on the dataset.
         """
-        columns = self.get_categories_from_type(types)
-        self.exposure['selection'] = self.exposure[columns].sum(axis=1)
-        self._apply_categories_selection(columns)
+        columns_exposure = self.get_exposure_categories_from_type(exposure_types)
+        columns_claims = self.get_claim_categories_from_type(claim_types)
+        self.exposure['selection'] = self.exposure[columns_exposure].sum(axis=1)
+        self._apply_claim_categories_selection(columns_claims)
 
-        return columns
-
-    def select_categories(self, categories):
+    def select_claim_categories(self, categories):
         """
-        Select the given damage categories.
+        Select the given claim categories.
 
         Parameters
         ----------
         categories: list
-            A list of the categories to select. For example, for the 'mobi_2023' dataset
+            A list of the categories to select. For example, for the Mobiliar dataset
             the possible categories are: 'sme_ext_cont', 'sme_ext_struc',
             'sme_int_cont', 'sme_int_struc', 'priv_ext_cont', 'priv_ext_struc',
             'priv_int_cont', 'priv_int_struc'
         """
+        self._apply_claim_categories_selection(categories)
+
+    def select_exposure_categories(self, categories):
+        """
+        Select the given exposure categories.
+
+        Parameters
+        ----------
+        categories: list
+            A list of the categories to select.
+        """
         self.exposure['selection'] = self.exposure[categories].sum(axis=1)
-        self._apply_categories_selection(categories)
 
     def link_with_events(self, events, criteria=None, window_days=None,
                          filename='damages_matched.pickle'):
@@ -307,7 +337,7 @@ class Damages:
 
     def _create_exposure_claims_df(self):
         self.exposure = pd.DataFrame(
-            columns=['year', 'mask_index', 'selection'] + self.categories)
+            columns=['year', 'mask_index', 'selection'] + self.exposure_categories)
         self.claims = pd.DataFrame(
             columns=['date_claim', 'mask_index', 'selection'])
 
@@ -315,13 +345,13 @@ class Damages:
         self.claims = self.claims.astype('int32')
         self.claims['date_claim'] = pd.to_datetime(self.claims['date_claim'])
 
-    def _apply_categories_selection(self, categories):
+    def _apply_claim_categories_selection(self, categories):
         self.exposure = self.exposure[self.exposure.selection != 0]
         self.exposure.reset_index(inplace=True, drop=True)
         self.claims['selection'] = self.claims[categories].sum(axis=1)
         self.claims = self.claims[self.claims.selection != 0]
         self.claims.reset_index(inplace=True, drop=True)
-        self.selected_categories = categories
+        self.selected_claim_categories = categories
 
     def _compute_claim_exposure_ratio(self):
         # Check for duplicate keys in self.exposure
@@ -646,15 +676,18 @@ class Damages:
         if not self.use_dump:
             return
         file_path = Path(self.pickles_dir + '/' + filename)
-        if file_path.is_file():
-            with open(file_path, 'rb') as f:
-                values = pickle.load(f)
-                self.mask = values.mask
-                self.exposure = values.exposure
-                self.claims = values.claims
-                self.cids_list = values.cids_list
-                if hasattr(values, 'selected_categories'):
-                    self.selected_categories = values.selected_categories
+        if not file_path.is_file():
+            return
+        with open(file_path, 'rb') as f:
+            values = pickle.load(f)
+            self.mask = values.mask
+            self.exposure = values.exposure
+            self.claims = values.claims
+            self.cids_list = values.cids_list
+            if hasattr(values, 'selected_claim_categories'):
+                self.selected_claim_categories = values.selected_claim_categories
+            if hasattr(values, 'selected_exposure_categories'):
+                self.selected_exposure_categories = values.selected_exposure_categories
 
     def _dump_object(self, filename='damages.pickle'):
         """
@@ -689,12 +722,12 @@ class Damages:
         """
         Reorder claims dataframe and remove nans.
         """
-        columns = ['date_claim', 'mask_index', 'selection'] + self.categories
+        columns = ['date_claim', 'mask_index', 'selection'] + self.claim_categories
         self.claims = self.claims.reindex(columns=columns)
         self.claims.fillna(0, inplace=True)
         self.claims.sort_values(by=['date_claim', 'mask_index'], inplace=True)
         self.claims.reset_index(inplace=True, drop=True)
-        for category in self.categories:
+        for category in self.claim_categories:
             self.claims[category] = self.claims[category].astype('int32')
 
     def _set_claims_cids(self):

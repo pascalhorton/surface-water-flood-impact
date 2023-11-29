@@ -45,7 +45,33 @@ class DamagesMobiliar(Damages):
         super().__init__(cid_file=cid_file, year_start=year_start, year_end=year_end,
                          use_dump=use_dump, pickle_dir=pickle_dir)
 
-        self.categories = [
+        self.exposure_categories = [
+            'sme_ext_cont',  # SME, external, content
+            'sme_ext_struc',  # SME, external, structure
+            'sme_int_cont',  # SME, internal, content
+            'sme_int_struc',  # SME, internal, structure
+            'priv_ext_cont',  # Private, external, content
+            'priv_ext_struc',  # Private, external, structure
+            'priv_int_cont',  # Private, internal, content
+            'priv_int_struc']  # Private, internal, structure
+
+        self.selected_exposure_categories = [
+            'sme_ext_cont',
+            'sme_ext_struc',
+            'priv_ext_cont',
+            'priv_ext_struc']
+
+        self.exposure_tags = [
+            'KMU_ES_FH',
+            'KMU_ES_GB',
+            'KMU_W_FH',
+            'KMU_W_GB',
+            'Privat_ES_FH',
+            'Privat_ES_GB',
+            'Privat_W_FH',
+            'Privat_W_GB']
+
+        self.claim_categories = [
             'sme_ext_cont_pluv',  # SME, external, content, pluvial
             'sme_ext_cont_fluv',  # SME, external, content, fluvial
             'sme_ext_struc_pluv',  # SME, external, structure, pluvial
@@ -59,27 +85,13 @@ class DamagesMobiliar(Damages):
             'priv_int_cont',  # Private, internal, content
             'priv_int_struc']  # Private, internal, structure
 
-        self.selected_categories = [
+        self.selected_claim_categories = [
             'sme_ext_cont_pluv',
             'sme_ext_struc_pluv',
             'priv_ext_cont_pluv',
             'priv_ext_struc_pluv']
 
-        self.tags_exposure = [
-            'KMU_ES_FH',
-            'KMU_ES_FH',
-            'KMU_ES_GB',
-            'KMU_ES_GB',
-            'KMU_W_FH',
-            'KMU_W_GB',
-            'Privat_ES_FH',
-            'Privat_ES_FH',
-            'Privat_ES_GB',
-            'Privat_ES_GB',
-            'Privat_W_FH',
-            'Privat_W_GB']
-
-        self.tags_claims = [
+        self.claim_tags = [
             'Ueberschwemmung_pluvial_KMU_FH',
             'Ueberschwemmung_fluvial_KMU_FH',
             'Ueberschwemmung_pluvial_KMU_GB',
@@ -105,21 +117,21 @@ class DamagesMobiliar(Damages):
         if pickle_file is not None:
             self.load_from_pickle(pickle_file)
 
-    def get_categories_from_type(self, types):
+    def get_claim_categories_from_type(self, types):
         """
-        Get the categories from types.
+        Get the claim categories from types.
 
         Parameters
         ----------
         types: str or list
-            The types of categories to get. Can be 'external', 'internal', 'sme',
-            'private', 'content', 'structure'.
+            The types of claim categories to get. Can be 'external', 'internal', 'sme',
+            'private', 'content', 'structure', 'pluvial'.
 
         Returns
         -------
         The list of corresponding categories.
         """
-        columns = self.categories
+        columns = self.claim_categories
 
         if isinstance(types, str):
             types = [types]
@@ -128,23 +140,67 @@ class DamagesMobiliar(Damages):
             if cat_type.lower() == 'external':
                 columns = [i for i in columns if 'ext' in i]
                 continue
-            if cat_type.lower() == 'internal':
+            elif cat_type.lower() == 'internal':
                 columns = [i for i in columns if 'int' in i]
                 continue
-            if cat_type.lower() == 'sme':
+            elif cat_type.lower() == 'sme':
                 columns = [i for i in columns if 'sme' in i]
                 continue
-            if cat_type.lower() == 'private':
+            elif cat_type.lower() == 'private':
                 columns = [i for i in columns if 'priv' in i]
                 continue
-            if cat_type.lower() == 'content':
+            elif cat_type.lower() == 'content':
                 columns = [i for i in columns if 'cont' in i]
                 continue
-            if cat_type.lower() == 'structure':
+            elif cat_type.lower() == 'structure':
                 columns = [i for i in columns if 'struc' in i]
                 continue
-            if cat_type.lower() == 'pluvial':
+            elif cat_type.lower() == 'pluvial':
                 columns = [i for i in columns if 'pluv' in i]
+            else:
+                raise ValueError(f"Unknown claim type: {cat_type}")
+
+        return columns
+
+    def get_exposure_categories_from_type(self, types):
+        """
+        Get the exposure categories from types.
+
+        Parameters
+        ----------
+        types: str or list
+            The types of claim categories to get. Can be 'external', 'internal', 'sme',
+            'private', 'content', 'structure'.
+
+        Returns
+        -------
+        The list of corresponding categories.
+        """
+        columns = self.exposure_categories
+
+        if isinstance(types, str):
+            types = [types]
+
+        for cat_type in types:
+            if cat_type.lower() == 'external':
+                columns = [i for i in columns if 'ext' in i]
+                continue
+            elif cat_type.lower() == 'internal':
+                columns = [i for i in columns if 'int' in i]
+                continue
+            elif cat_type.lower() == 'sme':
+                columns = [i for i in columns if 'sme' in i]
+                continue
+            elif cat_type.lower() == 'private':
+                columns = [i for i in columns if 'priv' in i]
+                continue
+            elif cat_type.lower() == 'content':
+                columns = [i for i in columns if 'cont' in i]
+                continue
+            elif cat_type.lower() == 'structure':
+                columns = [i for i in columns if 'struc' in i]
+            else:
+                raise ValueError(f"Unknown exposure type: {cat_type}")
 
         return columns
 
@@ -154,8 +210,8 @@ class DamagesMobiliar(Damages):
         """
         contracts = glob.glob(directory + '/*.tif')
         exposure_data = []
-        for idx in tqdm(range(len(self.tags_exposure)), desc="Extracting exposure"):
-            tag = self.tags_exposure[idx]
+        for idx in tqdm(range(len(self.exposure_tags)), desc="Extracting exposure"):
+            tag = self.exposure_tags[idx]
             files = [s for s in contracts if tag in s]
             data = self._parse_exposure_files(files)
             exposure_data.append(data)
@@ -189,11 +245,11 @@ class DamagesMobiliar(Damages):
         Extracts all claims data.
         """
         claims = glob.glob(directory + '/*.tif')
-        for idx, tag in enumerate(self.tags_claims):
-            tag = self.tags_claims[idx]
+        for idx, tag in enumerate(self.claim_tags):
+            tag = self.claim_tags[idx]
             files = [s for s in claims if tag in s]
             files.sort()
-            self._parse_claim_files(files, self.categories[idx])
+            self._parse_claim_files(files, self.claim_categories[idx])
 
     def _parse_claim_files(self, files, category):
         """

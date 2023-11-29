@@ -3,12 +3,13 @@ This script analyzes the distribution of the number of contracts and claims per 
 """
 
 from swafi.config import Config
-from swafi.damages import Damages
+from swafi.damages_mobiliar import DamagesMobiliar
 import matplotlib.pyplot as plt
 
 CONFIG = Config()
 
-DAMAGE_CATEGORIES = ['external', 'pluvial']
+EXPOSURE_CATEGORIES = ['external']
+CLAIM_CATEGORIES = ['external', 'pluvial']
 PICKLES_DIR = CONFIG.get('PICKLES_DIR')
 
 config = Config(output_dir='analysis_damage_distribution')
@@ -16,9 +17,9 @@ output_dir = config.output_dir
 
 
 def main():
-    damages = Damages(dir_exposure=CONFIG.get('DIR_EXPOSURE'),
-                      dir_claims=CONFIG.get('DIR_CLAIMS'))
-    damages.select_categories_type(DAMAGE_CATEGORIES)
+    damages = DamagesMobiliar(dir_exposure=CONFIG.get('DIR_EXPOSURE'),
+                              dir_claims=CONFIG.get('DIR_CLAIMS'))
+    damages.select_categories_type(EXPOSURE_CATEGORIES, CLAIM_CATEGORIES)
 
     df_contracts = damages.exposure
     df_contracts = df_contracts[['mask_index', 'selection', 'cid']]

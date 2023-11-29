@@ -46,14 +46,20 @@ class DamagesGvz(Damages):
         super().__init__(cid_file=cid_file, year_start=year_start, year_end=year_end,
                          use_dump=use_dump, pickle_dir=pickle_dir)
 
-        self.categories = [
+        self.exposure_categories = [
+            'all_buildings']
+
+        self.selected_exposure_categories = [
+            'all_buildings']
+
+        self.claim_categories = [
             'a',  # most likely surface flood
             'b',
             'c',
             'd',
             'e']  # most likely fluvial flood
 
-        self.selected_categories = [
+        self.selected_claim_categories = [
             'a',
             'b']
 
@@ -69,22 +75,22 @@ class DamagesGvz(Damages):
         if pickle_file is not None:
             self.load_from_pickle(pickle_file)
 
-    def get_categories_from_type(self, types):
+    def get_claim_categories_from_type(self, types):
         """
-        Get the categories from types.
+        Get the claim categories from types.
 
         Parameters
         ----------
         types: str or list
-            The types of categories to get. Can be 'most_likely_pluvial',
+            The types of claim categories to get. Can be 'most_likely_pluvial',
             'likely_pluvial', 'fluvial_or_pluvial', 'likely_fluvial',
             'most_likely_fluvial'.
 
         Returns
         -------
-        The list of corresponding categories.
+        The list of corresponding claim categories.
         """
-        columns = self.categories
+        columns = self.claim_categories
 
         if isinstance(types, str):
             types = [types]
@@ -93,18 +99,47 @@ class DamagesGvz(Damages):
             if cat_type.lower() == 'most_likely_pluvial':
                 columns = [i for i in columns if i in ['a']]
                 continue
-            if cat_type.lower() == 'likely_pluvial':
+            elif cat_type.lower() == 'likely_pluvial':
                 columns = [i for i in columns if i in ['a', 'b']]
                 continue
-            if cat_type.lower() == 'fluvial_or_pluvial':
+            elif cat_type.lower() == 'fluvial_or_pluvial':
                 columns = [i for i in columns if i in ['a', 'b', 'c']]
                 continue
-            if cat_type.lower() == 'likely_fluvial':
+            elif cat_type.lower() == 'likely_fluvial':
                 columns = [i for i in columns if i in ['d', 'e']]
                 continue
-            if cat_type.lower() == 'most_likely_fluvial':
+            elif cat_type.lower() == 'most_likely_fluvial':
                 columns = [i for i in columns if i in ['e']]
                 continue
+            else:
+                raise ValueError(f"Unknown claim type: {cat_type}")
+
+        return columns
+
+    def get_exposure_categories_from_type(self, types):
+        """
+        Get the exposure categories from types.
+
+        Parameters
+        ----------
+        types: str or list
+            The types of exposure categories to get. Can be 'all_buildings'.
+
+        Returns
+        -------
+        The list of corresponding exposure categories.
+        """
+        columns = self.exposure_categories
+
+        if isinstance(types, str):
+            types = [types]
+
+        for cat_type in types:
+            if cat_type.lower() == 'all_buildings':
+                columns = [i for i in columns if i in ['all_buildings']]
+                continue
+            else:
+                raise ValueError(f"Unknown exposure type: {cat_type}")
 
         return columns
 

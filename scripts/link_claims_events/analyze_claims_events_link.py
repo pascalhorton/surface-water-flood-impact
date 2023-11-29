@@ -30,7 +30,8 @@ PARAMETERS = [  # [label, [criteria], [window_days]]
     ['v5 4win', ['prior', 'i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt'], [5, 3, 2, 1]]
 ]
 
-DAMAGE_CATEGORIES = ['external', 'pluvial']
+EXPOSURE_CATEGORIES = ['external']
+CLAIM_CATEGORIES = ['external', 'pluvial']
 
 PICKLES_DIR = CONFIG.get('PICKLES_DIR')
 
@@ -119,7 +120,7 @@ def compute_link_and_save_to_pickle():
         print(f"Assessing criteria {criteria}")
         damages = DamagesMobiliar(dir_exposure=CONFIG.get('DIR_EXPOSURE'),
                                   dir_claims=CONFIG.get('DIR_CLAIMS'))
-        damages.select_categories_type(DAMAGE_CATEGORIES)
+        damages.select_categories_type(EXPOSURE_CATEGORIES, CLAIM_CATEGORIES)
 
         events = Events()
         events.load_events_and_select_those_with_contracts(
