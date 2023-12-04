@@ -28,7 +28,7 @@ class Events:
 
         self._load_from_dump()
 
-    def load_events_and_select_those_with_contracts(self, path, damages):
+    def load_events_and_select_those_with_contracts(self, path, damages, tag):
         """
         Load all events from a parquet file. Then, select only the events where there
         is a contract.
@@ -39,6 +39,8 @@ class Events:
             The path to the parquet file.
         damages: Damages instance
             The damages object containing the contracts and claims data.
+        tag: str
+            The tag to add to the pickle file (e.g. damage dataset).
         """
         if self.use_dump and self.events is not None:
             print("Events were reloaded from pickle file.")
@@ -51,7 +53,7 @@ class Events:
         self.select_years_with_contracts(damages)
         self.select_locations_with_contracts(damages)
         self._add_event_id()
-        self._dump_object()
+        self._dump_object(f'events_{tag}.pickle')
 
     def get_events_sample(self):
         """

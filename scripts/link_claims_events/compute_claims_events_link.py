@@ -29,16 +29,16 @@ TARGET_TYPE = 'occurrence'  # 'occurrence' or 'damage_ratio'
 LABEL_RESULTING_FILE = 'original_w_prior_pluvial_' + TARGET_TYPE
 SAVE_AS_CSV = False
 
-DAMAGE_DATASET = 'gvz'  # 'mobiliar' or 'gvz'
+DATASET = 'gvz'  # 'mobiliar' or 'gvz'
 
-if DAMAGE_DATASET == 'mobiliar':
+if DATASET == 'mobiliar':
     EXPOSURE_CATEGORIES = ['external']
     CLAIM_CATEGORIES = ['external', 'pluvial']
     CONFIG.set('DIR_EXPOSURE', CONFIG.get('DIR_EXPOSURE_MOBILIAR'))
     CONFIG.set('DIR_CLAIMS', CONFIG.get('DIR_CLAIMS_MOBILIAR'))
     CONFIG.set('YEAR_START', CONFIG.get('YEAR_START_MOBILIAR'))
     CONFIG.set('YEAR_END', CONFIG.get('YEAR_END_MOBILIAR'))
-elif DAMAGE_DATASET == 'gvz':
+elif DATASET == 'gvz':
     EXPOSURE_CATEGORIES = ['all_buildings']
     CLAIM_CATEGORIES = ['likely_pluvial']
     CONFIG.set('DIR_EXPOSURE', CONFIG.get('DIR_EXPOSURE_GVZ'))
@@ -46,7 +46,7 @@ elif DAMAGE_DATASET == 'gvz':
     CONFIG.set('YEAR_START', CONFIG.get('YEAR_START_GVZ'))
     CONFIG.set('YEAR_END', CONFIG.get('YEAR_END_GVZ'))
 else:
-    raise ValueError(f"Unknown damage dataset: {DAMAGE_DATASET}")
+    raise ValueError(f"Unknown damage dataset: {DATASET}")
 
 
 def main():
@@ -62,12 +62,12 @@ def main():
 
     # Assign the target value to the events
     events = Events()
-    events.load_events_and_select_those_with_contracts(EVENTS_PATH, damages)
+    events.load_events_and_select_those_with_contracts(EVENTS_PATH, damages, DATASET)
     events.set_target_values_from_damages(damages)
     events.set_contracts_number(damages)
 
     # Save the events with target values to a pickle file
-    filename = f'events_with_{DAMAGE_DATASET}_target_values_{LABEL_RESULTING_FILE}'
+    filename = f'events_with_{DATASET}_target_values_{LABEL_RESULTING_FILE}'
     events.save_to_pickle(filename=filename + '.pickle')
     if SAVE_AS_CSV:
         events.save_to_csv(filename=filename + '.csv')
@@ -77,41 +77,41 @@ def main():
 
 def get_damages_linked_to_events():
     label = LABEL_DAMAGE_LINK.replace(" ", "_")
-    filename = f'damages_{DAMAGE_DATASET}_linked_{label}.pickle'
+    filename = f'damages_{DATASET}_linked_{label}.pickle'
     file_path = Path(PICKLES_DIR + '/' + filename)
 
     if file_path.exists():
         print(f"Link for {CRITERIA} already computed.")
-        if DAMAGE_DATASET == 'mobiliar':
+        if DATASET == 'mobiliar':
             damages = DamagesMobiliar(pickle_file=filename,
                                       year_start=CONFIG.get('YEAR_START'),
                                       year_end=CONFIG.get('YEAR_END'))
-        elif DAMAGE_DATASET == 'gvz':
+        elif DATASET == 'gvz':
             damages = DamagesGvz(pickle_file=filename,
                                  year_start=CONFIG.get('YEAR_START'),
                                  year_end=CONFIG.get('YEAR_END'))
         else:
-            raise ValueError(f"Unknown damage dataset: {DAMAGE_DATASET}")
+            raise ValueError(f"Unknown damage dataset: {DATASET}")
         return damages
 
     print(f"Computing link for {CRITERIA}")
-    if DAMAGE_DATASET == 'mobiliar':
+    if DATASET == 'mobiliar':
         damages = DamagesMobiliar(dir_exposure=CONFIG.get('DIR_EXPOSURE'),
                                   dir_claims=CONFIG.get('DIR_CLAIMS'),
                                   year_start=CONFIG.get('YEAR_START'),
                                   year_end=CONFIG.get('YEAR_END'))
-    elif DAMAGE_DATASET == 'gvz':
+    elif DATASET == 'gvz':
         damages = DamagesGvz(dir_exposure=CONFIG.get('DIR_EXPOSURE'),
                              dir_claims=CONFIG.get('DIR_CLAIMS'),
                              year_start=CONFIG.get('YEAR_START'),
                              year_end=CONFIG.get('YEAR_END'))
     else:
-        raise ValueError(f"Unknown damage dataset: {DAMAGE_DATASET}")
+        raise ValueError(f"Unknown damage dataset: {DATASET}")
 
     damages.select_categories_type(EXPOSURE_CATEGORIES, CLAIM_CATEGORIES)
 
     events = Events()
-    events.load_events_and_select_those_with_contracts(EVENTS_PATH, damages)
+    events.load_events_and_select_those_with_contracts(EVENTS_PATH, damages, DATASET)
 
     damages.link_with_events(events, criteria=CRITERIA, filename=filename,
                              window_days=WINDOW_DAYS)

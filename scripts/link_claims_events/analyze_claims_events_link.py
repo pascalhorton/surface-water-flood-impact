@@ -30,6 +30,7 @@ PARAMETERS = [  # [label, [criteria], [window_days]]
     ['v5 4win', ['prior', 'i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt'], [5, 3, 2, 1]]
 ]
 
+DATASET = 'mobiliar'
 EXPOSURE_CATEGORIES = ['external']
 CLAIM_CATEGORIES = ['external', 'pluvial']
 
@@ -50,7 +51,7 @@ def main():
         pickle_file=f'damages_linked_{PARAMETERS[0][0].replace(" ", "_")}.pickle')
     events = Events()
     events.load_events_and_select_those_with_contracts(
-        CONFIG.get('EVENTS_PATH'), damages)
+        CONFIG.get('EVENTS_PATH'), damages, DATASET)
     del damages
 
     precip = None
@@ -124,7 +125,7 @@ def compute_link_and_save_to_pickle():
 
         events = Events()
         events.load_events_and_select_those_with_contracts(
-            CONFIG.get('EVENTS_PATH'), damages)
+            CONFIG.get('EVENTS_PATH'), damages, DATASET)
 
         damages.link_with_events(events, criteria=criteria, filename=filename,
                                  window_days=window_days)

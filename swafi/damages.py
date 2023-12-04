@@ -41,6 +41,7 @@ class Damages:
         pickle_dir: str
             The path to the working directory for pickle files
         """
+        self.name = None  # Name of the dataset to be defined in the child class
         self.use_dump = use_dump
         self.pickles_dir = pickle_dir
         if pickle_dir is None:
@@ -234,7 +235,7 @@ class Damages:
         self.exposure['selection'] = self.exposure[categories].sum(axis=1)
 
     def link_with_events(self, events, criteria=None, window_days=None,
-                         filename='damages_matched.pickle'):
+                         filename=None):
         """
         Link the damages with the events.
 
@@ -264,6 +265,8 @@ class Damages:
             window_days = [5, 3, 1]
         if criteria is None:
             criteria = ['i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt']
+        if filename is None:
+            filename = f'damages_{self.name}_matched.pickle'
 
         self._add_event_matching_fields(events, window_days, criteria)
         stats = dict(none=0, single=0, two=0, three=0, multiple=0,
@@ -570,7 +573,8 @@ class Damages:
         Extracts the cells with at least 1 claim.
         """
         # Extract the pixels where the catalog is not null
-        extracted = np.extract(self.mask['mask'], data[0, :, :])
+        assert data.ndim == 2, f"Data should be 3D in _extract_non_null_claims()."
+        extracted = np.extract(self.mask['mask'], data[:, :])
         if data.sum() != extracted.sum():
             raise RuntimeError(
                 f"Missed claims during extraction: {data.sum() - extracted.sum()}")
@@ -627,7 +631,7 @@ class Damages:
         """
         Check shape consistency with other files.
         """
-        assert data.ndim == 3, f"Data should be 3D in _check_shape()."
+        assert data.ndim == 2, f"Data should be 2D in _check_shape()."
         if self.mask['shape'] is None:
             self.mask['shape'] = data.shape
         elif self.mask['shape'] != data.shape:
@@ -637,7 +641,7 @@ class Damages:
         """
         Creates a mask with True for all pixels containing at least 1 annual exposure.
         """
-        self.mask['mask'] = np.zeros(self.mask['shape'][1:], dtype=bool)
+        self.mask['mask'] = np.zeros(self.mask['shape'][:], dtype=bool)
         for arr in exposure_data:
             max_value = arr.max(axis=0)
             self.mask['mask'][max_value > 0] = True
@@ -689,12 +693,14 @@ class Damages:
             if hasattr(values, 'selected_exposure_categories'):
                 self.selected_exposure_categories = values.selected_exposure_categories
 
-    def _dump_object(self, filename='damages.pickle'):
+    def _dump_object(self, filename=None):
         """
         Saves the object content to a pickle file.
         """
         if not self.use_dump:
             return
+        if filename is None:
+            filename = f'damages_{self.name}.pickle'
         file_path = Path(self.pickles_dir + '/' + filename)
         with open(file_path, 'wb') as f:
             pickle.dump(self, f)

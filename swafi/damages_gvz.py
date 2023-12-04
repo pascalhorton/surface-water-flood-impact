@@ -46,6 +46,8 @@ class DamagesGvz(Damages):
         super().__init__(cid_file=cid_file, year_start=year_start, year_end=year_end,
                          use_dump=use_dump, pickle_dir=pickle_dir)
 
+        self.name = 'gvz'
+
         self.exposure_categories = [
             'all_buildings']
 
@@ -53,15 +55,15 @@ class DamagesGvz(Damages):
             'all_buildings']
 
         self.claim_categories = [
-            'a',  # most likely surface flood
-            'b',
-            'c',
-            'd',
-            'e']  # most likely fluvial flood
+            'A',  # most likely surface flood
+            'B',
+            'C',
+            'D',
+            'E']  # most likely fluvial flood
 
         self.selected_claim_categories = [
-            'a',
-            'b']
+            'A',
+            'B']
 
         self._create_exposure_claims_df()
         self._load_from_dump('damages_gvz')
@@ -97,19 +99,19 @@ class DamagesGvz(Damages):
 
         for cat_type in types:
             if cat_type.lower() == 'most_likely_pluvial':
-                columns = [i for i in columns if i in ['a']]
+                columns = [i for i in columns if i in ['A']]
                 continue
             elif cat_type.lower() == 'likely_pluvial':
-                columns = [i for i in columns if i in ['a', 'b']]
+                columns = [i for i in columns if i in ['A', 'B']]
                 continue
             elif cat_type.lower() == 'fluvial_or_pluvial':
-                columns = [i for i in columns if i in ['a', 'b', 'c']]
+                columns = [i for i in columns if i in ['A', 'B', 'C']]
                 continue
             elif cat_type.lower() == 'likely_fluvial':
-                columns = [i for i in columns if i in ['d', 'e']]
+                columns = [i for i in columns if i in ['D', 'E']]
                 continue
             elif cat_type.lower() == 'most_likely_fluvial':
-                columns = [i for i in columns if i in ['e']]
+                columns = [i for i in columns if i in ['E']]
                 continue
             else:
                 raise ValueError(f"Unknown claim type: {cat_type}")
@@ -162,7 +164,7 @@ class DamagesGvz(Damages):
             self.domain.check_resolution(dataset, file)
             self._check_extent(dataset, file)
             data = dataset.variables['number_of_buildings'][:]
-            self._check_shape(data, file)
+            self._check_shape(data[0, :, :], file)
 
             # Convert dates to datetime
             time_data = dataset.variables['time']
@@ -191,17 +193,67 @@ class DamagesGvz(Damages):
         """
         Extracts all claims data.
         """
-        pass
+        files = glob.glob(directory + '/gvz_flood_claims*.nc')
+        assert len(files) == 1
+        self._parse_claim_files(files)
 
-    def _parse_claim_files(self, files, category):
+    def _parse_claim_files(self, files):
         """
-        Parse the claim files for a given category.
+        Parse the claim files.
         """
-        pass
+        file = files[0]
+        with nc4.Dataset(file) as dataset:
+            self.domain.check_resolution(dataset, file)
+            self._check_extent(dataset, file)
+            data = dataset.variables['claim_count'][:]
+            self._check_shape(data[0, 0, :, :], file)
+
+            # Convert dates to datetime
+            time_data = dataset.variables['time']
+            time_units = time_data.units
+            time_calendar = time_data.calendar
+            time = nc4.num2date(time_data[:], units=time_units, calendar=time_calendar)
+
+            # Extract years and check with the period of interest
+            years = [t.year for t in time]
+
+            if self.year_start < min(years):
+                raise RuntimeError(f"The starting year {self.year_start} is before the "
+                                   f"first year of the data {min(years)}.")
+            if self.year_end > max(years):
+                raise RuntimeError(f"The ending year {self.year_end} is after the "
+                                   f"last year of the data {max(years)}.")
+
+            # Extract the data for the period of interest
+            i_start = years.index(self.year_start)
+            # Get index of the last occurrence of the year
+            i_end = len(years) - 1 - years[::-1].index(self.year_end)
+
+            dates = time[i_start:i_end + 1]
+            data = data[:, i_start:i_end + 1, :, :]
+            types = dataset.variables['type'][:]
+
+            for i_cat, cat in enumerate(types):
+                df_claims = pd.DataFrame(columns=['date_claim', 'mask_index', cat])
+                df_claims = df_claims.astype('int32')
+                df_claims['date_claim'] = pd.to_datetime(df_claims['date_claim'])
+                for i_date, date in enumerate(dates):
+                    date = datetime(date.year, date.month, date.day).date()
+                    indices, values = self._extract_non_null_claims(
+                        data[i_cat, i_date, :, :])
+                    df_case = pd.DataFrame(columns=['date_claim', 'mask_index', cat])
+                    df_case['date_claim'] = [date] * len(indices)
+                    df_case['mask_index'] = indices
+                    df_case[cat] = values
+                    df_claims = pd.concat([df_claims, df_case])
+
+                self._store_in_claims_dataframe(df_claims)
 
     @staticmethod
     def _extract_date_from_filename(file):
         """
         Extracts the date from the file name.
         """
-        pass
+        filename = ntpath.basename(file)
+        filename_date = filename.split("_")[1]
+        return datetime.strptime(filename_date, '%Y%m%d').date()

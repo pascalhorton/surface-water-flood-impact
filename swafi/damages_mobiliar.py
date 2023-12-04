@@ -45,6 +45,8 @@ class DamagesMobiliar(Damages):
         super().__init__(cid_file=cid_file, year_start=year_start, year_end=year_end,
                          use_dump=use_dump, pickle_dir=pickle_dir)
 
+        self.name = 'mobiliar'
+
         self.exposure_categories = [
             'sme_ext_cont',  # SME, external, content
             'sme_ext_struc',  # SME, external, structure
@@ -233,7 +235,7 @@ class DamagesMobiliar(Damages):
                 self.domain.check_resolution(dataset, file)
                 self._check_extent(dataset, file)
                 data = dataset.read()
-                self._check_shape(data, file)
+                self._check_shape(data[0, :, :], file)
                 if all_data is None:
                     all_data = data
                 else:
@@ -266,13 +268,13 @@ class DamagesMobiliar(Damages):
                 self.domain.check_resolution(dataset, file)
                 self._check_extent(dataset, file)
                 data = dataset.read()
-                self._check_shape(data, file)
+                self._check_shape(data[0, :, :], file)
 
                 # Claims can be empty for a given type of object or phenomenon
                 if data.sum() == 0:
                     continue
 
-                indices, values = self._extract_non_null_claims(data)
+                indices, values = self._extract_non_null_claims(data[0, :, :])
                 date = self._extract_date_from_filename(file)
                 df_case = pd.DataFrame(columns=['date_claim', 'mask_index', category])
                 df_case['date_claim'] = [date] * len(indices)
