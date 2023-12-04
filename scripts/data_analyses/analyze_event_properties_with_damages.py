@@ -18,7 +18,7 @@ output_dir = config.output_dir
 
 def main():
     # Load events
-    events_filename = f'events_with_target_values_{LABEL_EVENT_FILE}.pickle'
+    events_filename = f'events_{DATASET}_with_target_values_{LABEL_EVENT_FILE}.pickle'
     events = load_events_from_pickle(filename=events_filename)
     events_df = events.events
 

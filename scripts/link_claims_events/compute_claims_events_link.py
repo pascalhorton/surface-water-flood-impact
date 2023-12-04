@@ -29,7 +29,7 @@ TARGET_TYPE = 'occurrence'  # 'occurrence' or 'damage_ratio'
 LABEL_RESULTING_FILE = 'original_w_prior_pluvial_' + TARGET_TYPE
 SAVE_AS_CSV = False
 
-DATASET = 'gvz'  # 'mobiliar' or 'gvz'
+DATASET = 'mobiliar'  # 'mobiliar' or 'gvz'
 
 if DATASET == 'mobiliar':
     EXPOSURE_CATEGORIES = ['external']
@@ -67,7 +67,7 @@ def main():
     events.set_contracts_number(damages)
 
     # Save the events with target values to a pickle file
-    filename = f'events_with_{DATASET}_target_values_{LABEL_RESULTING_FILE}'
+    filename = f'events_{DATASET}_with_target_values_{LABEL_RESULTING_FILE}'
     events.save_to_pickle(filename=filename + '.pickle')
     if SAVE_AS_CSV:
         events.save_to_csv(filename=filename + '.csv')
