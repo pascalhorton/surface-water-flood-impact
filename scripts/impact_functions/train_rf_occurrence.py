@@ -36,17 +36,17 @@ def main():
     elif args.config == 1:
         pass
     elif args.config == 2:
-        rf.select_nb_contracts_greater_or_equal_to(2)
+        rf.select_nb_claims_greater_or_equal_to(2)
     elif args.config == 3:
-        rf.select_nb_contracts_greater_or_equal_to(5)
+        rf.select_nb_claims_greater_or_equal_to(3)
     elif args.config == 4:
-        rf.select_nb_contracts_greater_or_equal_to(10)
+        rf.select_nb_claims_greater_or_equal_to(4)
     elif args.config == 5:
-        rf.select_nb_contracts_greater_or_equal_to(20)
+        rf.select_nb_claims_greater_or_equal_to(2)
     elif args.config == 6:
-        rf.select_nb_contracts_greater_or_equal_to(50)
+        rf.select_nb_claims_greater_or_equal_to(3)
     elif args.config == 7:
-        rf.select_nb_contracts_greater_or_equal_to(100)
+        rf.select_nb_claims_greater_or_equal_to(4)
 
     rf.load_features(['event', 'terrain', 'swf_map', 'flowacc', 'twi',
                       'land_cover', 'runoff_coeff'])

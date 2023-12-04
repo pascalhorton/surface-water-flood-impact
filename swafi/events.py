@@ -117,12 +117,16 @@ class Events:
         damages: Damages instance
             An object containing the damages properties.
         """
-        target_values = damages.claims.loc[:, ['eid', 'target']]
+        target_values = damages.claims.loc[:, ['eid', 'selection', 'target']]
+
+        # Rename the column selection to claims_nb
+        target_values.rename(columns={'selection': 'nb_claims'}, inplace=True)
 
         # Merge the target values with the events
         self.events = pd.merge(self.events, target_values,
                                how="left", on=['eid'])
         self.events['target'] = self.events['target'].fillna(0)
+        self.events['nb_claims'] = self.events['nb_claims'].fillna(0)
 
     def set_contracts_number(self, damages):
         """

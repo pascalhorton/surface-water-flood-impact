@@ -124,6 +124,19 @@ class Impact:
         """
         self.df = self.df[self.df['nb_contracts'] >= threshold]
 
+    def select_nb_claims_greater_or_equal_to(self, threshold):
+        """
+        Select only events with a number of claims above or equal to the given
+        threshold.
+
+        Parameters
+        ----------
+        threshold: int
+            The threshold
+        """
+        self.df = self.df[(self.df['nb_claims'] == 0) |
+                          (self.df['nb_claims'] >= threshold)]
+
     def split_sample(self, valid_test_size=0.3):
         """
         Split the sample into training, validation and test sets.

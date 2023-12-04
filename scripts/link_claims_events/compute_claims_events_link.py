@@ -29,7 +29,7 @@ TARGET_TYPE = 'occurrence'  # 'occurrence' or 'damage_ratio'
 LABEL_RESULTING_FILE = 'original_w_prior_pluvial_' + TARGET_TYPE
 SAVE_AS_CSV = False
 
-DATASET = 'mobiliar'  # 'mobiliar' or 'gvz'
+DATASET = 'gvz'  # 'mobiliar' or 'gvz'
 
 if DATASET == 'mobiliar':
     EXPOSURE_CATEGORIES = ['external']
