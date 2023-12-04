@@ -162,6 +162,9 @@ class ImpactDeepLearning(Impact):
         super().__init__(events, target_type=target_type, random_state=random_state)
         self.reload_trained_models = reload_trained_models
 
+        self.precipitation = None
+        self.dem = None
+
     def fit(self, tag=None):
         """
         Fit the model.
@@ -192,3 +195,25 @@ class ImpactDeepLearning(Impact):
         tmp_filename = self.tmp_dir / model_hashed_name
 
         return tmp_filename
+
+    def set_precipitation(self, precipitation):
+        """
+        Set the precipitation data.
+
+        Parameters
+        ----------
+        precipitation: xarray.Dataset
+            The precipitation data.
+        """
+        self.precipitation = precipitation
+
+    def set_dem(self, dem):
+        """
+        Set the DEM data.
+
+        Parameters
+        ----------
+        dem: xarray.Dataset
+            The DEM data.
+        """
+        self.dem = dem
