@@ -10,6 +10,8 @@ import keras
 import tensorflow as tf
 import xarray as xr
 import numpy as np
+import pandas as pd
+from pathlib import Path
 
 
 class ImpactDeepLearning(Impact):
@@ -30,9 +32,10 @@ class ImpactDeepLearning(Impact):
     """
 
     class DataGenerator(keras.utils.Sequence):
-        def __init__(self, x_static, x_precip, x_dem, y, batch_size=32, shuffle=True,
-                     load=True, window_size=12, mean_static=None, std_static=None,
-                     mean_precip=None, std_precip=None, mean_dem=None, std_dem=None)
+        def __init__(self, dates, x_static, x_precip, x_dem, y, batch_size=32,
+                     shuffle=True, load=False, window_size=12, mean_static=None,
+                     std_static=None, mean_precip=None, std_precip=None, mean_dem=None,
+                     std_dem=None, precip_normalization='domain-average', tmp_dir=None):
             """
             Data generator class.
             Template from https://stanford.edu/~shervine/blog/keras-how-to-generate-data-on-the-fly
@@ -40,9 +43,11 @@ class ImpactDeepLearning(Impact):
 
             Parameters
             ----------
+            dates: np.array
+                The dates of the events.
             x_static: np.array
                 The static predictor variables (0D).
-            x_precip: xarray.DataArray
+            x_precip: xarray.Dataset
                 The precipitation fields (3D).
             x_dem: xarray.DataArray
                 The DEM (2D).
@@ -68,7 +73,13 @@ class ImpactDeepLearning(Impact):
                 The mean of the DEM data.
             std_dem: np.array
                 The standard deviation of the DEM data.
+            precip_normalization: str
+                The normalization to apply to the precipitation data: 'domain-average',
+                or 'per-pixel'.
+            tmp_dir: Path
+                The temporary directory to use.
             """
+            self.dates = dates
             self.y = y
             self.batch_size = batch_size
             self.shuffle = shuffle
@@ -77,18 +88,9 @@ class ImpactDeepLearning(Impact):
             self.X_static = x_static
             self.X_precip = x_precip
             self.X_dem = x_dem
-            self.mean_static = self.X_static.mean(
-                ('events')).compute() if mean_static is None else mean_static
-            self.std_static = self.X_static.std('time').mean(
-                ('lat', 'lon')).compute() if std_static is None else std_static
-            self.mean_precip = self.X_precip.mean(
-                ('time', 'x', 'y')).compute() if mean_precip is None else mean_precip
-            self.std_precip = self.X_precip.std('time').mean(
-                ('x', 'y')).compute() if std_precip is None else std_precip
-            self.mean_dem = self.X_dem.mean(
-                ('x', 'y')).compute() if mean_dem is None else mean_dem
-            self.std_dem = self.X_dem.std(
-                ('x', 'y')).compute() if std_dem is None else std_dem
+            self._compute_predictor_statistics(mean_dem, mean_precip, mean_static,
+                                               precip_normalization, std_dem,
+                                               std_precip, std_static, tmp_dir)
 
             # Normalize
             self.X_static = (self.X_static - self.mean_static) / self.std_static
@@ -100,10 +102,97 @@ class ImpactDeepLearning(Impact):
 
             if load:
                 print('Loading data into RAM')
-                self.X_static.load()
                 self.X_precip.load()
                 self.X_dem.load()
-                self.y.load()
+
+        def _compute_predictor_statistics(self, mean_dem, mean_precip, mean_static,
+                                          precip_normalization, std_dem, std_precip,
+                                          std_static, tmp_dir):
+            self.mean_static = np.mean(
+                self.X_static, axis=0) if mean_static is None else mean_static
+            self.std_static = np.std(
+                self.X_static, axis=0) if std_static is None else std_static
+
+            file_hash = self._compute_hash(precip_normalization)
+            if precip_normalization == 'domain-average':
+                # Compute the mean of the precipitation
+                if mean_precip is None:
+                    # If pickle file exists, load it
+                    tmp_filename = tmp_dir / f'mean_precip_{file_hash}.pickle'
+                    if tmp_filename.exists():
+                        with open(tmp_filename, 'rb') as f:
+                            self.mean_precip = pickle.load(f)
+                    else:
+                        self.mean_precip = self.X_precip.mean(
+                            ('time', 'x', 'y')
+                        ).compute()
+                        # Save to pickle file
+                        with open(tmp_filename, 'wb') as f:
+                            pickle.dump(self.mean_precip, f)
+                else:
+                    self.mean_precip = mean_precip
+
+                # Compute the standard deviation of the precipitation
+                if std_precip is None:
+                    # If pickle file exists, load it
+                    tmp_filename = tmp_dir / f'std_precip_{file_hash}.pickle'
+                    if tmp_filename.exists():
+                        with open(tmp_filename, 'rb') as f:
+                            self.std_precip = pickle.load(f)
+                    else:
+                        self.std_precip = self.X_precip.std('time').mean(
+                            ('x', 'y')
+                        ).compute()
+                        # Save to pickle file
+                        with open(tmp_filename, 'wb') as f:
+                            pickle.dump(self.std_precip, f)
+
+            elif precip_normalization == 'per-pixel':
+                # Compute the mean of the precipitation
+                if mean_precip is None:
+                    # If pickle file exists, load it
+                    tmp_filename = tmp_dir / f'mean_precip_{file_hash}.pickle'
+                    if tmp_filename.exists():
+                        with open(tmp_filename, 'rb') as f:
+                            self.mean_precip = pickle.load(f)
+                    else:
+                        self.mean_precip = self.X_precip.mean('time').compute()
+                        # Save to pickle file
+                        with open(tmp_filename, 'wb') as f:
+                            pickle.dump(self.mean_precip, f)
+                else:
+                    self.mean_precip = mean_precip
+
+                    # Compute the standard deviation of the precipitation
+                    if std_precip is None:
+                        # If pickle file exists, load it
+                        tmp_filename = tmp_dir / f'std_precip_{file_hash}.pickle'
+                        if tmp_filename.exists():
+                            with open(tmp_filename, 'rb') as f:
+                                self.std_precip = pickle.load(f)
+                        else:
+                            self.std_precip = self.X_precip.std('time').compute()
+                            # Save to pickle file
+                            with open(tmp_filename, 'wb') as f:
+                                pickle.dump(self.std_precip, f)
+            else:
+                raise ValueError(
+                    f'Unknown normalization method: {precip_normalization}')
+
+            self.mean_dem = self.X_dem.mean(
+                ('x', 'y')).compute() if mean_dem is None else mean_dem
+            self.std_dem = self.X_dem.std(
+                ('x', 'y')).compute() if std_dem is None else std_dem
+
+        def _compute_hash(self, precip_normalization):
+            tag_data = (
+                    pickle.dumps(precip_normalization) +
+                    pickle.dumps(len(self.dates)) +
+                    pickle.dumps(self.dates[0]) +
+                    pickle.dumps(self.dates[-1]) +
+                    pickle.dumps(self.X_precip.shape))
+
+            return hashlib.md5(tag_data).hexdigest()
 
         def __len__(self):
             """Denotes the number of batches per epoch"""
@@ -164,6 +253,8 @@ class ImpactDeepLearning(Impact):
 
         self.precipitation = None
         self.dem = None
+        self.precip_days_before = 5
+        self.precip_days_after = 3
 
     def fit(self, tag=None):
         """
@@ -174,7 +265,44 @@ class ImpactDeepLearning(Impact):
         tag: str
             The tag to add to the file name.
         """
-        raise NotImplementedError
+        start_train = self.dates_train[0] - pd.to_timedelta(
+            self.precip_days_before, unit='D')
+        end_train = self.dates_train[-1] + pd.to_timedelta(
+            self.precip_days_after, unit='D')
+        dg_train = self.DataGenerator(
+            dates=self.dates_train,
+            x_static=self.x_train,
+            x_precip=self.precipitation.sel(time=slice(start_train, end_train)),
+            x_dem=self.dem,
+            y=self.y_train,
+            batch_size=32,
+            shuffle=True,
+            load=True,
+            window_size=12,
+            tmp_dir=self.tmp_dir,
+        )
+
+        start_val = self.dates_valid[0] - pd.to_timedelta(
+            self.precip_days_before, unit='D')
+        end_val = self.dates_valid[-1] + pd.to_timedelta(
+            self.precip_days_after, unit='D')
+        dg_val = self.DataGenerator(
+            dates=self.dates_valid,
+            x_static=self.x_valid,
+            x_precip=self.precipitation.sel(time=slice(start_val, end_val)),
+            x_dem=self.dem,
+            y=self.y_valid,
+            batch_size=32,
+            shuffle=False,
+            load=True,
+            window_size=12,
+            mean_static=dg_train.mean_static,
+            std_static=dg_train.std_static,
+            mean_precip=dg_train.mean_precip,
+            std_precip=dg_train.std_precip,
+            mean_dem=dg_train.mean_dem,
+            std_dem=dg_train.std_dem,
+        )
 
     def _define_model(self):
         """
@@ -205,7 +333,12 @@ class ImpactDeepLearning(Impact):
         precipitation: xarray.Dataset
             The precipitation data.
         """
+        assert len(precipitation.dims) == 3, "Precipitation must be 3D"
+        if self.dem is not None:
+            assert precipitation['precip'].shape[1:] == self.dem.shape, \
+                "DEM and precipitation must have the same shape"
         self.precipitation = precipitation
+        self.precipitation['time'] = pd.to_datetime(self.precipitation['time'])
 
     def set_dem(self, dem):
         """
@@ -216,4 +349,8 @@ class ImpactDeepLearning(Impact):
         dem: xarray.Dataset
             The DEM data.
         """
+        assert dem.ndim == 2, "DEM must be 2D"
+        if self.precipitation is not None:
+            assert dem.shape == self.precipitation.isel(time=0).shape, \
+                "DEM and precipitation must have the same shape"
         self.dem = dem

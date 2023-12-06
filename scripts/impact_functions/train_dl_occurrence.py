@@ -4,6 +4,7 @@ Train a deep learning model to predict the occurrence of damages.
 
 import argparse
 import xarray as xr
+import rioxarray as rxr
 from glob import glob
 
 from swafi.config import Config
@@ -11,7 +12,7 @@ from swafi.impact_dl import ImpactDeepLearning
 from swafi.events import load_events_from_pickle
 
 
-DATASET = 'mobiliar'  # 'mobiliar' or 'gvz'
+DATASET = 'gvz'  # 'mobiliar' or 'gvz'
 LABEL_EVENT_FILE = 'original_w_prior_pluvial_occurrence'
 
 config = Config()
@@ -38,15 +39,18 @@ def main():
     elif args.config == 1:
         pass
 
+    # Load DEM
+    dem = rxr.open_rasterio(config.get('DEM_PATH'), masked=True).squeeze()
+    dl.set_dem(dem)
+
     # Load CombiPrecip files
     data_path = config.get('DIR_PRECIP')
     files = sorted(glob(f"{data_path}/*.nc"))
-    precip = xr.open_mfdataset(files, parallel=True)
+    precip = xr.open_mfdataset(files, parallel=False)
+    precip = precip.rename_vars({'CPC': 'precip'})
+    precip = precip.rename({'REFERENCE_TS': 'time'})
+    precip = precip.sel(x=dem.x, y=dem.y)  # Select the same domain as the DEM
     dl.set_precipitation(precip)
-
-    # Load DEM
-    dem = xr.open_dataset(config.get('DEM_PATH'))
-    dl.set_dem(dem)
 
     # Load static features
     dl.load_features(['event', 'terrain', 'swf_map', 'flowacc', 'twi',
