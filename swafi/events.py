@@ -117,9 +117,10 @@ class Events:
         damages: Damages instance
             An object containing the damages properties.
         """
-        target_values = damages.claims.loc[:, ['eid', 'selection', 'target']]
+        target_values = damages.claims.loc[:, ['date_claim', 'eid',
+                                               'selection', 'target']]
 
-        # Rename the column selection to claims_nb
+        # Rename the column selection to nb_claims
         target_values.rename(columns={'selection': 'nb_claims'}, inplace=True)
 
         # Merge the target values with the events

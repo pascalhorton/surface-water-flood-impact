@@ -35,6 +35,9 @@ class Impact:
         self.df = events.events
         self.target_type = target_type
         self.model = None
+        self.dates_train = None
+        self.dates_valid = None
+        self.dates_test = None
         self.x_train = None
         self.x_test = None
         self.x_valid = None
@@ -146,10 +149,19 @@ class Impact:
         valid_test_size: float
             The size of the set for validation and testing (default: 0.3)
         """
+        # Sort the dataframe by date
+        self.df.sort_values(by=['e_end'], inplace=True)
         x = self.df[self.features].to_numpy()
-        y = self.df['target'].to_numpy()
-        if self.target_type == 'occurrence':
-            y = y.astype(int)
+        y = self.df[['target', 'e_end', 'date_claim']].copy()
+        # Rename the column date_claim to date
+        y.rename(columns={'date_claim': 'date'}, inplace=True)
+        # Transform the dates to a date without time
+        y['e_end'] = pd.to_datetime(y['e_end']).dt.date
+        y['date'] = pd.to_datetime(y['date']).dt.date
+
+        # Fill NaN values with the event end date (as date, not datetime)
+        y['date'] = y['date'].fillna(y['e_end'])
+        y = y[['target', 'date']].to_numpy()
 
         # Remove lines with NaN values
         x_nan = np.argwhere(np.isnan(x))
@@ -160,10 +172,29 @@ class Impact:
             y = np.delete(y, rows_with_nan, axis=0)
 
         # Split the sample into training and test sets
+        # Do not shuffle to avoid having the same dates in train and test
         self.x_train, x_tmp, self.y_train, y_tmp = train_test_split(
-            x, y, test_size=valid_test_size, random_state=self.random_state)
+            x, y, test_size=valid_test_size, random_state=self.random_state,
+            shuffle=False)
         self.x_test, self.x_valid, self.y_test, self.y_valid = train_test_split(
-            x_tmp, y_tmp, test_size=0.5, random_state=self.random_state)
+            x_tmp, y_tmp, test_size=0.5, random_state=self.random_state,
+            shuffle=False)
+
+        # Set the event dates in a separate variable
+        self.dates_train = pd.to_datetime(self.y_train[:, 1])
+        self.dates_valid = pd.to_datetime(self.y_valid[:, 1])
+        self.dates_test = pd.to_datetime(self.y_test[:, 1])
+
+        val_y_train = self.y_train[:, 0].astype(float)
+        val_y_valid = self.y_valid[:, 0].astype(float)
+        val_y_test = self.y_test[:, 0].astype(float)
+        if self.target_type == 'occurrence':
+            val_y_train = val_y_train.astype(int)
+            val_y_valid = val_y_valid.astype(int)
+            val_y_test = val_y_test.astype(int)
+        self.y_train = val_y_train
+        self.y_valid = val_y_valid
+        self.y_test = val_y_test
 
     def normalize_features(self):
         """
