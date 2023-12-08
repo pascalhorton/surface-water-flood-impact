@@ -33,9 +33,12 @@ class ImpactDeepLearning(Impact):
 
     class DataGenerator(keras.utils.Sequence):
         def __init__(self, dates, x_static, x_precip, x_dem, y, batch_size=32,
-                     shuffle=True, load=False, window_size=12, mean_static=None,
-                     std_static=None, mean_precip=None, std_precip=None, mean_dem=None,
-                     std_dem=None, precip_normalization='domain-average', tmp_dir=None):
+                     shuffle=True, load=False, window_size=12, tmp_dir=None,
+                     transform_static='standardize', transform_2d='standardize',
+                     precip_transformation_domain='domain-average',
+                     log_transform_precip=True, mean_static=None, std_static=None,
+                     mean_precip=None, std_precip=None, min_static=None,
+                     max_static=None, max_precip=None):
             """
             Data generator class.
             Template from https://stanford.edu/~shervine/blog/keras-how-to-generate-data-on-the-fly
@@ -61,6 +64,19 @@ class ImpactDeepLearning(Impact):
                 Whether to load the data into memory or not.
             window_size: int
                 The window size for the 2D predictors [km].
+            tmp_dir: Path
+                The temporary directory to use.
+            transform_static: str
+                The transformation to apply to the static data: 'standardize' or
+                'normalize'.
+            transform_2d: str
+                The transformation to apply to the 2D data: 'standardize' or
+                'normalize'.
+            precip_transformation_domain: str
+                How to apply the transformation of the precipitation data:
+                'domain-average', or 'per-pixel'.
+            log_transform_precip: bool
+                Whether to log-transform the precipitation data or not.
             mean_static: np.array
                 The mean of the static data.
             std_static: np.array
@@ -69,15 +85,12 @@ class ImpactDeepLearning(Impact):
                 The mean of the precipitation data.
             std_precip: np.array
                 The standard deviation of the precipitation data.
-            mean_dem: np.array
-                The mean of the DEM data.
-            std_dem: np.array
-                The standard deviation of the DEM data.
-            precip_normalization: str
-                The normalization to apply to the precipitation data: 'domain-average',
-                or 'per-pixel'.
-            tmp_dir: Path
-                The temporary directory to use.
+            min_static: np.array
+                The min of the static data.
+            max_static: np.array
+                The max of the static data.
+            max_precip: np.array
+                The max of the precipitation data.
             """
             self.dates = dates
             self.y = y
@@ -88,9 +101,10 @@ class ImpactDeepLearning(Impact):
             self.X_static = x_static
             self.X_precip = x_precip
             self.X_dem = x_dem
-            self._compute_predictor_statistics(mean_dem, mean_precip, mean_static,
-                                               precip_normalization, std_dem,
-                                               std_precip, std_static, tmp_dir)
+            self._compute_predictor_statistics(
+                transform_static, transform_2d, precip_transformation_domain,
+                log_transform_precip, tmp_dir, mean_static, std_static, mean_precip,
+                std_precip, min_static, max_static, max_precip)
 
             # Normalize
             self.X_static = (self.X_static - self.mean_static) / self.std_static
@@ -105,88 +119,105 @@ class ImpactDeepLearning(Impact):
                 self.X_precip.load()
                 self.X_dem.load()
 
-        def _compute_predictor_statistics(self, mean_dem, mean_precip, mean_static,
-                                          precip_normalization, std_dem, std_precip,
-                                          std_static, tmp_dir):
-            self.mean_static = np.mean(
-                self.X_static, axis=0) if mean_static is None else mean_static
-            self.std_static = np.std(
-                self.X_static, axis=0) if std_static is None else std_static
+        def _compute_predictor_statistics(self, transform_static, transform_2d,
+                                          precip_transformation_domain,
+                                          log_transform_precip, tmp_dir,
+                                          mean_static, std_static, mean_precip,
+                                          std_precip, min_static, max_static,
+                                          max_precip):
+            if transform_static == 'standardize':
+                # Compute the mean and standard deviation of the static data
+                self.mean_static = np.mean(
+                    self.X_static, axis=0) if mean_static is None else mean_static
+                self.std_static = np.std(
+                    self.X_static, axis=0) if std_static is None else std_static
+            elif transform_static == 'normalize':
+                # Compute the min and max of the static data
+                self.min_static = np.min(
+                    self.X_static, axis=0) if min_static is None else min_static
+                self.max_static = np.max(
+                    self.X_static, axis=0) if max_static is None else max_static
 
-            file_hash = self._compute_hash(precip_normalization)
-            if precip_normalization == 'domain-average':
-                # Compute the mean of the precipitation
-                if mean_precip is None:
-                    # If pickle file exists, load it
-                    tmp_filename = tmp_dir / f'mean_precip_{file_hash}.pickle'
-                    if tmp_filename.exists():
-                        with open(tmp_filename, 'rb') as f:
-                            self.mean_precip = pickle.load(f)
-                    else:
-                        self.mean_precip = self.X_precip['precip'].mean(
-                            ('time', 'x', 'y')
-                        ).compute().values
-                        # Save to pickle file
-                        with open(tmp_filename, 'wb') as f:
-                            pickle.dump(self.mean_precip, f)
-                else:
-                    self.mean_precip = mean_precip
+            if transform_2d == 'standardize':
+                # Compute the mean and standard deviation of the DEM (non-temporal)
+                self.mean_dem = self.X_dem.mean(('x', 'y')).compute().values
+                self.std_dem = self.X_dem.std(('x', 'y')).compute().values
+            elif transform_2d == 'normalize':
+                # Compute the min and max of the DEM (non-temporal)
+                self.min_dem = self.X_dem.min(('x', 'y')).compute().values
+                self.max_dem = self.X_dem.max(('x', 'y')).compute().values
 
-                # Compute the standard deviation of the precipitation
-                if std_precip is None:
-                    # If pickle file exists, load it
-                    tmp_filename = tmp_dir / f'std_precip_{file_hash}.pickle'
-                    if tmp_filename.exists():
-                        with open(tmp_filename, 'rb') as f:
-                            self.std_precip = pickle.load(f)
-                    else:
-                        self.std_precip = self.X_precip['precip'].std('time').mean(
-                            ('x', 'y')
-                        ).compute().values
-                        # Save to pickle file
-                        with open(tmp_filename, 'wb') as f:
-                            pickle.dump(self.std_precip, f)
+            # Compute the mean and standard deviation of the precipitation
+            if (transform_2d == 'standardize' and mean_precip is not None
+                    and std_precip is not None):
+                self.mean_precip = mean_precip
+                self.std_precip = std_precip
+                return
 
-            elif precip_normalization == 'per-pixel':
-                # Compute the mean of the precipitation
-                if mean_precip is None:
-                    # If pickle file exists, load it
-                    tmp_filename = tmp_dir / f'mean_precip_{file_hash}.pickle'
-                    if tmp_filename.exists():
-                        with open(tmp_filename, 'rb') as f:
-                            self.mean_precip = pickle.load(f)
-                    else:
-                        self.mean_precip = self.X_precip.mean('time').compute().values
-                        # Save to pickle file
-                        with open(tmp_filename, 'wb') as f:
-                            pickle.dump(self.mean_precip, f)
-                else:
-                    self.mean_precip = mean_precip
+            if transform_2d == 'normalize' and max_precip is not None:
+                self.max_precip = max_precip
+                return
 
-                    # Compute the standard deviation of the precipitation
-                    if std_precip is None:
-                        # If pickle file exists, load it
-                        tmp_filename = tmp_dir / f'std_precip_{file_hash}.pickle'
-                        if tmp_filename.exists():
-                            with open(tmp_filename, 'rb') as f:
-                                self.std_precip = pickle.load(f)
-                        else:
-                            self.std_precip = self.X_precip.std('time').compute().values
-                            # Save to pickle file
-                            with open(tmp_filename, 'wb') as f:
-                                pickle.dump(self.std_precip, f)
+            # If pickle file exists, load it
+            file_hash = self._compute_hash(precip_transformation_domain,
+                                           log_transform_precip)
+            file_mean_precip = tmp_dir / f'mean_precip_{file_hash}.pickle'
+            file_std_precip = tmp_dir / f'std_precip_{file_hash}.pickle'
+            file_max_precip = tmp_dir / f'max_precip_{file_hash}.pickle'
+
+            if (transform_2d == 'standardize' and file_mean_precip.exists()
+                    and file_std_precip.exists()):
+                with open(file_mean_precip, 'rb') as f:
+                    self.mean_precip = pickle.load(f)
+                with open(file_std_precip, 'rb') as f:
+                    self.std_precip = pickle.load(f)
+                return
+
+            if transform_2d == 'normalize' and file_max_precip.exists():
+                with open(file_max_precip, 'rb') as f:
+                    self.max_precip = pickle.load(f)
+                return
+
+            # Log transform the precipitation (log(1 + x))
+            if log_transform_precip:
+                self.X_precip['precip'] = np.log1p(self.X_precip['precip'])
+
+            if precip_transformation_domain == 'domain-average':
+                if transform_2d == 'standardize':
+                    self.mean_precip = self.X_precip['precip'].mean(
+                        ('time', 'x', 'y')).compute().values
+                    self.std_precip = self.X_precip['precip'].std('time').mean(
+                        ('x', 'y')).compute().values
+                elif transform_2d == 'normalize':
+                    self.max_precip = self.X_precip['precip'].max(
+                        ('time', 'x', 'y')).compute().values
+            elif precip_transformation_domain == 'per-pixel':
+                if transform_2d == 'standardize':
+                    self.mean_precip = self.X_precip['precip'].mean(
+                        'time').compute().values
+                    self.std_precip = self.X_precip['precip'].std(
+                        'time').compute().values
+                elif transform_2d == 'normalize':
+                    self.max_precip = self.X_precip['precip'].max(
+                        'time').compute().values
             else:
                 raise ValueError(
-                    f'Unknown normalization method: {precip_normalization}')
+                    f'Unknown option: {precip_transformation_domain}')
 
-            self.mean_dem = self.X_dem.mean(
-                ('x', 'y')).compute().values if mean_dem is None else mean_dem
-            self.std_dem = self.X_dem.std(
-                ('x', 'y')).compute().values if std_dem is None else std_dem
+            # Save to pickle file
+            if transform_2d == 'standardize':
+                with open(file_mean_precip, 'wb') as f:
+                    pickle.dump(self.mean_precip, f)
+                with open(file_std_precip, 'wb') as f:
+                    pickle.dump(self.std_precip, f)
+            elif transform_2d == 'normalize':
+                with open(file_max_precip, 'wb') as f:
+                    pickle.dump(self.max_precip, f)
 
-        def _compute_hash(self, precip_normalization):
+        def _compute_hash(self, precip_transformation_domain, log_transform_precip):
             tag_data = (
-                    pickle.dumps(precip_normalization) +
+                    pickle.dumps(precip_transformation_domain) +
+                    pickle.dumps(log_transform_precip) +
                     pickle.dumps(len(self.dates)) +
                     pickle.dumps(self.dates[0]) +
                     pickle.dumps(self.dates[-1]) +
