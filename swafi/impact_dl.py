@@ -98,18 +98,29 @@ class ImpactDeepLearning(Impact):
             self.shuffle = shuffle
             self.window_size = window_size
 
+            self.mean_static = mean_static
+            self.std_static = std_static
+            self.mean_precip = mean_precip
+            self.std_precip = std_precip
+            self.min_static = min_static
+            self.max_static = max_static
+            self.max_precip = max_precip
+            self.mean_dem = None
+            self.std_dem = None
+            self.min_dem = None
+            self.max_dem = None
+
             self.X_static = x_static
             self.X_precip = x_precip
             self.X_dem = x_dem
             self._compute_predictor_statistics(
                 transform_static, transform_2d, precip_transformation_domain,
-                log_transform_precip, tmp_dir, mean_static, std_static, mean_precip,
-                std_precip, min_static, max_static, max_precip)
+                log_transform_precip, tmp_dir)
+            if transform_static == 'standardize':
+                self._standardize_inputs()
+            elif transform_static == 'normalize':
+                self._normalize_inputs()
 
-            # Normalize
-            self.X_static = (self.X_static - self.mean_static) / self.std_static
-            self.X_precip = (self.X_precip - self.mean_precip) / self.std_precip
-            self.X_dem = (self.X_dem - self.mean_dem) / self.std_dem
             self.n_samples = self.y.shape[0]
 
             self.on_epoch_end()
@@ -119,25 +130,36 @@ class ImpactDeepLearning(Impact):
                 self.X_precip.load()
                 self.X_dem.load()
 
+        def _standardize_inputs(self):
+            self.X_static = (self.X_static - self.mean_static) / self.std_static
+            self.X_precip['precip'] = ((self.X_precip['precip'] - self.mean_precip) /
+                                       self.std_precip)
+            self.X_dem = (self.X_dem - self.mean_dem) / self.std_dem
+
+        def _normalize_inputs(self):
+            self.X_static = ((self.X_static - self.min_static) /
+                             (self.max_static - self.min_static))
+            self.X_precip['precip'] = self.X_precip['precip'] / self.max_precip
+            self.X_dem = (self.X_dem - self.min_dem) / (self.max_dem - self.min_dem)
+
         def _compute_predictor_statistics(self, transform_static, transform_2d,
                                           precip_transformation_domain,
-                                          log_transform_precip, tmp_dir,
-                                          mean_static, std_static, mean_precip,
-                                          std_precip, min_static, max_static,
-                                          max_precip):
+                                          log_transform_precip, tmp_dir):
+            print('Computing/assigning static predictor statistics')
             if transform_static == 'standardize':
                 # Compute the mean and standard deviation of the static data
-                self.mean_static = np.mean(
-                    self.X_static, axis=0) if mean_static is None else mean_static
-                self.std_static = np.std(
-                    self.X_static, axis=0) if std_static is None else std_static
+                if self.mean_static is None:
+                    self.mean_static = np.mean(self.X_static, axis=0)
+                if self.std_static is None:
+                    self.std_static = np.std(self.X_static, axis=0)
             elif transform_static == 'normalize':
                 # Compute the min and max of the static data
-                self.min_static = np.min(
-                    self.X_static, axis=0) if min_static is None else min_static
-                self.max_static = np.max(
-                    self.X_static, axis=0) if max_static is None else max_static
+                if self.min_static is None:
+                    self.min_static = np.min(self.X_static, axis=0)
+                if self.max_static is None:
+                    self.max_static = np.max(self.X_static, axis=0)
 
+            print('Computing DEM predictor statistics')
             if transform_2d == 'standardize':
                 # Compute the mean and standard deviation of the DEM (non-temporal)
                 self.mean_dem = self.X_dem.mean(('x', 'y')).compute().values
@@ -147,15 +169,18 @@ class ImpactDeepLearning(Impact):
                 self.min_dem = self.X_dem.min(('x', 'y')).compute().values
                 self.max_dem = self.X_dem.max(('x', 'y')).compute().values
 
+            # Log transform the precipitation (log(1 + x))
+            if log_transform_precip:
+                print('Log-transforming precipitation')
+                self.X_precip['precip'] = np.log1p(self.X_precip['precip'])
+
             # Compute the mean and standard deviation of the precipitation
-            if (transform_2d == 'standardize' and mean_precip is not None
-                    and std_precip is not None):
-                self.mean_precip = mean_precip
-                self.std_precip = std_precip
+            print('Computing/assigning precipitation predictor statistics')
+            if (transform_2d == 'standardize' and self.mean_precip is not None
+                    and self.std_precip is not None):
                 return
 
-            if transform_2d == 'normalize' and max_precip is not None:
-                self.max_precip = max_precip
+            if transform_2d == 'normalize' and self.max_precip is not None:
                 return
 
             # If pickle file exists, load it
@@ -177,10 +202,6 @@ class ImpactDeepLearning(Impact):
                 with open(file_max_precip, 'rb') as f:
                     self.max_precip = pickle.load(f)
                 return
-
-            # Log transform the precipitation (log(1 + x))
-            if log_transform_precip:
-                self.X_precip['precip'] = np.log1p(self.X_precip['precip'])
 
             if precip_transformation_domain == 'domain-average':
                 if transform_2d == 'standardize':
@@ -308,9 +329,13 @@ class ImpactDeepLearning(Impact):
             y=self.y_train,
             batch_size=32,
             shuffle=True,
-            load=True,
+            load=False,
             window_size=12,
             tmp_dir=self.tmp_dir,
+            transform_static='standardize',
+            transform_2d='standardize',
+            precip_transformation_domain='domain-average',
+            log_transform_precip=True
         )
 
         start_val = self.dates_valid[0] - pd.to_timedelta(
@@ -324,15 +349,20 @@ class ImpactDeepLearning(Impact):
             x_dem=self.dem,
             y=self.y_valid,
             batch_size=32,
-            shuffle=False,
-            load=True,
+            shuffle=True,
+            load=False,
             window_size=12,
+            transform_static='standardize',
+            transform_2d='standardize',
+            precip_transformation_domain='domain-average',
+            log_transform_precip=True,
             mean_static=dg_train.mean_static,
             std_static=dg_train.std_static,
             mean_precip=dg_train.mean_precip,
             std_precip=dg_train.std_precip,
-            mean_dem=dg_train.mean_dem,
-            std_dem=dg_train.std_dem,
+            min_static=dg_train.min_static,
+            max_static=dg_train.max_static,
+            max_precip=dg_train.max_precip
         )
 
     def _define_model(self):
