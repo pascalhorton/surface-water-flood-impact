@@ -123,9 +123,9 @@ class ImpactDeepLearning(Impact):
                         with open(tmp_filename, 'rb') as f:
                             self.mean_precip = pickle.load(f)
                     else:
-                        self.mean_precip = self.X_precip.mean(
+                        self.mean_precip = self.X_precip['precip'].mean(
                             ('time', 'x', 'y')
-                        ).compute()
+                        ).compute().values
                         # Save to pickle file
                         with open(tmp_filename, 'wb') as f:
                             pickle.dump(self.mean_precip, f)
@@ -140,9 +140,9 @@ class ImpactDeepLearning(Impact):
                         with open(tmp_filename, 'rb') as f:
                             self.std_precip = pickle.load(f)
                     else:
-                        self.std_precip = self.X_precip.std('time').mean(
+                        self.std_precip = self.X_precip['precip'].std('time').mean(
                             ('x', 'y')
-                        ).compute()
+                        ).compute().values
                         # Save to pickle file
                         with open(tmp_filename, 'wb') as f:
                             pickle.dump(self.std_precip, f)
@@ -156,7 +156,7 @@ class ImpactDeepLearning(Impact):
                         with open(tmp_filename, 'rb') as f:
                             self.mean_precip = pickle.load(f)
                     else:
-                        self.mean_precip = self.X_precip.mean('time').compute()
+                        self.mean_precip = self.X_precip.mean('time').compute().values
                         # Save to pickle file
                         with open(tmp_filename, 'wb') as f:
                             pickle.dump(self.mean_precip, f)
@@ -171,7 +171,7 @@ class ImpactDeepLearning(Impact):
                             with open(tmp_filename, 'rb') as f:
                                 self.std_precip = pickle.load(f)
                         else:
-                            self.std_precip = self.X_precip.std('time').compute()
+                            self.std_precip = self.X_precip.std('time').compute().values
                             # Save to pickle file
                             with open(tmp_filename, 'wb') as f:
                                 pickle.dump(self.std_precip, f)
@@ -180,9 +180,9 @@ class ImpactDeepLearning(Impact):
                     f'Unknown normalization method: {precip_normalization}')
 
             self.mean_dem = self.X_dem.mean(
-                ('x', 'y')).compute() if mean_dem is None else mean_dem
+                ('x', 'y')).compute().values if mean_dem is None else mean_dem
             self.std_dem = self.X_dem.std(
-                ('x', 'y')).compute() if std_dem is None else std_dem
+                ('x', 'y')).compute().values if std_dem is None else std_dem
 
         def _compute_hash(self, precip_normalization):
             tag_data = (
@@ -190,7 +190,7 @@ class ImpactDeepLearning(Impact):
                     pickle.dumps(len(self.dates)) +
                     pickle.dumps(self.dates[0]) +
                     pickle.dumps(self.dates[-1]) +
-                    pickle.dumps(self.X_precip.shape))
+                    pickle.dumps(self.X_precip['precip'].shape))
 
             return hashlib.md5(tag_data).hexdigest()
 
@@ -253,7 +253,7 @@ class ImpactDeepLearning(Impact):
 
         self.precipitation = None
         self.dem = None
-        self.precip_days_before = 5
+        self.precip_days_before = 8
         self.precip_days_after = 3
 
     def fit(self, tag=None):
