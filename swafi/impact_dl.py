@@ -12,6 +12,145 @@ import tensorflow as tf
 import pandas as pd
 
 
+class DeepImpact(tf.keras.Model):
+    """
+    Model factory.
+
+    Parameters
+    ----------
+    task: str
+        The task. Options are: 'regression', 'classification'
+    input_2d_size: list
+        The input 2D size.
+    input_1d_size: list
+        The input 1D size.
+    dropout_rate: float
+        The dropout rate.
+    with_spatial_dropout: bool
+        Whether to use spatial dropout or not.
+    with_batchnorm: bool
+        Whether to use batch normalization or not.
+    inner_activation: str
+        The inner activation function.
+    """
+    def __init__(self, task, input_2d_size, input_1d_size, dropout_rate=0.2,
+                 with_spatial_dropout=True, with_batchnorm=True, inner_activation='relu'):
+        super(DeepImpact, self).__init__()
+        self.model = None
+        self.task = task
+        self.input_2d_size = list(input_2d_size)
+        self.input_1d_size = list(input_1d_size)
+        self.dropout_rate = dropout_rate
+        self.with_spatial_dropout = with_spatial_dropout
+        self.with_batchnorm = with_batchnorm
+        self.inner_activation = inner_activation
+        self.last_activation = 'relu' if task == 'regression' else 'sigmoid'
+
+        self.build_model()
+
+    def build_model(self):
+        """
+        Build the model.
+        """
+        input_2d = keras.layers.Input(shape=self.input_2d_size, name='input_2d')
+        input_1d = keras.layers.Input(shape=self.input_1d_size, name='input_1d')
+
+        # 2D convolution
+        x = self.conv2d_block(input_2d, filters=32, kernel_size=3)
+        x = self.conv2d_block(x, filters=64, kernel_size=3)
+        x = self.conv2d_block(x, filters=128, kernel_size=3)
+
+        # Flatten
+        x = keras.layers.Flatten()(x)
+
+        # Concatenate with 1D input
+        x = keras.layers.concatenate([x, input_1d])
+
+        # Fully connected
+        x = keras.layers.Dense(256, activation=self.inner_activation)(x)
+        x = keras.layers.Dense(128, activation=self.inner_activation)(x)
+        x = keras.layers.Dense(64, activation=self.inner_activation)(x)
+        x = keras.layers.Dense(32, activation=self.inner_activation)(x)
+
+        # Last activation
+        x = keras.layers.Dense(1, activation=self.last_activation)(x)
+
+        self.model = keras.models.Model(inputs=[input_2d, input_1d], outputs=x)
+
+    def conv2d_block(self, x, filters, kernel_size=3, initializer='he_normal',
+                     activation='he_normal'):
+        """
+        Convolution block.
+
+        Parameters
+        ----------
+        x: keras.layers.Layer
+            The input layer.
+        filters: int
+            The number of filters.
+        kernel_size: int
+            The kernel size.
+        initializer: str
+            The initializer.
+        activation: str
+            The activation function.
+
+        Returns
+        -------
+        The output layer.
+        """
+        if activation == 'default':
+            activation = self.inner_activation
+
+        x = keras.layers.Conv2D(
+            filters=filters,
+            kernel_size=kernel_size,
+            padding='same',
+            activation=activation,
+            kernel_initializer=initializer,
+        )(x)
+        x = keras.layers.Conv2D(
+            filters=filters,
+            kernel_size=kernel_size,
+            padding='same',
+            activation=activation,
+        )(x)
+
+        if self.with_batchnorm:
+            x = keras.layers.BatchNormalization()(x)
+
+        x = keras.layers.MaxPooling2D(
+            pool_size=(2, 2),
+        )(x)
+
+        if self.with_spatial_dropout and self.dropout_rate > 0:
+            x = keras.layers.SpatialDropout2D(
+                rate=self.dropout_rate,
+            )(x)
+        elif self.dropout_rate > 0:
+            x = keras.layers.Dropout(
+                rate=self.dropout_rate,
+            )(x)
+
+        return x
+
+    def call(self, inputs, **kwargs):
+        """
+        Call the model.
+
+        Parameters
+        ----------
+        inputs: list
+            The inputs.
+        **kwargs
+
+        Returns
+        -------
+        The output.
+        """
+        return self.model(inputs, kwargs)
+
+
 class ImpactDeepLearning(Impact):
     """
     The Deep Learning Impact class.
@@ -58,6 +197,10 @@ class ImpactDeepLearning(Impact):
         tag: str
             The tag to add to the file name.
         """
+        self._define_model(input_2d_size=[self.precip_window_size,
+                                          self.precip_window_size],
+                           input_1d_size=self.x_train.shape[1:])
+
         start_train = self.dates_train[0] - pd.to_timedelta(
             self.precip_days_before, unit='D')
         end_train = self.dates_train[-1] + pd.to_timedelta(
@@ -104,11 +247,19 @@ class ImpactDeepLearning(Impact):
             max_precip=dg_train.max_precip
         )
 
-    def _define_model(self):
+    def _define_model(self, input_2d_size, input_1d_size):
         """
         Define the model.
         """
-        raise NotImplementedError
+        self.model = DeepImpact(
+            task=self.target_type,
+            input_2d_size=input_2d_size,
+            input_1d_size=input_1d_size,
+            dropout_rate=0.2,
+            with_spatial_dropout=True,
+            with_batchnorm=True,
+            inner_activation='relu'
+        )
 
     def _create_model_tmp_file_name(self):
         """
