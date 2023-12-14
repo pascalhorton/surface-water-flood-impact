@@ -35,9 +35,9 @@ class Impact:
         self.df = events.events
         self.target_type = target_type
         self.model = None
-        self.dates_train = None
-        self.dates_valid = None
-        self.dates_test = None
+        self.events_train = None
+        self.events_valid = None
+        self.events_test = None
         self.x_train = None
         self.x_test = None
         self.x_valid = None
@@ -152,16 +152,16 @@ class Impact:
         # Sort the dataframe by date
         self.df.sort_values(by=['e_end'], inplace=True)
         x = self.df[self.features].to_numpy()
-        y = self.df[['target', 'e_end', 'date_claim']].copy()
+        events = self.df[['target', 'e_end', 'date_claim', 'x', 'y']].copy()
         # Rename the column date_claim to date
-        y.rename(columns={'date_claim': 'date'}, inplace=True)
+        events.rename(columns={'date_claim': 'date'}, inplace=True)
         # Transform the dates to a date without time
-        y['e_end'] = pd.to_datetime(y['e_end']).dt.date
-        y['date'] = pd.to_datetime(y['date']).dt.date
+        events['e_end'] = pd.to_datetime(events['e_end']).dt.date
+        events['date'] = pd.to_datetime(events['date']).dt.date
 
         # Fill NaN values with the event end date (as date, not datetime)
-        y['date'] = y['date'].fillna(y['e_end'])
-        y = y[['target', 'date']].to_numpy()
+        events['date'] = events['date'].fillna(events['e_end'])
+        events = events[['target', 'date', 'x', 'y']].to_numpy()
 
         # Remove lines with NaN values
         x_nan = np.argwhere(np.isnan(x))
@@ -169,21 +169,24 @@ class Impact:
         if len(rows_with_nan) > 0:
             print(f"Removing {len(rows_with_nan)} rows with NaN values")
             x = np.delete(x, rows_with_nan, axis=0)
-            y = np.delete(y, rows_with_nan, axis=0)
+            events = np.delete(events, rows_with_nan, axis=0)
 
         # Split the sample into training and test sets
         # Do not shuffle to avoid having the same dates in train and test
         self.x_train, x_tmp, self.y_train, y_tmp = train_test_split(
-            x, y, test_size=valid_test_size, random_state=self.random_state,
+            x, events, test_size=valid_test_size, random_state=self.random_state,
             shuffle=False)
         self.x_test, self.x_valid, self.y_test, self.y_valid = train_test_split(
             x_tmp, y_tmp, test_size=0.5, random_state=self.random_state,
             shuffle=False)
 
-        # Set the event dates in a separate variable
-        self.dates_train = pd.to_datetime(self.y_train[:, 1])
-        self.dates_valid = pd.to_datetime(self.y_valid[:, 1])
-        self.dates_test = pd.to_datetime(self.y_test[:, 1])
+        # Set the event properties in a separate variable
+        self.events_train = self.y_train[:, 1:4]
+        self.events_valid = self.y_valid[:, 1:4]
+        self.events_test = self.y_test[:, 1:4]
+        self.events_train[:, 0] = pd.to_datetime(self.events_train[:, 0])
+        self.events_valid[:, 0] = pd.to_datetime(self.events_valid[:, 0])
+        self.events_test[:, 0] = pd.to_datetime(self.events_test[:, 0])
 
         val_y_train = self.y_train[:, 0].astype(float)
         val_y_valid = self.y_valid[:, 0].astype(float)

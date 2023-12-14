@@ -10,9 +10,11 @@ from pathlib import Path
 
 
 class DataGenerator(keras.utils.Sequence):
-    def __init__(self, dates, x_static, x_precip, x_dem, y, batch_size=32,
-                 shuffle=True, load=False, window_size=12, tmp_dir=None,
-                 transform_static='standardize', transform_2d='standardize',
+    def __init__(self, event_props, x_static, x_precip, x_dem, y, batch_size=32,
+                 shuffle=True, load=False, precip_window_size=12,
+                 precip_grid_resol=1000, precip_days_before=8, precip_days_after=3,
+                 tmp_dir=None, transform_static='standardize',
+                 transform_2d='standardize',
                  precip_transformation_domain='domain-average',
                  log_transform_precip=True, mean_static=None, std_static=None,
                  mean_precip=None, std_precip=None, min_static=None,
@@ -24,8 +26,8 @@ class DataGenerator(keras.utils.Sequence):
 
         Parameters
         ----------
-        dates: np.array
-            The dates of the events.
+        event_props: np.array
+            The event properties (2D; dates and coordinates).
         x_static: np.array
             The static predictor variables (0D).
         x_precip: xarray.Dataset
@@ -40,8 +42,14 @@ class DataGenerator(keras.utils.Sequence):
             Whether to shuffle the data or not.
         load: bool
             Whether to load the data into memory or not.
-        window_size: int
+        precip_window_size: int
             The window size for the 2D predictors [km].
+        precip_grid_resol: int
+            The grid resolution of the precipitation data [m].
+        precip_days_before: int
+            The number of days before the event to include in the 2D predictors.
+        precip_days_after: int
+            The number of days after the event to include in the 2D predictors.
         tmp_dir: Path
             The temporary directory to use.
         transform_static: str
@@ -70,11 +78,14 @@ class DataGenerator(keras.utils.Sequence):
         max_precip: np.array
             The max of the precipitation data.
         """
-        self.dates = dates
+        self.event_props = event_props
         self.y = y
         self.batch_size = batch_size
         self.shuffle = shuffle
-        self.window_size = window_size
+        self.precip_window_size = precip_window_size
+        self.precip_grid_resol = precip_grid_resol
+        self.precip_days_before = precip_days_before
+        self.precip_days_after = precip_days_after
 
         self.mean_static = mean_static
         self.std_static = std_static
@@ -100,6 +111,7 @@ class DataGenerator(keras.utils.Sequence):
             self._normalize_inputs()
 
         self.n_samples = self.y.shape[0]
+        self.idxs = np.arange(self.n_samples)
 
         self.on_epoch_end()
 
@@ -107,6 +119,16 @@ class DataGenerator(keras.utils.Sequence):
             print('Loading data into RAM')
             self.X_precip.load()
             self.X_dem.load()
+
+    def get_channels_nb(self):
+        input_2d_channels = 0
+        if self.X_precip is not None:
+            input_2d_channels += self.precip_days_after + self.precip_days_before
+            input_2d_channels *= 24  # Hourly time step
+        if self.X_dem is not None:
+            input_2d_channels += 1  # Add one for the DEM layer
+
+        return input_2d_channels
 
     def _standardize_inputs(self):
         self.X_static = (self.X_static - self.mean_static) / self.std_static
@@ -217,9 +239,9 @@ class DataGenerator(keras.utils.Sequence):
         tag_data = (
                 pickle.dumps(precip_transformation_domain) +
                 pickle.dumps(log_transform_precip) +
-                pickle.dumps(len(self.dates)) +
-                pickle.dumps(self.dates[0]) +
-                pickle.dumps(self.dates[-1]) +
+                pickle.dumps(len(self.event_props[:, 0])) +
+                pickle.dumps(self.event_props[0, 0]) +
+                pickle.dumps(self.event_props[-1, 0]) +
                 pickle.dumps(self.X_precip['precip'].shape))
 
         return hashlib.md5(tag_data).hexdigest()
@@ -233,45 +255,60 @@ class DataGenerator(keras.utils.Sequence):
         idxs = self.idxs[i * self.batch_size:(i + 1) * self.batch_size]
 
         # Select the events
-        events = self.y.isel(time=idxs)
-        y = events.values
+        y = self.y[idxs]
+        event_props = self.event_props[idxs]
 
         # Select the corresponding static data
-        X_static = self.X_static.isel(events=idxs).values
+        x_static = self.X_static[idxs, :]
 
-        X_2d = np.zeros((len(events), self.window_size, self.window_size, 5))
+        # Select the 2D data
+        x_2d = np.zeros((self.batch_size,
+                         self.precip_window_size,
+                         self.precip_window_size,
+                         self.get_channels_nb()))
 
-        for event in events:
+        precip_window_size_m = self.precip_window_size * self.precip_grid_resol
+
+        # Extract the axes
+        x_axis = self.X_precip['x'].as_numpy()
+        y_axis = self.X_precip['y'].as_numpy()
+
+        for event in event_props:
             # Select the corresponding precipitation data (5 days prior the event)
-            X_precip_ev = self.X_precip.sel(
-                time=slice(event.time - np.timedelta64(5, 'D'),
-                           event.time + np.timedelta64(23, 'H')),
-                x=slice(event.x - self.window_size / 2,
-                        event.x + self.window_size / 2),
-                y=slice(event.y - self.window_size / 2,
-                        event.y + self.window_size / 2)
-            ).values
+            x_precip_ev = self.X_precip.sel(
+                time=slice(event[0] - np.timedelta64(self.precip_days_before, 'D'),
+                           event[0] + np.timedelta64(self.precip_days_after, 'D')),
+                x=slice(event[1] - precip_window_size_m / 2,
+                        event[1] + (precip_window_size_m - self.precip_grid_resol) / 2),
+                y=slice(event[2] + precip_window_size_m / 2,
+                        event[2] - (precip_window_size_m - self.precip_grid_resol) / 2)
+            )
+
+            # Get the x/y indices
+            x_axis_event = x_precip_ev['x'].as_numpy()
+            x_idx = np.where(x_axis == x_axis_event[0])[0][0]
+            y_axis_event = x_precip_ev['y'].as_numpy()
+            y_idx = np.where(y_axis == y_axis_event[0])[0][0]
+
+            # Extract the precipitation data
+            x_precip_ev = x_precip_ev['precip'].as_numpy()
+            x_precip_ev = np.moveaxis(x_precip_ev, 0, -1)
 
             # Select the corresponding DEM data in the window
-            X_dem_ev = self.X_dem.sel(
-                x=slice(event.x - self.window_size / 2,
-                        event.x + self.window_size / 2),
-                y=slice(event.y - self.window_size / 2,
-                        event.y + self.window_size / 2)
-            ).values
+            x_dem_ev = self.X_dem[x_idx, y_idx]
 
             # Normalize
-            X_precip_ev = (X_precip_ev - self.mean_precip) / self.std_precip
-            X_dem_ev = (X_dem_ev - self.mean_dem) / self.std_dem
+            x_precip_ev = (x_precip_ev - self.mean_precip) / self.std_precip
+            x_dem_ev = (x_dem_ev - self.mean_dem) / self.std_dem
 
             # Concatenate
-            X_2d_ev = np.concatenate([X_precip_ev, X_dem_ev], axis=-1)
-            X_2d[i] = X_2d_ev
+            x_2d_ev = np.concatenate([x_precip_ev, x_dem_ev], axis=-1)
+            x_2d[i] = x_2d_ev
 
-        return X_static, X_2d, y
+        return x_static, x_2d, y
 
     def on_epoch_end(self):
         """Updates indexes after each epoch"""
         self.idxs = np.arange(self.n_samples)
-        if self.shuffle == True:
+        if self.shuffle:
             np.random.shuffle(self.idxs)

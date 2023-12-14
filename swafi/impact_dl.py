@@ -10,6 +10,8 @@ import pickle
 import keras
 import tensorflow as tf
 import pandas as pd
+import matplotlib.pyplot as plt
+import datetime
 
 
 class DeepImpact(tf.keras.Model):
@@ -33,22 +35,40 @@ class DeepImpact(tf.keras.Model):
     inner_activation: str
         The inner activation function.
     """
+
     def __init__(self, task, input_2d_size, input_1d_size, dropout_rate=0.2,
-                 with_spatial_dropout=True, with_batchnorm=True, inner_activation='relu'):
+                 with_spatial_dropout=True, with_batchnorm=True,
+                 inner_activation='relu'):
         super(DeepImpact, self).__init__()
         self.model = None
         self.task = task
         self.input_2d_size = list(input_2d_size)
         self.input_1d_size = list(input_1d_size)
         self.dropout_rate = dropout_rate
+        self.nb_conv_blocks = 3
+        self.nb_filters = 64
         self.with_spatial_dropout = with_spatial_dropout
         self.with_batchnorm = with_batchnorm
         self.inner_activation = inner_activation
         self.last_activation = 'relu' if task == 'regression' else 'sigmoid'
 
-        self.build_model()
+        self._check_input_size()
+        self._build_model()
 
-    def build_model(self):
+    def _check_input_size(self):
+        """
+        Check the input size.
+        """
+        assert len(self.input_2d_size) == 3, "Input 2D size must be 3D (with channels)"
+        assert len(self.input_1d_size) == 1, "Input 1D size must be 1D"
+
+        # Assert that the input 2D size is divisible by 2 * nb_conv_blocks
+        assert self.input_2d_size[0] % (2 * self.nb_conv_blocks) == 0, \
+            "Input 2D size must be divisible by 2 * nb_conv_blocks"
+        assert self.input_2d_size[1] % (2 * self.nb_conv_blocks) == 0, \
+            "Input 2D size must be divisible by 2 * nb_conv_blocks"
+
+    def _build_model(self):
         """
         Build the model.
         """
@@ -56,9 +76,10 @@ class DeepImpact(tf.keras.Model):
         input_1d = keras.layers.Input(shape=self.input_1d_size, name='input_1d')
 
         # 2D convolution
-        x = self.conv2d_block(input_2d, filters=32, kernel_size=3)
-        x = self.conv2d_block(x, filters=64, kernel_size=3)
-        x = self.conv2d_block(x, filters=128, kernel_size=3)
+        x = input_2d
+        for i in range(self.nb_conv_blocks):
+            nb_filters = self.nb_filters * (2 ** i)
+            x = self.conv2d_block(x, filters=nb_filters, kernel_size=3)
 
         # Flatten
         x = keras.layers.Flatten()(x)
@@ -78,7 +99,7 @@ class DeepImpact(tf.keras.Model):
         self.model = keras.models.Model(inputs=[input_2d, input_1d], outputs=x)
 
     def conv2d_block(self, x, filters, kernel_size=3, initializer='he_normal',
-                     activation='he_normal'):
+                     activation='default'):
         """
         Convolution block.
 
@@ -104,14 +125,14 @@ class DeepImpact(tf.keras.Model):
 
         x = keras.layers.Conv2D(
             filters=filters,
-            kernel_size=kernel_size,
+            kernel_size=(kernel_size, kernel_size),
             padding='same',
             activation=activation,
             kernel_initializer=initializer,
         )(x)
         x = keras.layers.Conv2D(
             filters=filters,
-            kernel_size=kernel_size,
+            kernel_size=(kernel_size, kernel_size),
             padding='same',
             activation=activation,
         )(x)
@@ -197,23 +218,21 @@ class ImpactDeepLearning(Impact):
         tag: str
             The tag to add to the file name.
         """
-        self._define_model(input_2d_size=[self.precip_window_size,
-                                          self.precip_window_size],
-                           input_1d_size=self.x_train.shape[1:])
-
-        start_train = self.dates_train[0] - pd.to_timedelta(
+        start_train = self.events_train[0, 0] - pd.to_timedelta(
             self.precip_days_before, unit='D')
-        end_train = self.dates_train[-1] + pd.to_timedelta(
+        end_train = self.events_train[-1, 0] + pd.to_timedelta(
             self.precip_days_after, unit='D')
         dg_train = DataGenerator(
-            dates=self.dates_train,
+            event_props=self.events_train,
             x_static=self.x_train,
             x_precip=self.precipitation.sel(time=slice(start_train, end_train)),
             x_dem=self.dem,
             y=self.y_train,
             batch_size=self.batch_size,
             shuffle=True,
-            window_size=self.precip_window_size,
+            precip_window_size=self.precip_window_size,
+            precip_days_before=self.precip_days_before,
+            precip_days_after=self.precip_days_after,
             tmp_dir=self.tmp_dir,
             transform_static=self.transform_static,
             transform_2d=self.transform_2d,
@@ -221,19 +240,21 @@ class ImpactDeepLearning(Impact):
             log_transform_precip=True
         )
 
-        start_val = self.dates_valid[0] - pd.to_timedelta(
+        start_val = self.events_valid[0, 0] - pd.to_timedelta(
             self.precip_days_before, unit='D')
-        end_val = self.dates_valid[-1] + pd.to_timedelta(
+        end_val = self.events_valid[-1, 0] + pd.to_timedelta(
             self.precip_days_after, unit='D')
         dg_val = DataGenerator(
-            dates=self.dates_valid,
+            event_props=self.events_valid,
             x_static=self.x_valid,
             x_precip=self.precipitation.sel(time=slice(start_val, end_val)),
             x_dem=self.dem,
             y=self.y_valid,
             batch_size=self.batch_size,
             shuffle=True,
-            window_size=self.precip_window_size,
+            precip_window_size=self.precip_window_size,
+            precip_days_before=self.precip_days_before,
+            precip_days_after=self.precip_days_after,
             transform_static=self.transform_static,
             transform_2d=self.transform_2d,
             precip_transformation_domain=self.precip_trans_domain,
@@ -246,6 +267,42 @@ class ImpactDeepLearning(Impact):
             max_static=dg_train.max_static,
             max_precip=dg_train.max_precip
         )
+
+        # Define the model
+        self._define_model(input_2d_size=[self.precip_window_size,
+                                          self.precip_window_size,
+                                          dg_train.get_channels_nb()],
+                           input_1d_size=self.x_train.shape[1:])
+
+        # Early stopping
+        callback = tf.keras.callbacks.EarlyStopping(
+            monitor='val_loss', patience=10, restore_best_weights=True)
+
+        # Clear session and set tf seed
+        keras.backend.clear_session()
+        tf.random.set_seed(42)
+
+        # Define the optimizer
+        optimizer = self._define_optimizer(
+            n_samples=len(dg_train), lr_method='constant', lr=0.001)
+
+        # Compile the model
+        self.model.compile(
+            loss='binary_crossentropy',
+            optimizer=optimizer,
+            metrics=['accuracy']
+        )
+
+        # Fit the model
+        hist = self.model.fit(
+            dg_train,
+            epochs=self.epochs,
+            validation_data=dg_val,
+            callbacks=[callback]
+        )
+
+        # Plot the training history
+        self._plot_training_history(hist)
 
     def _define_model(self, input_2d_size, input_1d_size):
         """
@@ -260,6 +317,37 @@ class ImpactDeepLearning(Impact):
             with_batchnorm=True,
             inner_activation='relu'
         )
+
+    def _define_optimizer(self, n_samples, lr_method='constant', lr=.001, init_lr=0.01):
+        """
+        Define the optimizer.
+
+        Parameters
+        ----------
+        n_samples: int
+            The number of samples.
+        lr_method: str
+            The learning rate method. Options are: 'cosine_decay', 'constant'
+        lr: float
+            The learning rate.
+        init_lr: float
+            The initial learning rate (for the cyclical and cosine_decay options).
+
+        Returns
+        -------
+        The optimizer.
+        """
+        if lr_method == 'cosine_decay':
+            decay_steps = self.epochs * (n_samples / self.batch_size)
+            lr_decayed_fn = tf.keras.optimizers.schedules.CosineDecay(
+                init_lr, decay_steps)
+            optimizer = tf.keras.optimizers.Adam(lr_decayed_fn)
+        elif lr_method == 'constant':
+            optimizer = tf.keras.optimizers.Adam(learning_rate=lr)
+        else:
+            raise ValueError('learning rate schedule not well defined.')
+
+        return optimizer
 
     def _create_model_tmp_file_name(self):
         """
@@ -305,3 +393,31 @@ class ImpactDeepLearning(Impact):
             assert dem.shape == self.precipitation.isel(time=0).shape, \
                 "DEM and precipitation must have the same shape"
         self.dem = dem
+
+    @staticmethod
+    def _plot_training_history(hist):
+        """
+        Plot the training history.
+
+        Parameters
+        ----------
+        hist: keras.callbacks.History
+            The history.
+        """
+        now = datetime.datetime.now()
+
+        plt.figure(figsize=(10, 5))
+        plt.plot(hist.history['loss'], label='train')
+        plt.plot(hist.history['val_loss'], label='valid')
+        plt.legend()
+        plt.title('Loss')
+        plt.savefig(f'loss_{now.strftime("%Y-%m-%d_%H-%M-%S")}.png')
+        plt.show()
+
+        plt.figure(figsize=(10, 5))
+        plt.plot(hist.history['accuracy'], label='train')
+        plt.plot(hist.history['val_accuracy'], label='valid')
+        plt.legend()
+        plt.title('Accuracy')
+        plt.savefig(f'accuracy_{now.strftime("%Y-%m-%d_%H-%M-%S")}.png')
+        plt.show()
