@@ -8,13 +8,12 @@ from .utils.data_generator import DataGenerator
 import hashlib
 import pickle
 import keras
-import tensorflow as tf
 import pandas as pd
 import matplotlib.pyplot as plt
 import datetime
 
 
-class DeepImpact(tf.keras.Model):
+class DeepImpact(keras.Model):
     """
     Model factory.
 
@@ -255,6 +254,7 @@ class ImpactDeepLearning(Impact):
             precip_window_size=self.precip_window_size,
             precip_days_before=self.precip_days_before,
             precip_days_after=self.precip_days_after,
+            tmp_dir=self.tmp_dir,
             transform_static=self.transform_static,
             transform_2d=self.transform_2d,
             precip_transformation_domain=self.precip_trans_domain,
@@ -275,12 +275,12 @@ class ImpactDeepLearning(Impact):
                            input_1d_size=self.x_train.shape[1:])
 
         # Early stopping
-        callback = tf.keras.callbacks.EarlyStopping(
+        callback = keras.callbacks.EarlyStopping(
             monitor='val_loss', patience=10, restore_best_weights=True)
 
-        # Clear session and set tf seed
+        # Clear session and set the seed
         keras.backend.clear_session()
-        tf.random.set_seed(42)
+        keras.utils.set_random_seed(42)
 
         # Define the optimizer
         optimizer = self._define_optimizer(
@@ -340,11 +340,11 @@ class ImpactDeepLearning(Impact):
         """
         if lr_method == 'cosine_decay':
             decay_steps = self.epochs * (n_samples / self.batch_size)
-            lr_decayed_fn = tf.keras.optimizers.schedules.CosineDecay(
+            lr_decayed_fn = keras.optimizers.schedules.CosineDecay(
                 init_lr, decay_steps)
-            optimizer = tf.keras.optimizers.Adam(lr_decayed_fn)
+            optimizer = keras.optimizers.Adam(lr_decayed_fn)
         elif lr_method == 'constant':
-            optimizer = tf.keras.optimizers.Adam(learning_rate=lr)
+            optimizer = keras.optimizers.Adam(learning_rate=lr)
         else:
             raise ValueError('learning rate schedule not well defined.')
 
