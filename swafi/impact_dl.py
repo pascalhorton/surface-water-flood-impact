@@ -298,7 +298,8 @@ class ImpactDeepLearning(Impact):
             dg_train,
             epochs=self.epochs,
             validation_data=dg_val,
-            callbacks=[callback]
+            callbacks=[callback],
+            verbose=2
         )
 
         # Plot the training history

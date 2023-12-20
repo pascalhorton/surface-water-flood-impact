@@ -125,6 +125,7 @@ class DataGenerator(keras.utils.Sequence):
         if self.X_precip is not None:
             input_2d_channels += self.precip_days_after + self.precip_days_before
             input_2d_channels *= 24  # Hourly time step
+            input_2d_channels += 1
         if self.X_dem is not None:
             input_2d_channels += 1  # Add one for the DEM layer
 
@@ -269,37 +270,38 @@ class DataGenerator(keras.utils.Sequence):
 
         precip_window_size_m = self.precip_window_size * self.precip_grid_resol
 
-        # Extract the axes
-        x_axis = self.X_precip['x'].as_numpy()
-        y_axis = self.X_precip['y'].as_numpy()
-
         for event in event_props:
-            # Select the corresponding precipitation data (5 days prior the event)
-            x_precip_ev = self.X_precip.sel(
-                time=slice(event[0] - np.timedelta64(self.precip_days_before, 'D'),
-                           event[0] + np.timedelta64(self.precip_days_after, 'D')),
-                x=slice(event[1] - precip_window_size_m / 2,
-                        event[1] + (precip_window_size_m - self.precip_grid_resol) / 2),
-                y=slice(event[2] + precip_window_size_m / 2,
-                        event[2] - (precip_window_size_m - self.precip_grid_resol) / 2)
-            )
+            # Temporal selection
+            t_start = event[0] - np.timedelta64(self.precip_days_before, 'D')
+            t_end = event[0] + np.timedelta64(self.precip_days_after, 'D')
 
-            # Get the x/y indices
-            x_axis_event = x_precip_ev['x'].as_numpy()
-            x_idx = np.where(x_axis == x_axis_event[0])[0][0]
-            y_axis_event = x_precip_ev['y'].as_numpy()
-            y_idx = np.where(y_axis == y_axis_event[0])[0][0]
+            # Spatial domain
+            x_start = event[1] - precip_window_size_m / 2
+            x_end = event[1] + precip_window_size_m / 2 - self.precip_grid_resol
+            y_start = event[2] + precip_window_size_m / 2
+            y_end = event[2] - precip_window_size_m / 2 + self.precip_grid_resol
+
+            # Select the corresponding precipitation data (5 days prior the event)
+            x_precip_ev = self.X_precip['precip'].sel(
+                time=slice(t_start, t_end),
+                x=slice(x_start, x_end),
+                y=slice(y_start, y_end)
+            ).to_numpy()
 
             # Extract the precipitation data
-            x_precip_ev = x_precip_ev['precip'].as_numpy()
             x_precip_ev = np.moveaxis(x_precip_ev, 0, -1)
 
             # Select the corresponding DEM data in the window
-            x_dem_ev = self.X_dem[x_idx, y_idx]
+            x_dem_ev = self.X_dem.sel(
+                x=slice(x_start, x_end),
+                y=slice(y_start, y_end)
+            ).to_numpy()
 
-            # Normalize
-            x_precip_ev = (x_precip_ev - self.mean_precip) / self.std_precip
-            x_dem_ev = (x_dem_ev - self.mean_dem) / self.std_dem
+            # Replace the NaNs by zeros
+            x_dem_ev = np.nan_to_num(x_dem_ev)
+
+            # Add a new axis for the channels
+            x_dem_ev = np.expand_dims(x_dem_ev, axis=-1)
 
             # Concatenate
             x_2d_ev = np.concatenate([x_precip_ev, x_dem_ev], axis=-1)
