@@ -11,7 +11,7 @@ from pathlib import Path
 
 class DataGenerator(keras.utils.Sequence):
     def __init__(self, event_props, x_static, x_precip, x_dem, y, batch_size=32,
-                 shuffle=True, load_full_precip_data=True, precip_window_size=12,
+                 shuffle=True, load_dump_precip_data=True, precip_window_size=12,
                  precip_grid_resol=1000, precip_days_before=8, precip_days_after=3,
                  tmp_dir=None, transform_static='standardize',
                  transform_2d='standardize',
@@ -40,8 +40,8 @@ class DataGenerator(keras.utils.Sequence):
             The batch size.
         shuffle: bool
             Whether to shuffle the data or not.
-        load_full_precip_data: bool
-            Whether to load the full data into memory or not.
+        load_dump_precip_data: bool
+            Whether to load the full data into memory and dump it to a pickle file.
         precip_window_size: int
             The window size for the 2D predictors [km].
         precip_grid_resol: int
@@ -119,9 +119,9 @@ class DataGenerator(keras.utils.Sequence):
         self.on_epoch_end()
 
         self.X_dem.load()
-        if load_full_precip_data:
+        if load_dump_precip_data:
             print('Loading data into RAM')
-            self._load_full_precip_data(transform_2d, precip_transformation_domain,
+            self._load_dump_precip_data(transform_2d, precip_transformation_domain,
                                         log_transform_precip, tmp_dir)
 
     def get_channels_nb(self):
@@ -147,9 +147,12 @@ class DataGenerator(keras.utils.Sequence):
         self.X_precip['precip'] = self.X_precip['precip'] / self.max_precip
         self.X_dem = (self.X_dem - self.min_dem) / (self.max_dem - self.min_dem)
 
-    def _load_full_precip_data(self, transform_2d, precip_transformation_domain,
+    def _load_dump_precip_data(self, transform_2d, precip_transformation_domain,
                                log_transform_precip, tmp_dir):
         """ Load all the precipitation data into memory. """
+        if tmp_dir is None:
+            raise ValueError('tmp_dir must be specified')
+
         file_hash = self._compute_hash_precip(
             transform_2d, precip_transformation_domain, log_transform_precip)
         file_precip = tmp_dir / f'precip_{file_hash}.pickle'
@@ -335,7 +338,7 @@ class DataGenerator(keras.utils.Sequence):
 
         precip_window_size_m = self.precip_window_size * self.precip_grid_resol
 
-        for event in event_props:
+        for i_batch, event in enumerate(event_props):
             # Temporal selection
             t_start = event[0] - np.timedelta64(self.precip_days_before, 'D')
             t_end = event[0] + np.timedelta64(self.precip_days_after, 'D')
@@ -370,9 +373,18 @@ class DataGenerator(keras.utils.Sequence):
 
             # Concatenate
             x_2d_ev = np.concatenate([x_precip_ev, x_dem_ev], axis=-1)
-            x_2d[i] = x_2d_ev
+            if x_2d_ev.shape[2] != self.get_channels_nb():
+                print(f"Shape mismatch: {x_2d_ev.shape[2]} != {self.get_channels_nb()}")
+                print(f"Event: {event}")
+                x_2d[i_batch] = np.zeros((self.precip_window_size,
+                                          self.precip_window_size,
+                                          self.get_channels_nb()))
+                y[i_batch] = 0
+                continue
 
-        return x_static, x_2d, y
+            x_2d[i_batch] = x_2d_ev
+
+        return [x_2d, x_static], y
 
     def on_epoch_end(self):
         """Updates indexes after each epoch"""
