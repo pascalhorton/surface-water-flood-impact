@@ -11,7 +11,7 @@ from pathlib import Path
 
 class DataGenerator(keras.utils.Sequence):
     def __init__(self, event_props, x_static, x_precip, x_dem, y, batch_size=32,
-                 shuffle=True, load=True, precip_window_size=12,
+                 shuffle=True, load_full_precip_data=True, precip_window_size=12,
                  precip_grid_resol=1000, precip_days_before=8, precip_days_after=3,
                  tmp_dir=None, transform_static='standardize',
                  transform_2d='standardize',
@@ -40,8 +40,8 @@ class DataGenerator(keras.utils.Sequence):
             The batch size.
         shuffle: bool
             Whether to shuffle the data or not.
-        load: bool
-            Whether to load the data into memory or not.
+        load_full_precip_data: bool
+            Whether to load the full data into memory or not.
         precip_window_size: int
             The window size for the 2D predictors [km].
         precip_grid_resol: int
@@ -119,9 +119,10 @@ class DataGenerator(keras.utils.Sequence):
         self.on_epoch_end()
 
         self.X_dem.load()
-        if load:
+        if load_full_precip_data:
             print('Loading data into RAM')
-            self.X_precip.load()
+            self._load_full_precip_data(transform_2d, precip_transformation_domain,
+                                        log_transform_precip, tmp_dir)
 
     def get_channels_nb(self):
         input_2d_channels = 0
@@ -145,6 +146,24 @@ class DataGenerator(keras.utils.Sequence):
                          (self.max_static - self.min_static))
         self.X_precip['precip'] = self.X_precip['precip'] / self.max_precip
         self.X_dem = (self.X_dem - self.min_dem) / (self.max_dem - self.min_dem)
+
+    def _load_full_precip_data(self, transform_2d, precip_transformation_domain,
+                               log_transform_precip, tmp_dir):
+        """ Load all the precipitation data into memory. """
+        file_hash = self._compute_hash_precip(
+            transform_2d, precip_transformation_domain, log_transform_precip)
+        file_precip = tmp_dir / f'precip_{file_hash}.pickle'
+
+        # If pickle file exists, load it
+        if file_precip.exists():
+            with open(file_precip, 'rb') as f:
+                self.X_precip = pickle.load(f)
+            return
+
+        # Otherwise, load the data and save it to a pickle file
+        self.X_precip.load()
+        with open(file_precip, 'wb') as f:
+            pickle.dump(self.X_precip, f)
 
     def _restrict_spatial_domain(self):
         """ Restrict the spatial domain of the precipitation and DEM data. """
@@ -174,7 +193,6 @@ class DataGenerator(keras.utils.Sequence):
             self.X_precip = self.X_precip.sel(
                 time=slice(t_min, t_max)
             )
-
 
     def _compute_predictor_statistics(self, transform_static, transform_2d,
                                       precip_transformation_domain,
@@ -276,6 +294,20 @@ class DataGenerator(keras.utils.Sequence):
                 pickle.dumps(len(self.event_props[:, 0])) +
                 pickle.dumps(self.event_props[0, 0]) +
                 pickle.dumps(self.event_props[-1, 0]) +
+                pickle.dumps(self.X_precip['precip'].shape))
+
+        return hashlib.md5(tag_data).hexdigest()
+
+    def _compute_hash_precip(self, transform_2d, precip_transformation_domain,
+                             log_transform_precip):
+        tag_data = (
+                pickle.dumps(transform_2d) +
+                pickle.dumps(precip_transformation_domain) +
+                pickle.dumps(log_transform_precip) +
+                pickle.dumps(self.X_precip['x']) +
+                pickle.dumps(self.X_precip['y']) +
+                pickle.dumps(self.X_precip['time'][0]) +
+                pickle.dumps(self.X_precip['time'][-1]) +
                 pickle.dumps(self.X_precip['precip'].shape))
 
         return hashlib.md5(tag_data).hexdigest()
