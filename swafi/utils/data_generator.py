@@ -11,7 +11,7 @@ from pathlib import Path
 
 class DataGenerator(keras.utils.Sequence):
     def __init__(self, event_props, x_static, x_precip, x_dem, y, batch_size=32,
-                 shuffle=True, load=False, precip_window_size=12,
+                 shuffle=True, load=True, precip_window_size=12,
                  precip_grid_resol=1000, precip_days_before=8, precip_days_after=3,
                  tmp_dir=None, transform_static='standardize',
                  transform_2d='standardize',
@@ -110,15 +110,18 @@ class DataGenerator(keras.utils.Sequence):
         elif transform_static == 'normalize':
             self._normalize_inputs()
 
+        self._restrict_spatial_domain()
+        self._restrict_temporal_selection()
+
         self.n_samples = self.y.shape[0]
         self.idxs = np.arange(self.n_samples)
 
         self.on_epoch_end()
 
+        self.X_dem.load()
         if load:
             print('Loading data into RAM')
             self.X_precip.load()
-            self.X_dem.load()
 
     def get_channels_nb(self):
         input_2d_channels = 0
@@ -142,6 +145,36 @@ class DataGenerator(keras.utils.Sequence):
                          (self.max_static - self.min_static))
         self.X_precip['precip'] = self.X_precip['precip'] / self.max_precip
         self.X_dem = (self.X_dem - self.min_dem) / (self.max_dem - self.min_dem)
+
+    def _restrict_spatial_domain(self):
+        """ Restrict the spatial domain of the precipitation and DEM data. """
+        precip_window_size_m = self.precip_window_size * self.precip_grid_resol
+        x_min = self.event_props[:, 1].min() - precip_window_size_m / 2
+        x_max = self.event_props[:, 1].max() + precip_window_size_m / 2
+        y_min = self.event_props[:, 2].min() - precip_window_size_m / 2
+        y_max = self.event_props[:, 2].max() + precip_window_size_m / 2
+        if self.X_precip is not None:
+            self.X_precip = self.X_precip.sel(
+                x=slice(x_min, x_max),
+                y=slice(y_max, y_min)
+            )
+        if self.X_dem is not None:
+            self.X_dem = self.X_dem.sel(
+                x=slice(x_min, x_max),
+                y=slice(y_max, y_min)
+            )
+
+    def _restrict_temporal_selection(self):
+        """ Restrict the temporal selection of the precipitation data. """
+        if self.X_precip is not None:
+            t_min = self.event_props[:, 0].min() - np.timedelta64(
+                self.precip_days_before, 'D')
+            t_max = self.event_props[:, 0].max() + np.timedelta64(
+                self.precip_days_after, 'D')
+            self.X_precip = self.X_precip.sel(
+                time=slice(t_min, t_max)
+            )
+
 
     def _compute_predictor_statistics(self, transform_static, transform_2d,
                                       precip_transformation_domain,
