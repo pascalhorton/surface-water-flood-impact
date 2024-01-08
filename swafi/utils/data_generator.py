@@ -18,7 +18,7 @@ class DataGenerator(keras.utils.Sequence):
                  precip_transformation_domain='domain-average',
                  log_transform_precip=True, mean_static=None, std_static=None,
                  mean_precip=None, std_precip=None, min_static=None,
-                 max_static=None, max_precip=None):
+                 max_static=None, max_precip=None, debug=False):
         """
         Data generator class.
         Template from https://stanford.edu/~shervine/blog/keras-how-to-generate-data-on-the-fly
@@ -77,12 +77,15 @@ class DataGenerator(keras.utils.Sequence):
             The max of the static data.
         max_precip: np.array
             The max of the precipitation data.
+        debug: bool
+            Whether to run in debug mode or not (print more messages).
         """
         super().__init__()
         self.event_props = event_props
         self.y = y
         self.batch_size = batch_size
         self.shuffle = shuffle
+        self.debug = debug
         self.precip_window_size = precip_window_size
         self.precip_grid_resol = precip_grid_resol
         self.precip_days_before = precip_days_before
@@ -322,6 +325,9 @@ class DataGenerator(keras.utils.Sequence):
 
     def __getitem__(self, i):
         """Generate one batch of data"""
+        if self.debug:
+            print('Loading one batch of data')
+
         idxs = self.idxs[i * self.batch_size:(i + 1) * self.batch_size]
 
         # Select the events
@@ -375,8 +381,10 @@ class DataGenerator(keras.utils.Sequence):
             # Concatenate
             x_2d_ev = np.concatenate([x_precip_ev, x_dem_ev], axis=-1)
             if x_2d_ev.shape[2] != self.get_channels_nb():
-                print(f"Shape mismatch: {x_2d_ev.shape[2]} != {self.get_channels_nb()}")
-                print(f"Event: {event}")
+                if self.debug:
+                    print(f"Shape mismatch: {x_2d_ev.shape[2]} !="
+                          f" {self.get_channels_nb()}")
+                    print(f"Event: {event}")
                 x_2d[i_batch] = np.zeros((self.precip_window_size,
                                           self.precip_window_size,
                                           self.get_channels_nb()))
