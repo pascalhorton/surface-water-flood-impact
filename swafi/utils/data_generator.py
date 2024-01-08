@@ -343,57 +343,61 @@ class DataGenerator(keras.utils.Sequence):
                          self.precip_window_size,
                          self.get_channels_nb()))
 
-        precip_window_size_m = self.precip_window_size * self.precip_grid_resol
-
         for i_batch, event in enumerate(event_props):
-            # Temporal selection
-            t_start = event[0] - np.timedelta64(self.precip_days_before, 'D')
-            t_end = event[0] + np.timedelta64(self.precip_days_after, 'D')
-
-            # Spatial domain
-            x_start = event[1] - precip_window_size_m / 2
-            x_end = event[1] + precip_window_size_m / 2 - self.precip_grid_resol
-            y_start = event[2] + precip_window_size_m / 2
-            y_end = event[2] - precip_window_size_m / 2 + self.precip_grid_resol
-
-            # Select the corresponding precipitation data (5 days prior the event)
-            x_precip_ev = self.X_precip['precip'].sel(
-                time=slice(t_start, t_end),
-                x=slice(x_start, x_end),
-                y=slice(y_start, y_end)
-            ).to_numpy()
-
-            # Extract the precipitation data
-            x_precip_ev = np.moveaxis(x_precip_ev, 0, -1)
-
-            # Select the corresponding DEM data in the window
-            x_dem_ev = self.X_dem.sel(
-                x=slice(x_start, x_end),
-                y=slice(y_start, y_end)
-            ).to_numpy()
-
-            # Replace the NaNs by zeros
-            x_dem_ev = np.nan_to_num(x_dem_ev)
-
-            # Add a new axis for the channels
-            x_dem_ev = np.expand_dims(x_dem_ev, axis=-1)
-
-            # Concatenate
-            x_2d_ev = np.concatenate([x_precip_ev, x_dem_ev], axis=-1)
-            if x_2d_ev.shape[2] != self.get_channels_nb():
-                if self.debug:
-                    print(f"Shape mismatch: {x_2d_ev.shape[2]} !="
-                          f" {self.get_channels_nb()}")
-                    print(f"Event: {event}")
-                x_2d[i_batch] = np.zeros((self.precip_window_size,
-                                          self.precip_window_size,
-                                          self.get_channels_nb()))
-                y[i_batch] = 0
-                continue
-
-            x_2d[i_batch] = x_2d_ev
+            x_2d[i_batch], y[i_batch] = self._extract_precipitation(event, y[i_batch])
 
         return (x_2d, x_static), y
+
+    def _extract_precipitation(self, event, y):
+        precip_window_size_m = self.precip_window_size * self.precip_grid_resol
+
+        # Temporal selection
+        t_start = event[0] - np.timedelta64(self.precip_days_before, 'D')
+        t_end = event[0] + np.timedelta64(self.precip_days_after, 'D')
+
+        # Spatial domain
+        x_start = event[1] - precip_window_size_m / 2
+        x_end = event[1] + precip_window_size_m / 2 - self.precip_grid_resol
+        y_start = event[2] + precip_window_size_m / 2
+        y_end = event[2] - precip_window_size_m / 2 + self.precip_grid_resol
+
+        # Select the corresponding precipitation data (5 days prior the event)
+        x_precip_ev = self.X_precip['precip'].sel(
+            time=slice(t_start, t_end),
+            x=slice(x_start, x_end),
+            y=slice(y_start, y_end)
+        ).to_numpy()
+
+        # Extract the precipitation data
+        x_precip_ev = np.moveaxis(x_precip_ev, 0, -1)
+
+        # Select the corresponding DEM data in the window
+        x_dem_ev = self.X_dem.sel(
+            x=slice(x_start, x_end),
+            y=slice(y_start, y_end)
+        ).to_numpy()
+
+        # Replace the NaNs by zeros
+        x_dem_ev = np.nan_to_num(x_dem_ev)
+
+        # Add a new axis for the channels
+        x_dem_ev = np.expand_dims(x_dem_ev, axis=-1)
+
+        # Concatenate
+        x_2d_ev = np.concatenate([x_precip_ev, x_dem_ev], axis=-1)
+
+        # Handle missing precipitation data
+        if x_2d_ev.shape[2] != self.get_channels_nb():
+            if self.debug:
+                print(f"Shape mismatch: {x_2d_ev.shape[2]} !="
+                      f" {self.get_channels_nb()}")
+                print(f"Event: {event}")
+            x_2d_ev = np.zeros((self.precip_window_size,
+                                self.precip_window_size,
+                                self.get_channels_nb()))
+            y = 0
+
+        return x_2d_ev, y
 
     def on_epoch_end(self):
         """Updates indexes after each epoch"""
