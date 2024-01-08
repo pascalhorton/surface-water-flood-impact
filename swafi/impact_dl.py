@@ -8,12 +8,13 @@ from .utils.data_generator import DataGenerator
 import hashlib
 import pickle
 import keras
+from keras import layers, models
 import pandas as pd
 import matplotlib.pyplot as plt
 import datetime
 
 
-class DeepImpact(keras.Model):
+class DeepImpact(models.Model):
     """
     Model factory.
 
@@ -71,8 +72,8 @@ class DeepImpact(keras.Model):
         """
         Build the model.
         """
-        input_2d = keras.layers.Input(shape=self.input_2d_size, name='input_2d')
-        input_1d = keras.layers.Input(shape=self.input_1d_size, name='input_1d')
+        input_2d = layers.Input(shape=self.input_2d_size, name='input_2d')
+        input_1d = layers.Input(shape=self.input_1d_size, name='input_1d')
 
         # 2D convolution
         x = input_2d
@@ -81,21 +82,21 @@ class DeepImpact(keras.Model):
             x = self.conv2d_block(x, filters=nb_filters, kernel_size=3)
 
         # Flatten
-        x = keras.layers.Flatten()(x)
+        x = layers.Flatten()(x)
 
         # Concatenate with 1D input
-        x = keras.layers.concatenate([x, input_1d])
+        x = layers.concatenate([x, input_1d])
 
         # Fully connected
-        x = keras.layers.Dense(256, activation=self.inner_activation)(x)
-        x = keras.layers.Dense(128, activation=self.inner_activation)(x)
-        x = keras.layers.Dense(64, activation=self.inner_activation)(x)
-        x = keras.layers.Dense(32, activation=self.inner_activation)(x)
+        x = layers.Dense(256, activation=self.inner_activation)(x)
+        x = layers.Dense(128, activation=self.inner_activation)(x)
+        x = layers.Dense(64, activation=self.inner_activation)(x)
+        x = layers.Dense(32, activation=self.inner_activation)(x)
 
         # Last activation
-        x = keras.layers.Dense(1, activation=self.last_activation)(x)
+        output = layers.Dense(1, activation=self.last_activation)(x)
 
-        self.model = keras.models.Model(inputs=[input_2d, input_1d], outputs=x)
+        self.model = models.Model(inputs=[input_2d, input_1d], outputs=output)
 
     def conv2d_block(self, x, filters, kernel_size=3, initializer='he_normal',
                      activation='default'):
@@ -104,7 +105,7 @@ class DeepImpact(keras.Model):
 
         Parameters
         ----------
-        x: keras.layers.Layer
+        x: layers.Layer
             The input layer.
         filters: int
             The number of filters.
@@ -122,14 +123,14 @@ class DeepImpact(keras.Model):
         if activation == 'default':
             activation = self.inner_activation
 
-        x = keras.layers.Conv2D(
+        x = layers.Conv2D(
             filters=filters,
             kernel_size=(kernel_size, kernel_size),
             padding='same',
             activation=activation,
             kernel_initializer=initializer,
         )(x)
-        x = keras.layers.Conv2D(
+        x = layers.Conv2D(
             filters=filters,
             kernel_size=(kernel_size, kernel_size),
             padding='same',
@@ -137,18 +138,18 @@ class DeepImpact(keras.Model):
         )(x)
 
         if self.with_batchnorm:
-            x = keras.layers.BatchNormalization()(x)
+            x = layers.BatchNormalization()(x)
 
-        x = keras.layers.MaxPooling2D(
+        x = layers.MaxPooling2D(
             pool_size=(2, 2),
         )(x)
 
         if self.with_spatial_dropout and self.dropout_rate > 0:
-            x = keras.layers.SpatialDropout2D(
+            x = layers.SpatialDropout2D(
                 rate=self.dropout_rate,
             )(x)
         elif self.dropout_rate > 0:
-            x = keras.layers.Dropout(
+            x = layers.Dropout(
                 rate=self.dropout_rate,
             )(x)
 
@@ -168,7 +169,7 @@ class DeepImpact(keras.Model):
         -------
         The output.
         """
-        return self.model(inputs, kwargs)
+        return self.model(inputs, **kwargs)
 
 
 class ImpactDeepLearning(Impact):
@@ -292,6 +293,10 @@ class ImpactDeepLearning(Impact):
             optimizer=optimizer,
             metrics=['accuracy']
         )
+
+        # Print the model summary
+        print("Model summary:")
+        print(self.model.model.summary())
 
         # Fit the model
         hist = self.model.fit(

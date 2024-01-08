@@ -78,6 +78,7 @@ class DataGenerator(keras.utils.Sequence):
         max_precip: np.array
             The max of the precipitation data.
         """
+        super().__init__()
         self.event_props = event_props
         self.y = y
         self.batch_size = batch_size
@@ -384,7 +385,7 @@ class DataGenerator(keras.utils.Sequence):
 
             x_2d[i_batch] = x_2d_ev
 
-        return [x_2d, x_static], y
+        return (x_2d, x_static), y
 
     def on_epoch_end(self):
         """Updates indexes after each epoch"""
