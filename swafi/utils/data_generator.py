@@ -11,9 +11,9 @@ from pathlib import Path
 
 class DataGenerator(keras.utils.Sequence):
     def __init__(self, event_props, x_static, x_precip, x_dem, y, batch_size=32,
-                 shuffle=True, load_dump_precip_data=True, precip_window_size=12,
-                 precip_grid_resol=1000, precip_days_before=8, precip_days_after=3,
-                 tmp_dir=None, transform_static='standardize',
+                 shuffle=True, preload_precip_events=True, load_dump_precip_data=False,
+                 precip_window_size=12, precip_grid_resol=1000, precip_days_before=8,
+                 precip_days_after=3, tmp_dir=None, transform_static='standardize',
                  transform_2d='standardize',
                  precip_transformation_domain='domain-average',
                  log_transform_precip=True, mean_static=None, std_static=None,
@@ -40,6 +40,8 @@ class DataGenerator(keras.utils.Sequence):
             The batch size.
         shuffle: bool
             Whether to shuffle the data or not.
+        preload_precip_events: bool
+            Whether to load the precipitation data for each event into memory.
         load_dump_precip_data: bool
             Whether to load the full data into memory and dump it to a pickle file.
         precip_window_size: int
@@ -86,6 +88,7 @@ class DataGenerator(keras.utils.Sequence):
         self.batch_size = batch_size
         self.shuffle = shuffle
         self.debug = debug
+        self.preload_precip_events = preload_precip_events
         self.precip_window_size = precip_window_size
         self.precip_grid_resol = precip_grid_resol
         self.precip_days_before = precip_days_before
@@ -123,10 +126,26 @@ class DataGenerator(keras.utils.Sequence):
         self.on_epoch_end()
 
         self.X_dem.load()
-        if load_dump_precip_data:
+        if self.preload_precip_events:
             print('Loading data into RAM')
             self._load_dump_precip_data(transform_2d, precip_transformation_domain,
                                         log_transform_precip, tmp_dir)
+
+            print('Pre-loading precipitation events')
+            self.x_2d = np.zeros((self.n_samples,
+                                  self.precip_window_size,
+                                  self.precip_window_size,
+                                  self.get_channels_nb()))
+            for i, event in enumerate(event_props):
+                self.x_2d[i], self.y[i] = self._extract_precipitation(event, y[i])
+
+        elif load_dump_precip_data:
+            print('Loading data into RAM')
+            self._load_dump_precip_data(transform_2d, precip_transformation_domain,
+                                        log_transform_precip, tmp_dir)
+
+        else:
+            self.x_2d = None
 
     def get_channels_nb(self):
         input_2d_channels = 0
@@ -332,19 +351,20 @@ class DataGenerator(keras.utils.Sequence):
 
         # Select the events
         y = self.y[idxs]
-        event_props = self.event_props[idxs]
-
-        # Select the corresponding static data
-        x_static = self.X_static[idxs, :]
 
         # Select the 2D data
-        x_2d = np.zeros((self.batch_size,
-                         self.precip_window_size,
-                         self.precip_window_size,
-                         self.get_channels_nb()))
+        if self.preload_precip_events:
+            x_2d = self.x_2d[idxs, :, :, :]
+        else:
+            x_2d = np.zeros((self.batch_size,
+                             self.precip_window_size,
+                             self.precip_window_size,
+                             self.get_channels_nb()))
+            for i_b, event in enumerate(self.event_props[idxs]):
+                x_2d[i_b], y[i_b] = self._extract_precipitation(event, y[i_b])
 
-        for i_batch, event in enumerate(event_props):
-            x_2d[i_batch], y[i_batch] = self._extract_precipitation(event, y[i_batch])
+        # Select the static data
+        x_static = self.X_static[idxs, :]
 
         return (x_2d, x_static), y
 
