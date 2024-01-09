@@ -129,6 +129,45 @@ class Events:
         self.events['target'] = self.events['target'].fillna(0)
         self.events['nb_claims'] = self.events['nb_claims'].fillna(0)
 
+    def count_positives(self):
+        """
+        Count the number of positive events.
+
+        Returns
+        -------
+        The number of positive targets.
+        """
+        return (self.events['target'] > 0).sum()
+
+    def reduce_number_of_negatives(self, nb_keep, random_state=42):
+        """
+        Reduce the number of events with target = 0.
+
+        Parameters
+        ----------
+        nb_keep: int
+            The number of events to keep.
+        random_state: int
+            The random state.
+        """
+        print("Reducing the number of negative events.")
+        print(f"Number of events before reduction: {len(self.events)}")
+
+        # Select only the negative events
+        negatives = self.events[self.events['target'] == 0]
+
+        # Reduce the number of negative events
+        negatives = negatives.sample(n=nb_keep, random_state=random_state)
+
+        # Merge the negative and positive events
+        positives = self.events[self.events['target'] > 0]
+        self.events = pd.concat([positives, negatives])
+
+        # Sort the events by eid
+        self.events = self.events.sort_values(by=['eid'])
+
+        print(f"Number of events after reduction: {len(self.events)}")
+
     def set_contracts_number(self, damages):
         """
         Set the number of contracts per cell.

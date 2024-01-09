@@ -133,3 +133,4 @@ dmypy.json
 config.yaml
 *.whl
 *.pdf
+*.png

@@ -14,6 +14,8 @@ from swafi.events import load_events_from_pickle
 
 DATASET = 'gvz'  # 'mobiliar' or 'gvz'
 LABEL_EVENT_FILE = 'original_w_prior_pluvial_occurrence'
+FACTOR_NEG_EVENTS = 1
+WEIGHT_DENOMINATOR = 1
 
 config = Config()
 
@@ -29,6 +31,8 @@ def main():
     # Load events
     events_filename = f'events_{DATASET}_with_target_values_{LABEL_EVENT_FILE}.pickle'
     events = load_events_from_pickle(filename=events_filename)
+    n_pos = events.count_positives()
+    events.reduce_number_of_negatives(FACTOR_NEG_EVENTS * n_pos, random_state=42)
 
     # Create the impact function
     dl = ImpactDeepLearning(events, target_type='occurrence', random_state=42)
@@ -58,7 +62,7 @@ def main():
 
     dl.split_sample()
     dl.compute_balanced_class_weights()
-    dl.compute_corrected_class_weights(weight_denominator=27)
+    dl.compute_corrected_class_weights(weight_denominator=WEIGHT_DENOMINATOR)
     dl.fit()
     dl.assess_model_on_all_periods()
 
