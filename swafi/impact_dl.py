@@ -4,11 +4,14 @@ Class to compute the impact function.
 
 from .impact import Impact
 from .utils.data_generator import DataGenerator
+from .utils.verification import compute_confusion_matrix, print_classic_scores, \
+    assess_roc_auc, compute_score_binary
 
 import hashlib
 import pickle
 import keras
 from keras import layers, models
+import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import datetime
@@ -196,6 +199,9 @@ class ImpactDeepLearning(Impact):
 
         self.precipitation = None
         self.dem = None
+        self.dg_train = None
+        self.dg_val = None
+        self.dg_test = None
 
         # Options
         self.precip_days_before = 8
@@ -218,11 +224,88 @@ class ImpactDeepLearning(Impact):
         tag: str
             The tag to add to the file name.
         """
+        self._create_data_generator_train()
+        self._create_data_generator_valid()
+
+        # Define the model
+        self._define_model(input_2d_size=[self.precip_window_size,
+                                          self.precip_window_size,
+                                          self.dg_train.get_channels_nb()],
+                           input_1d_size=self.x_train.shape[1:])
+
+        # Early stopping
+        callback = keras.callbacks.EarlyStopping(
+            monitor='val_loss', patience=10, restore_best_weights=True)
+
+        # Clear session and set the seed
+        keras.backend.clear_session()
+        keras.utils.set_random_seed(42)
+
+        # Define the optimizer
+        optimizer = self._define_optimizer(
+            n_samples=len(self.dg_train), lr_method='constant', lr=0.001)
+
+        # Compile the model
+        self.model.compile(
+            loss='binary_crossentropy',
+            optimizer=optimizer,
+            metrics=['accuracy']
+        )
+
+        # Print the model summary
+        print("Model summary:")
+        print(self.model.model.summary())
+
+        # Fit the model
+        hist = self.model.fit(
+            self.dg_train,
+            epochs=self.epochs,
+            validation_data=self.dg_val,
+            callbacks=[callback],
+            verbose=1
+        )
+
+        # Plot the training history
+        self._plot_training_history(hist)
+
+    def assess_model_on_all_periods(self):
+        """
+        Assess the model on all periods.
+        """
+        self._create_data_generator_test()
+        self._assess_model_dg(self.dg_train, 'Train period')
+        self._assess_model_dg(self.dg_val, 'Validation period')
+        self._assess_model_dg(self.dg_test, 'Test period')
+
+    def _assess_model_dg(self, dg, period_name):
+        """
+        Assess the model on a single period.
+        """
+        if self.model is None:
+            raise ValueError("Model not defined")
+
+        x, y = dg.get_all_data()
+        y_pred = self.model.predict(x)
+
+        print(f"\nSplit: {period_name}")
+
+        # Compute the scores
+        if self.target_type == 'occurrence':
+            tp, tn, fp, fn = compute_confusion_matrix(y, y_pred)
+            print_classic_scores(tp, tn, fp, fn)
+            y_pred_prob = self.model.predict_proba(x)
+            assess_roc_auc(y, y_pred_prob[:, 1])
+        else:
+            rmse = np.sqrt(np.mean((y - y_pred) ** 2))
+            print(f"RMSE: {rmse}")
+        print(f"----------------------------------------")
+
+    def _create_data_generator_train(self):
         start_train = self.events_train[0, 0] - pd.to_timedelta(
             self.precip_days_before, unit='D')
         end_train = self.events_train[-1, 0] + pd.to_timedelta(
             self.precip_days_after, unit='D')
-        dg_train = DataGenerator(
+        self.dg_train = DataGenerator(
             event_props=self.events_train,
             x_static=self.x_train,
             x_precip=self.precipitation.sel(time=slice(start_train, end_train)),
@@ -240,11 +323,12 @@ class ImpactDeepLearning(Impact):
             log_transform_precip=True
         )
 
+    def _create_data_generator_valid(self):
         start_val = self.events_valid[0, 0] - pd.to_timedelta(
             self.precip_days_before, unit='D')
         end_val = self.events_valid[-1, 0] + pd.to_timedelta(
             self.precip_days_after, unit='D')
-        dg_val = DataGenerator(
+        self.dg_val = DataGenerator(
             event_props=self.events_valid,
             x_static=self.x_valid,
             x_precip=self.precipitation.sel(time=slice(start_val, end_val)),
@@ -260,55 +344,44 @@ class ImpactDeepLearning(Impact):
             transform_2d=self.transform_2d,
             precip_transformation_domain=self.precip_trans_domain,
             log_transform_precip=True,
-            mean_static=dg_train.mean_static,
-            std_static=dg_train.std_static,
-            mean_precip=dg_train.mean_precip,
-            std_precip=dg_train.std_precip,
-            min_static=dg_train.min_static,
-            max_static=dg_train.max_static,
-            max_precip=dg_train.max_precip
+            mean_static=self.dg_train.mean_static,
+            std_static=self.dg_train.std_static,
+            mean_precip=self.dg_train.mean_precip,
+            std_precip=self.dg_train.std_precip,
+            min_static=self.dg_train.min_static,
+            max_static=self.dg_train.max_static,
+            max_precip=self.dg_train.max_precip
         )
 
-        # Define the model
-        self._define_model(input_2d_size=[self.precip_window_size,
-                                          self.precip_window_size,
-                                          dg_train.get_channels_nb()],
-                           input_1d_size=self.x_train.shape[1:])
-
-        # Early stopping
-        callback = keras.callbacks.EarlyStopping(
-            monitor='val_loss', patience=10, restore_best_weights=True)
-
-        # Clear session and set the seed
-        keras.backend.clear_session()
-        keras.utils.set_random_seed(42)
-
-        # Define the optimizer
-        optimizer = self._define_optimizer(
-            n_samples=len(dg_train), lr_method='constant', lr=0.001)
-
-        # Compile the model
-        self.model.compile(
-            loss='binary_crossentropy',
-            optimizer=optimizer,
-            metrics=['accuracy']
+    def _create_data_generator_test(self):
+        start_test = self.events_test[0, 0] - pd.to_timedelta(
+            self.precip_days_before, unit='D')
+        end_test = self.events_test[-1, 0] + pd.to_timedelta(
+            self.precip_days_after, unit='D')
+        self.dg_test = DataGenerator(
+            event_props=self.events_test,
+            x_static=self.x_test,
+            x_precip=self.precipitation.sel(time=slice(start_test, end_test)),
+            x_dem=self.dem,
+            y=self.y_test,
+            batch_size=self.batch_size,
+            shuffle=True,
+            precip_window_size=self.precip_window_size,
+            precip_days_before=self.precip_days_before,
+            precip_days_after=self.precip_days_after,
+            tmp_dir=self.tmp_dir,
+            transform_static=self.transform_static,
+            transform_2d=self.transform_2d,
+            precip_transformation_domain=self.precip_trans_domain,
+            log_transform_precip=True,
+            mean_static=self.dg_train.mean_static,
+            std_static=self.dg_train.std_static,
+            mean_precip=self.dg_train.mean_precip,
+            std_precip=self.dg_train.std_precip,
+            min_static=self.dg_train.min_static,
+            max_static=self.dg_train.max_static,
+            max_precip=self.dg_train.max_precip
         )
-
-        # Print the model summary
-        print("Model summary:")
-        print(self.model.model.summary())
-
-        # Fit the model
-        hist = self.model.fit(
-            dg_train,
-            epochs=self.epochs,
-            validation_data=dg_val,
-            callbacks=[callback],
-            verbose=2
-        )
-
-        # Plot the training history
-        self._plot_training_history(hist)
 
     def _define_model(self, input_2d_size, input_1d_size):
         """
@@ -417,6 +490,7 @@ class ImpactDeepLearning(Impact):
         plt.plot(hist.history['val_loss'], label='valid')
         plt.legend()
         plt.title('Loss')
+        plt.tight_layout()
         plt.savefig(f'loss_{now.strftime("%Y-%m-%d_%H-%M-%S")}.png')
         plt.show()
 
@@ -425,5 +499,6 @@ class ImpactDeepLearning(Impact):
         plt.plot(hist.history['val_accuracy'], label='valid')
         plt.legend()
         plt.title('Accuracy')
+        plt.tight_layout()
         plt.savefig(f'accuracy_{now.strftime("%Y-%m-%d_%H-%M-%S")}.png')
         plt.show()

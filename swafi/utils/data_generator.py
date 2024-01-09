@@ -158,6 +158,26 @@ class DataGenerator(keras.utils.Sequence):
 
         return input_2d_channels
 
+    def get_all_data(self):
+        # Select the events
+        y = self.y
+
+        # Select the 2D data
+        if self.preload_precip_events:
+            x_2d = self.x_2d[:, :, :, :]
+        else:
+            x_2d = np.zeros((self.batch_size,
+                             self.precip_window_size,
+                             self.precip_window_size,
+                             self.get_channels_nb()))
+            for i_b, event in enumerate(self.event_props):
+                x_2d[i_b], y[i_b] = self._extract_precipitation(event, y[i_b])
+
+        # Select the static data
+        x_static = self.X_static[:, :]
+
+        return (x_2d, x_static), y
+
     def _standardize_inputs(self):
         self.X_static = (self.X_static - self.mean_static) / self.std_static
         self.X_precip['precip'] = ((self.X_precip['precip'] - self.mean_precip) /
