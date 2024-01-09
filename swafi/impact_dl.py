@@ -14,6 +14,7 @@ from keras import layers, models
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import tensorflow as tf
 import datetime
 
 
@@ -245,9 +246,12 @@ class ImpactDeepLearning(Impact):
         optimizer = self._define_optimizer(
             n_samples=len(self.dg_train), lr_method='constant', lr=0.001)
 
+        # Get loss function
+        loss_fn = self._get_loss_function()
+
         # Compile the model
         self.model.compile(
-            loss='binary_crossentropy',
+            loss=loss_fn,
             optimizer=optimizer,
             metrics=['accuracy']
         )
@@ -299,6 +303,74 @@ class ImpactDeepLearning(Impact):
             rmse = np.sqrt(np.mean((y - y_pred) ** 2))
             print(f"RMSE: {rmse}")
         print(f"----------------------------------------")
+
+    def _get_loss_function(self):
+        """
+        Get the loss function.
+
+        Returns
+        -------
+        The loss function.
+        """
+        if self.target_type == 'occurrence':
+            if self.class_weight is None:
+                loss_fn = 'binary_crossentropy'
+            else:
+                # Set class weights as float32
+                class_weight = self.class_weight.copy()
+                for key in class_weight:
+                    class_weight[key] = float(class_weight[key])
+                loss_fn = self._weighted_binary_cross_entropy(
+                    weights=class_weight)
+        else:
+            loss_fn = 'mse'
+
+        return loss_fn
+
+    @staticmethod
+    def _weighted_binary_cross_entropy(weights, from_logits=False):
+        """
+        Weighted binary cross entropy.
+
+        Parameters
+        ----------
+        weights: dict
+            The weights.
+        from_logits: bool
+            Whether the input is logit or not.
+
+        Returns
+        -------
+        The loss function.
+        """
+
+        def weighted_binary_cross_entropy(y_true, y_pred):
+            """
+            Weighted binary cross entropy.
+            From: https://stackoverflow.com/questions/46009619/keras-weighted-binary-crossentropy
+
+            Parameters
+            ----------
+            y_true: array-like
+                The true values.
+            y_pred: array-like
+                The predicted values.
+
+            Returns
+            -------
+            The loss.
+            """
+            tf_y_true = tf.cast(y_true, dtype=y_pred.dtype)
+            tf_y_pred = tf.cast(y_pred, dtype=y_pred.dtype)
+
+            weights_v = tf.where(tf.equal(tf_y_true, 1), weights[1], weights[0])
+            ce = keras.metrics.binary_crossentropy(
+                tf_y_true, tf_y_pred, from_logits=from_logits)
+            loss = tf.reduce_mean(tf.multiply(ce, weights_v))
+
+            return loss
+
+        return weighted_binary_cross_entropy
 
     def _create_data_generator_train(self):
         start_train = self.events_train[0, 0] - pd.to_timedelta(
