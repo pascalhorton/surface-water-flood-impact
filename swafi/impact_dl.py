@@ -33,10 +33,21 @@ class ImpactDeepLearning(Impact):
         Default: 42. Set to None to not set the random seed.
     reload_trained_models: bool
         Whether to reload the previously trained models or not.
+    precip_window_size: int
+        The precipitation window size (number of pixels).
+    precip_days_before: int
+        The number of days before the event to use for the precipitation.
+    precip_days_after: int
+        The number of days after the event to use for the precipitation.
+    batch_size: int
+        The batch size.
+    epochs: int
+        The number of epochs.
     """
 
     def __init__(self, events, target_type='occurrence', random_state=42,
-                 reload_trained_models=False):
+                 reload_trained_models=False, precip_window_size=12,
+                 precip_days_before=8, precip_days_after=3, batch_size=32, epochs=100):
         super().__init__(events, target_type=target_type, random_state=random_state)
         self.reload_trained_models = reload_trained_models
 
@@ -47,16 +58,16 @@ class ImpactDeepLearning(Impact):
         self.dg_test = None
 
         # Options
-        self.precip_days_before = 8
-        self.precip_days_after = 3
-        self.precip_window_size = 12
+        self.precip_days_before = precip_days_before
+        self.precip_days_after = precip_days_after
+        self.precip_window_size = precip_window_size
         self.transform_static = 'standardize'  # 'standardize' or 'normalize'
         self.transform_2d = 'standardize'  # 'standardize' or 'normalize'
         self.precip_trans_domain = 'domain-average'  # 'domain-average' or 'per-pixel'
 
         # Hyperparameters
-        self.batch_size = 32
-        self.epochs = 100
+        self.batch_size = batch_size
+        self.epochs = epochs
 
     def fit(self, tag=None):
         """
