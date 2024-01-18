@@ -12,9 +12,9 @@ from pathlib import Path
 class DataGenerator(keras.utils.Sequence):
     def __init__(self, event_props, x_static, x_precip, x_dem, y, batch_size=32,
                  shuffle=True, preload_precip_events=False, load_dump_precip_data=True,
-                 precip_window_size=12, precip_grid_resol=1000, precip_days_before=8,
-                 precip_days_after=3, tmp_dir=None, transform_static='standardize',
-                 transform_2d='standardize',
+                 precip_window_size=12, precip_resolution=1, precip_time_step=1,
+                 precip_days_before=8, precip_days_after=3, tmp_dir=None,
+                 transform_static='standardize', transform_2d='standardize',
                  precip_transformation_domain='domain-average',
                  log_transform_precip=True, mean_static=None, std_static=None,
                  mean_precip=None, std_precip=None, min_static=None,
@@ -46,8 +46,10 @@ class DataGenerator(keras.utils.Sequence):
             Whether to load the full data into memory and dump it to a pickle file.
         precip_window_size: int
             The window size for the 2D predictors [km].
-        precip_grid_resol: int
-            The grid resolution of the precipitation data [m].
+        precip_resolution: int
+            The desired grid resolution of the precipitation data [km].
+        precip_time_step: int
+            The desired time step of the precipitation data [h].
         precip_days_before: int
             The number of days before the event to include in the 2D predictors.
         precip_days_after: int
@@ -90,7 +92,8 @@ class DataGenerator(keras.utils.Sequence):
         self.debug = debug
         self.preload_precip_events = preload_precip_events
         self.precip_window_size = precip_window_size
-        self.precip_grid_resol = precip_grid_resol
+        self.precip_resolution = precip_resolution
+        self.precip_time_step = precip_time_step
         self.precip_days_before = precip_days_before
         self.precip_days_after = precip_days_after
 
@@ -109,6 +112,10 @@ class DataGenerator(keras.utils.Sequence):
         self.X_static = x_static
         self.X_precip = x_precip
         self.X_dem = x_dem
+
+        self._restrict_spatial_domain()
+        self._restrict_temporal_selection()
+
         self._compute_predictor_statistics(
             transform_static, transform_2d, precip_transformation_domain,
             log_transform_precip, tmp_dir)
@@ -116,9 +123,6 @@ class DataGenerator(keras.utils.Sequence):
             self._standardize_inputs()
         elif transform_static == 'normalize':
             self._normalize_inputs()
-
-        self._restrict_spatial_domain()
-        self._restrict_temporal_selection()
 
         self.n_samples = self.y.shape[0]
         self.idxs = np.arange(self.n_samples)
@@ -132,9 +136,10 @@ class DataGenerator(keras.utils.Sequence):
                                         log_transform_precip, tmp_dir)
 
             print('Pre-loading precipitation events')
+            pixels_nb = int(self.precip_window_size / self.precip_resolution)
             self.x_2d = np.zeros((self.n_samples,
-                                  self.precip_window_size,
-                                  self.precip_window_size,
+                                  pixels_nb,
+                                  pixels_nb,
                                   self.get_channels_nb()))
             for i, event in enumerate(event_props):
                 self.x_2d[i], self.y[i] = self._extract_precipitation(event, y[i])
@@ -151,7 +156,7 @@ class DataGenerator(keras.utils.Sequence):
         input_2d_channels = 0
         if self.X_precip is not None:
             input_2d_channels += self.precip_days_after + self.precip_days_before
-            input_2d_channels *= 24  # Hourly time step
+            input_2d_channels *= int(24 / self.precip_time_step)  # Time step
             input_2d_channels += 1
         if self.X_dem is not None:
             input_2d_channels += 1  # Add one for the DEM layer
@@ -166,9 +171,10 @@ class DataGenerator(keras.utils.Sequence):
         if self.preload_precip_events:
             x_2d = self.x_2d[:, :, :, :]
         else:
+            pixels_nb = int(self.precip_window_size / self.precip_resolution)
             x_2d = np.zeros((self.n_samples,
-                             self.precip_window_size,
-                             self.precip_window_size,
+                             pixels_nb,
+                             pixels_nb,
                              self.get_channels_nb()))
             for i, event in enumerate(self.event_props):
                 x_2d[i], y[i] = self._extract_precipitation(event, y[i])
@@ -213,7 +219,7 @@ class DataGenerator(keras.utils.Sequence):
 
     def _restrict_spatial_domain(self):
         """ Restrict the spatial domain of the precipitation and DEM data. """
-        precip_window_size_m = self.precip_window_size * self.precip_grid_resol
+        precip_window_size_m = self.precip_window_size * 1000
         x_min = self.event_props[:, 1].min() - precip_window_size_m / 2
         x_max = self.event_props[:, 1].max() + precip_window_size_m / 2
         y_min = self.event_props[:, 2].min() - precip_window_size_m / 2
@@ -289,8 +295,8 @@ class DataGenerator(keras.utils.Sequence):
             return
 
         # If pickle file exists, load it
-        file_hash = self._compute_hash(precip_transformation_domain,
-                                       log_transform_precip)
+        file_hash = self._compute_hash_precip(
+            transform_2d, precip_transformation_domain, log_transform_precip)
         file_mean_precip = tmp_dir / f'mean_precip_{file_hash}.pickle'
         file_std_precip = tmp_dir / f'std_precip_{file_hash}.pickle'
         file_max_precip = tmp_dir / f'max_precip_{file_hash}.pickle'
@@ -340,17 +346,6 @@ class DataGenerator(keras.utils.Sequence):
             with open(file_max_precip, 'wb') as f:
                 pickle.dump(self.max_precip, f)
 
-    def _compute_hash(self, precip_transformation_domain, log_transform_precip):
-        tag_data = (
-                pickle.dumps(precip_transformation_domain) +
-                pickle.dumps(log_transform_precip) +
-                pickle.dumps(len(self.event_props[:, 0])) +
-                pickle.dumps(self.event_props[0, 0]) +
-                pickle.dumps(self.event_props[-1, 0]) +
-                pickle.dumps(self.X_precip['precip'].shape))
-
-        return hashlib.md5(tag_data).hexdigest()
-
     def _compute_hash_precip(self, transform_2d, precip_transformation_domain,
                              log_transform_precip):
         tag_data = (
@@ -383,9 +378,10 @@ class DataGenerator(keras.utils.Sequence):
         if self.preload_precip_events:
             x_2d = self.x_2d[idxs, :, :, :]
         else:
+            pixels_nb = int(self.precip_window_size / self.precip_resolution)
             x_2d = np.zeros((self.batch_size,
-                             self.precip_window_size,
-                             self.precip_window_size,
+                             pixels_nb,
+                             pixels_nb,
                              self.get_channels_nb()))
             for i_b, event in enumerate(self.event_props[idxs]):
                 x_2d[i_b], y[i_b] = self._extract_precipitation(event, y[i_b])
@@ -396,7 +392,7 @@ class DataGenerator(keras.utils.Sequence):
         return (x_2d, x_static), y
 
     def _extract_precipitation(self, event, y):
-        precip_window_size_m = self.precip_window_size * self.precip_grid_resol
+        precip_window_size_m = self.precip_window_size * 1000
 
         # Temporal selection
         t_start = event[0] - np.timedelta64(self.precip_days_before, 'D')
@@ -404,9 +400,9 @@ class DataGenerator(keras.utils.Sequence):
 
         # Spatial domain
         x_start = event[1] - precip_window_size_m / 2
-        x_end = event[1] + precip_window_size_m / 2 - self.precip_grid_resol
+        x_end = event[1] + precip_window_size_m / 2 - 1000
         y_start = event[2] + precip_window_size_m / 2
-        y_end = event[2] - precip_window_size_m / 2 + self.precip_grid_resol
+        y_end = event[2] - precip_window_size_m / 2 + 1000
 
         # Select the corresponding precipitation data (5 days prior the event)
         x_precip_ev = self.X_precip['precip'].sel(
@@ -439,8 +435,9 @@ class DataGenerator(keras.utils.Sequence):
                 print(f"Shape mismatch: {x_2d_ev.shape[2]} !="
                       f" {self.get_channels_nb()}")
                 print(f"Event: {event}")
-            x_2d_ev = np.zeros((self.precip_window_size,
-                                self.precip_window_size,
+            pixels_nb = int(self.precip_window_size / self.precip_resolution)
+            x_2d_ev = np.zeros((pixels_nb,
+                                pixels_nb,
                                 self.get_channels_nb()))
             y = 0
 

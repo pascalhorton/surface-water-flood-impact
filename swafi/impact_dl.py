@@ -34,7 +34,11 @@ class ImpactDeepLearning(Impact):
     reload_trained_models: bool
         Whether to reload the previously trained models or not.
     precip_window_size: int
-        The precipitation window size (number of pixels).
+        The precipitation window size [km].
+    precip_resolution: int
+        The precipitation resolution [km].
+    precip_time_step: int
+        The precipitation time step [h].
     precip_days_before: int
         The number of days before the event to use for the precipitation.
     precip_days_after: int
@@ -47,7 +51,8 @@ class ImpactDeepLearning(Impact):
 
     def __init__(self, events, target_type='occurrence', random_state=42,
                  reload_trained_models=False, precip_window_size=12,
-                 precip_days_before=8, precip_days_after=3, batch_size=32, epochs=100):
+                 precip_resolution=1, precip_time_step=1, precip_days_before=8,
+                 precip_days_after=3, batch_size=32, epochs=100):
         super().__init__(events, target_type=target_type, random_state=random_state)
         self.reload_trained_models = reload_trained_models
 
@@ -57,10 +62,21 @@ class ImpactDeepLearning(Impact):
         self.dg_val = None
         self.dg_test = None
 
+        # Check the precipitation parameters
+        assert precip_window_size % precip_resolution == 0, \
+            "precip_window_size must be divisible by precip_resolution"
+        pixels_per_side = precip_window_size // precip_resolution
+        assert pixels_per_side % 2 == 0, "pixels per side must be even"
+        assert precip_days_before >= 0, "precip_days_before must be >= 0"
+        assert precip_days_after >= 0, "precip_days_after must be >= 0"
+
         # Options
+        self.random_state = random_state
         self.precip_days_before = precip_days_before
         self.precip_days_after = precip_days_after
         self.precip_window_size = precip_window_size
+        self.precip_resolution = precip_resolution
+        self.precip_time_step = precip_time_step
         self.transform_static = 'standardize'  # 'standardize' or 'normalize'
         self.transform_2d = 'standardize'  # 'standardize' or 'normalize'
         self.precip_trans_domain = 'domain-average'  # 'domain-average' or 'per-pixel'
@@ -82,8 +98,9 @@ class ImpactDeepLearning(Impact):
         self._create_data_generator_valid()
 
         # Define the model
-        self._define_model(input_2d_size=[self.precip_window_size,
-                                          self.precip_window_size,
+        pixels_per_side = self.precip_window_size // self.precip_resolution
+        self._define_model(input_2d_size=[pixels_per_side,
+                                          pixels_per_side,
                                           self.dg_train.get_channels_nb()],
                            input_1d_size=self.x_train.shape[1:])
 
@@ -93,7 +110,7 @@ class ImpactDeepLearning(Impact):
 
         # Clear session and set the seed
         keras.backend.clear_session()
-        keras.utils.set_random_seed(42)
+        keras.utils.set_random_seed(self.random_state)
 
         # Define the optimizer
         optimizer = self._define_optimizer(
@@ -239,6 +256,8 @@ class ImpactDeepLearning(Impact):
             batch_size=self.batch_size,
             shuffle=True,
             precip_window_size=self.precip_window_size,
+            precip_resolution=self.precip_resolution,
+            precip_time_step=self.precip_time_step,
             precip_days_before=self.precip_days_before,
             precip_days_after=self.precip_days_after,
             tmp_dir=self.tmp_dir,
@@ -262,6 +281,8 @@ class ImpactDeepLearning(Impact):
             batch_size=self.batch_size,
             shuffle=True,
             precip_window_size=self.precip_window_size,
+            precip_resolution=self.precip_resolution,
+            precip_time_step=self.precip_time_step,
             precip_days_before=self.precip_days_before,
             precip_days_after=self.precip_days_after,
             tmp_dir=self.tmp_dir,
@@ -292,6 +313,8 @@ class ImpactDeepLearning(Impact):
             batch_size=self.batch_size,
             shuffle=True,
             precip_window_size=self.precip_window_size,
+            precip_resolution=self.precip_resolution,
+            precip_time_step=self.precip_time_step,
             precip_days_before=self.precip_days_before,
             precip_days_after=self.precip_days_after,
             tmp_dir=self.tmp_dir,
@@ -377,6 +400,19 @@ class ImpactDeepLearning(Impact):
             The precipitation data.
         """
         assert len(precipitation.dims) == 3, "Precipitation must be 3D"
+
+        # Adapt the spatial resolution
+        if self.precip_resolution != 1:
+            precipitation = precipitation.coarsen(
+                x=self.precip_resolution, y=self.precip_resolution, boundary='trim'
+            ).mean()
+
+        # Aggregate the precipitation at the desired time step
+        if self.precip_time_step != 1:
+            precipitation = precipitation.coarsen(
+                time=self.precip_time_step, boundary='trim'
+            ).sum()
+
         if self.dem is not None:
             assert precipitation['precip'].shape[1:] == self.dem.shape, \
                 "DEM and precipitation must have the same shape"
@@ -393,6 +429,13 @@ class ImpactDeepLearning(Impact):
             The DEM data.
         """
         assert dem.ndim == 2, "DEM must be 2D"
+
+        # Adapt the spatial resolution
+        if self.precip_resolution != 1:
+            dem = dem.coarsen(
+                x=self.precip_resolution, y=self.precip_resolution, boundary='trim'
+            ).mean()
+
         if self.precipitation is not None:
             assert dem.shape == self.precipitation.isel(time=0).shape, \
                 "DEM and precipitation must have the same shape"
