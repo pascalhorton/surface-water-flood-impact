@@ -295,10 +295,10 @@ class ImpactDeepLearning(Impact):
 
         # Compute the scores
         if self.target_type == 'occurrence':
-            tp, tn, fp, fn = compute_confusion_matrix(y, y_pred)
+            y_pred_class = (y_pred > 0.5).astype(int)
+            tp, tn, fp, fn = compute_confusion_matrix(y, y_pred_class)
             print_classic_scores(tp, tn, fp, fn)
-            y_pred_prob = self.model.predict_proba(x)
-            assess_roc_auc(y, y_pred_prob[:, 1])
+            assess_roc_auc(y, y_pred[:, 1])
         else:
             rmse = np.sqrt(np.mean((y - y_pred) ** 2))
             print(f"RMSE: {rmse}")

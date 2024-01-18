@@ -11,7 +11,7 @@ from pathlib import Path
 
 class DataGenerator(keras.utils.Sequence):
     def __init__(self, event_props, x_static, x_precip, x_dem, y, batch_size=32,
-                 shuffle=True, preload_precip_events=True, load_dump_precip_data=False,
+                 shuffle=True, preload_precip_events=False, load_dump_precip_data=True,
                  precip_window_size=12, precip_grid_resol=1000, precip_days_before=8,
                  precip_days_after=3, tmp_dir=None, transform_static='standardize',
                  transform_2d='standardize',
@@ -166,12 +166,12 @@ class DataGenerator(keras.utils.Sequence):
         if self.preload_precip_events:
             x_2d = self.x_2d[:, :, :, :]
         else:
-            x_2d = np.zeros((self.batch_size,
+            x_2d = np.zeros((self.n_samples,
                              self.precip_window_size,
                              self.precip_window_size,
                              self.get_channels_nb()))
-            for i_b, event in enumerate(self.event_props):
-                x_2d[i_b], y[i_b] = self._extract_precipitation(event, y[i_b])
+            for i, event in enumerate(self.event_props):
+                x_2d[i], y[i] = self._extract_precipitation(event, y[i])
 
         # Select the static data
         x_static = self.X_static[:, :]
@@ -232,10 +232,17 @@ class DataGenerator(keras.utils.Sequence):
     def _restrict_temporal_selection(self):
         """ Restrict the temporal selection of the precipitation data. """
         if self.X_precip is not None:
+            # Select the min/max dates
             t_min = self.event_props[:, 0].min() - np.timedelta64(
                 self.precip_days_before, 'D')
             t_max = self.event_props[:, 0].max() + np.timedelta64(
                 self.precip_days_after, 'D')
+
+            # Round to the year start/end
+            t_min = np.datetime64(f'{t_min.year}-01-01')
+            t_max = np.datetime64(f'{t_max.year}-12-31')
+
+            # Select the corresponding precipitation data
             self.X_precip = self.X_precip.sel(
                 time=slice(t_min, t_max)
             )
