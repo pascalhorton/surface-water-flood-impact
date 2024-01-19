@@ -95,7 +95,7 @@ class ImpactDeepLearning(Impact):
         self.batch_size = batch_size
         self.epochs = epochs
 
-    def fit(self, tag=None, dir_plots=None):
+    def fit(self, tag=None, dir_plots=None, show_plots=False):
         """
         Fit the model.
 
@@ -105,6 +105,8 @@ class ImpactDeepLearning(Impact):
             The tag to add to the file name.
         dir_plots: str
             The directory where to save the plots.
+        show_plots: bool
+            Whether to show the plots or not.
         """
         self._create_data_generator_train()
         self._create_data_generator_valid()
@@ -156,7 +158,7 @@ class ImpactDeepLearning(Impact):
         )
 
         # Plot the training history
-        self._plot_training_history(hist, dir_plots)
+        self._plot_training_history(hist, dir_plots, show_plots)
 
     def reduce_negatives_on_train(self, factor):
         """
@@ -471,7 +473,7 @@ class ImpactDeepLearning(Impact):
         self.dem = dem
 
     @staticmethod
-    def _plot_training_history(hist, dir_plots):
+    def _plot_training_history(hist, dir_plots, show_plots):
         """
         Plot the training history.
 
@@ -481,6 +483,8 @@ class ImpactDeepLearning(Impact):
             The history.
         dir_plots: str
             The directory where to save the plots.
+        show_plots: bool
+            Whether to show the plots or not.
         """
         now = datetime.datetime.now()
 
@@ -491,7 +495,8 @@ class ImpactDeepLearning(Impact):
         plt.title('Loss')
         plt.tight_layout()
         plt.savefig(f'{dir_plots}/loss_{now.strftime("%Y-%m-%d_%H-%M-%S")}.png')
-        plt.show()
+        if show_plots:
+            plt.show()
 
         plt.figure(figsize=(10, 5))
         plt.plot(hist.history['accuracy'], label='train')
@@ -500,4 +505,5 @@ class ImpactDeepLearning(Impact):
         plt.title('Accuracy')
         plt.tight_layout()
         plt.savefig(f'{dir_plots}/accuracy_{now.strftime("%Y-%m-%d_%H-%M-%S")}.png')
-        plt.show()
+        if show_plots:
+            plt.show()

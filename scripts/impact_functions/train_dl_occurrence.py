@@ -24,18 +24,30 @@ config = Config()
 
 def main():
     parser = argparse.ArgumentParser(description="SWAFI DL")
-    parser.add_argument("config", help="Configuration", type=int, default=0,
-                        nargs='?')
+    parser.add_argument("config", type=int, default=-1,
+                        help="Configuration ID (number corresponding to some options)")
+    parser.add_argument("--do_not_use_precip", action="store_true",
+                        help="Do not use precipitation data")
+    parser.add_argument("--precip_resolution", type=int, default=1,
+                        help="Desired resolution of the precipitation data [km]")
+    parser.add_argument("--precip_time_step", type=int, default=6,
+                        help="Desired time step of the precipitation data [hours]")
+    parser.add_argument("--precip_days_before", type=int, default=4,
+                        help="Number of days before the event to consider for the "
+                             "precipitation data")
+    parser.add_argument("--precip_days_after", type=int, default=2,
+                        help="Number of days after the event to consider for the "
+                             "precipitation data")
 
     args = parser.parse_args()
     print("config: ", args.config)
 
     # Main options
-    use_precip = False
-    precip_resolution = 1
-    precip_time_step = 6
-    precip_days_before = 4
-    precip_days_after = 2
+    use_precip = not args.do_not_use_precip
+    precip_resolution = args.precip_resolution
+    precip_time_step = args.precip_time_step
+    precip_days_before = args.precip_days_before
+    precip_days_after = args.precip_days_after
 
     # Load events
     events_filename = f'events_{DATASET}_with_target_values_{LABEL_EVENT_FILE}.pickle'
@@ -44,8 +56,9 @@ def main():
     # events.reduce_number_of_negatives(FACTOR_NEG_EVENTS * n_pos, random_state=42)
 
     # Configuration-specific changes
-    if args.config == 0:  # Manual configuration
-        pass
+    interactive_mode = False
+    if args.config == -1:  # Manual configuration
+        interactive_mode = True
     elif args.config == 1:
         precip_time_step = 1
     elif args.config == 2:
@@ -90,7 +103,8 @@ def main():
     dl.reduce_negatives_on_train(FACTOR_NEG_REDUCTION)
     dl.compute_balanced_class_weights()
     dl.compute_corrected_class_weights(weight_denominator=WEIGHT_DENOMINATOR)
-    dl.fit(dir_plots=config.get('OUTPUT_DIR'))
+    dl.fit(dir_plots=config.get('OUTPUT_DIR'), show_plots=interactive_mode,
+           tag=args.config)
     dl.assess_model_on_all_periods()
 
 

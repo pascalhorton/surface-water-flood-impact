@@ -7,4 +7,4 @@ pyarrow
 matplotlib
 scikit-learn
 tensorflow
-keras
+keras==3.*
