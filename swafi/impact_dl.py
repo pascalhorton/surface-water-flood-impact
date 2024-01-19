@@ -72,6 +72,12 @@ class ImpactDeepLearning(Impact):
         assert precip_days_before >= 0, "precip_days_before must be >= 0"
         assert precip_days_after >= 0, "precip_days_after must be >= 0"
 
+        # Display if using GPU or CPU
+        print("Built with CUDA: ", tf.test.is_built_with_cuda())
+        print("Available GPU: ", tf.config.list_physical_devices('GPU'))
+        if len(tf.config.list_physical_devices('GPU')) > 0:
+            print("GPU name: ", tf.test.gpu_device_name())
+
         # Options
         self.random_state = random_state
         self.use_precip = use_precip
@@ -89,7 +95,7 @@ class ImpactDeepLearning(Impact):
         self.batch_size = batch_size
         self.epochs = epochs
 
-    def fit(self, tag=None):
+    def fit(self, tag=None, dir_plots=None):
         """
         Fit the model.
 
@@ -97,6 +103,8 @@ class ImpactDeepLearning(Impact):
         ----------
         tag: str
             The tag to add to the file name.
+        dir_plots: str
+            The directory where to save the plots.
         """
         self._create_data_generator_train()
         self._create_data_generator_valid()
@@ -114,7 +122,7 @@ class ImpactDeepLearning(Impact):
 
         # Early stopping
         callback = keras.callbacks.EarlyStopping(
-            monitor='val_loss', patience=10, restore_best_weights=True)
+            monitor='val_loss', patience=20, restore_best_weights=True)
 
         # Clear session and set the seed
         keras.backend.clear_session()
@@ -148,7 +156,7 @@ class ImpactDeepLearning(Impact):
         )
 
         # Plot the training history
-        self._plot_training_history(hist)
+        self._plot_training_history(hist, dir_plots)
 
     def reduce_negatives_on_train(self, factor):
         """
@@ -463,7 +471,7 @@ class ImpactDeepLearning(Impact):
         self.dem = dem
 
     @staticmethod
-    def _plot_training_history(hist):
+    def _plot_training_history(hist, dir_plots):
         """
         Plot the training history.
 
@@ -471,6 +479,8 @@ class ImpactDeepLearning(Impact):
         ----------
         hist: keras.callbacks.History
             The history.
+        dir_plots: str
+            The directory where to save the plots.
         """
         now = datetime.datetime.now()
 
@@ -480,7 +490,7 @@ class ImpactDeepLearning(Impact):
         plt.legend()
         plt.title('Loss')
         plt.tight_layout()
-        plt.savefig(f'loss_{now.strftime("%Y-%m-%d_%H-%M-%S")}.png')
+        plt.savefig(f'{dir_plots}/loss_{now.strftime("%Y-%m-%d_%H-%M-%S")}.png')
         plt.show()
 
         plt.figure(figsize=(10, 5))
@@ -489,5 +499,5 @@ class ImpactDeepLearning(Impact):
         plt.legend()
         plt.title('Accuracy')
         plt.tight_layout()
-        plt.savefig(f'accuracy_{now.strftime("%Y-%m-%d_%H-%M-%S")}.png')
+        plt.savefig(f'{dir_plots}/accuracy_{now.strftime("%Y-%m-%d_%H-%M-%S")}.png')
         plt.show()

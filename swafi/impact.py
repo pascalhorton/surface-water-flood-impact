@@ -140,14 +140,17 @@ class Impact:
         self.df = self.df[(self.df['nb_claims'] == 0) |
                           (self.df['nb_claims'] >= threshold)]
 
-    def split_sample(self, valid_test_size=0.3):
+    def split_sample(self, valid_test_size=0.45, test_size=0.6):
         """
         Split the sample into training, validation and test sets.
 
         Parameters
         ----------
         valid_test_size: float
-            The size of the set for validation and testing (default: 0.3)
+            The size of the set for validation and testing (default: 0.5)
+        test_size: float
+            The size of the set for testing proportionally to the length of the
+            validation and testing split (default: 0.6)
         """
         # Sort the dataframe by date
         self.df.sort_values(by=['e_end'], inplace=True)
@@ -173,11 +176,14 @@ class Impact:
 
         # Split the sample into training and test sets
         # Do not shuffle to avoid having the same dates in train and test
+        # Stratification on the target (stratify=events[:, 0]) in order to have the
+        # same proportion of events with and without damages in each split is only
+        # possible when using the shuffle option.
         self.x_train, x_tmp, self.y_train, y_tmp = train_test_split(
             x, events, test_size=valid_test_size, random_state=self.random_state,
             shuffle=False)
         self.x_test, self.x_valid, self.y_test, self.y_valid = train_test_split(
-            x_tmp, y_tmp, test_size=0.5, random_state=self.random_state,
+            x_tmp, y_tmp, test_size=test_size, random_state=self.random_state,
             shuffle=False)
 
         # Set the event properties in a separate variable
@@ -198,6 +204,12 @@ class Impact:
         self.y_train = val_y_train
         self.y_valid = val_y_valid
         self.y_test = val_y_test
+
+        # Print the percentage of events with and without damages
+        self.show_target_stats()
+        print(f"Split ratios: train={100 * (1 - valid_test_size):.1f}%, "
+              f"valid={100 * valid_test_size * (1 - test_size):.1f}%, "
+              f"test={100 * valid_test_size * test_size:.1f}%")
 
     def normalize_features(self):
         """
@@ -243,9 +255,11 @@ class Impact:
             events_with_damages = y[y > 0]
             events_without_damages = y[y == 0]
             print(f"Number of events with damages ({split}): "
-                  f"{len(events_with_damages)}")
+                  f"({len(events_with_damages) / len(y):.4f}%)"
+                  f"({len(events_with_damages)})")
             print(f"Number of events without damages ({split}): "
-                  f"{len(events_without_damages)}")
+                  f"({len(events_without_damages) / len(y):.4f}%)"
+                  f"({len(events_without_damages)})")
 
     def create_benchmark_model(self, model_type='random'):
         """

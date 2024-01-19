@@ -14,9 +14,10 @@ from swafi.events import load_events_from_pickle
 
 DATASET = 'gvz'  # 'mobiliar' or 'gvz'
 LABEL_EVENT_FILE = 'original_w_prior_pluvial_occurrence'
-FACTOR_NEG_EVENTS = 10
+# FACTOR_NEG_EVENTS = 100
 FACTOR_NEG_REDUCTION = 10
-WEIGHT_DENOMINATOR = 27
+#WEIGHT_DENOMINATOR = 27
+WEIGHT_DENOMINATOR = 5
 
 config = Config()
 
