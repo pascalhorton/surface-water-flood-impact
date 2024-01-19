@@ -33,6 +33,8 @@ class ImpactDeepLearning(Impact):
         Default: 42. Set to None to not set the random seed.
     reload_trained_models: bool
         Whether to reload the previously trained models or not.
+    use_precip: bool
+        Whether to use precipitation data (CombiPrecip) or not.
     precip_window_size: int
         The precipitation window size [km].
     precip_resolution: int
@@ -50,7 +52,7 @@ class ImpactDeepLearning(Impact):
     """
 
     def __init__(self, events, target_type='occurrence', random_state=42,
-                 reload_trained_models=False, precip_window_size=12,
+                 reload_trained_models=False, use_precip=True, precip_window_size=12,
                  precip_resolution=1, precip_time_step=1, precip_days_before=8,
                  precip_days_after=3, batch_size=32, epochs=100):
         super().__init__(events, target_type=target_type, random_state=random_state)
@@ -72,6 +74,7 @@ class ImpactDeepLearning(Impact):
 
         # Options
         self.random_state = random_state
+        self.use_precip = use_precip
         self.precip_days_before = precip_days_before
         self.precip_days_after = precip_days_after
         self.precip_window_size = precip_window_size
@@ -99,10 +102,14 @@ class ImpactDeepLearning(Impact):
 
         # Define the model
         pixels_per_side = self.precip_window_size // self.precip_resolution
-        self._define_model(input_2d_size=[pixels_per_side,
-                                          pixels_per_side,
-                                          self.dg_train.get_channels_nb()],
-                           input_1d_size=self.x_train.shape[1:])
+        if self.use_precip:
+            self._define_model(input_2d_size=[pixels_per_side,
+                                              pixels_per_side,
+                                              self.dg_train.get_channels_nb()],
+                               input_1d_size=self.x_train.shape[1:])
+        else:
+            self._define_model(input_2d_size=None,
+                               input_1d_size=self.x_train.shape[1:])
 
         # Early stopping
         callback = keras.callbacks.EarlyStopping(
@@ -161,6 +168,9 @@ class ImpactDeepLearning(Impact):
         x, y = dg.get_all_data()
         y_pred = self.model.predict(x)
 
+        # Get rid of the single dimension
+        y_pred = y_pred.squeeze()
+
         print(f"\nSplit: {period_name}")
 
         # Compute the scores
@@ -168,7 +178,7 @@ class ImpactDeepLearning(Impact):
             y_pred_class = (y_pred > 0.5).astype(int)
             tp, tn, fp, fn = compute_confusion_matrix(y, y_pred_class)
             print_classic_scores(tp, tn, fp, fn)
-            assess_roc_auc(y, y_pred[:, 1])
+            assess_roc_auc(y, y_pred)
         else:
             rmse = np.sqrt(np.mean((y - y_pred) ** 2))
             print(f"RMSE: {rmse}")
@@ -243,14 +253,10 @@ class ImpactDeepLearning(Impact):
         return weighted_binary_cross_entropy
 
     def _create_data_generator_train(self):
-        start_train = self.events_train[0, 0] - pd.to_timedelta(
-            self.precip_days_before, unit='D')
-        end_train = self.events_train[-1, 0] + pd.to_timedelta(
-            self.precip_days_after, unit='D')
         self.dg_train = DataGenerator(
             event_props=self.events_train,
             x_static=self.x_train,
-            x_precip=self.precipitation.sel(time=slice(start_train, end_train)),
+            x_precip=self.precipitation,
             x_dem=self.dem,
             y=self.y_train,
             batch_size=self.batch_size,
@@ -268,14 +274,10 @@ class ImpactDeepLearning(Impact):
         )
 
     def _create_data_generator_valid(self):
-        start_val = self.events_valid[0, 0] - pd.to_timedelta(
-            self.precip_days_before, unit='D')
-        end_val = self.events_valid[-1, 0] + pd.to_timedelta(
-            self.precip_days_after, unit='D')
         self.dg_val = DataGenerator(
             event_props=self.events_valid,
             x_static=self.x_valid,
-            x_precip=self.precipitation.sel(time=slice(start_val, end_val)),
+            x_precip=self.precipitation,
             x_dem=self.dem,
             y=self.y_valid,
             batch_size=self.batch_size,
@@ -300,14 +302,10 @@ class ImpactDeepLearning(Impact):
         )
 
     def _create_data_generator_test(self):
-        start_test = self.events_test[0, 0] - pd.to_timedelta(
-            self.precip_days_before, unit='D')
-        end_test = self.events_test[-1, 0] + pd.to_timedelta(
-            self.precip_days_after, unit='D')
         self.dg_test = DataGenerator(
             event_props=self.events_test,
             x_static=self.x_test,
-            x_precip=self.precipitation.sel(time=slice(start_test, end_test)),
+            x_precip=self.precipitation,
             x_dem=self.dem,
             y=self.y_test,
             batch_size=self.batch_size,
@@ -399,6 +397,10 @@ class ImpactDeepLearning(Impact):
         precipitation: xarray.Dataset
             The precipitation data.
         """
+        if not self.use_precip:
+            print("Precipitation is not used and is therefore not loaded.")
+            return
+
         assert len(precipitation.dims) == 3, "Precipitation must be 3D"
 
         # Adapt the spatial resolution
@@ -428,6 +430,10 @@ class ImpactDeepLearning(Impact):
         dem: xarray.Dataset
             The DEM data.
         """
+        if not self.use_precip:
+            print("DEM is not used and is therefore not loaded.")
+            return
+
         assert dem.ndim == 2, "DEM must be 2D"
 
         # Adapt the spatial resolution

@@ -13,9 +13,9 @@ class DeepImpact(models.Model):
     ----------
     task: str
         The task. Options are: 'regression', 'classification'
-    input_2d_size: list
+    input_2d_size: ?list
         The input 2D size.
-    input_1d_size: list
+    input_1d_size: ?list
         The input 1D size.
     dropout_rate: float
         The dropout rate.
@@ -33,8 +33,14 @@ class DeepImpact(models.Model):
         super(DeepImpact, self).__init__()
         self.model = None
         self.task = task
-        self.input_2d_size = list(input_2d_size)
-        self.input_1d_size = list(input_1d_size)
+        if input_2d_size is None:
+            self.input_2d_size = None
+        else:
+            self.input_2d_size = list(input_2d_size)
+        if input_1d_size is None:
+            self.input_1d_size = None
+        else:
+            self.input_1d_size = list(input_1d_size)
         self.dropout_rate = dropout_rate
         self.nb_conv_blocks = 3
         self.nb_filters = 64
@@ -50,33 +56,47 @@ class DeepImpact(models.Model):
         """
         Check the input size.
         """
-        assert len(self.input_2d_size) == 3, "Input 2D size must be 3D (with channels)"
-        assert len(self.input_1d_size) == 1, "Input 1D size must be 1D"
+        if self.input_1d_size is None and self.input_2d_size is None:
+            raise ValueError("At least one input size must be provided")
 
-        # Assert that the input 2D size is divisible by 2 * nb_conv_blocks
-        assert self.input_2d_size[0] % (2 * self.nb_conv_blocks) == 0, \
-            "Input 2D size must be divisible by 2 * nb_conv_blocks"
-        assert self.input_2d_size[1] % (2 * self.nb_conv_blocks) == 0, \
-            "Input 2D size must be divisible by 2 * nb_conv_blocks"
+        if self.input_1d_size is not None:
+            assert len(self.input_1d_size) == 1, "Input 1D size must be 1D"
+
+        if self.input_2d_size is not None:
+            assert len(self.input_2d_size) == 3, \
+                "Input 2D size must be 3D (with channels)"
+            # Assert that the input 2D size is divisible by 2 * nb_conv_blocks
+            assert self.input_2d_size[0] % (2 * self.nb_conv_blocks) == 0, \
+                "Input 2D size must be divisible by 2 * nb_conv_blocks"
+            assert self.input_2d_size[1] % (2 * self.nb_conv_blocks) == 0, \
+                "Input 2D size must be divisible by 2 * nb_conv_blocks"
 
     def _build_model(self):
         """
         Build the model.
         """
-        input_2d = layers.Input(shape=self.input_2d_size, name='input_2d')
-        input_1d = layers.Input(shape=self.input_1d_size, name='input_1d')
+        x = None
 
-        # 2D convolution
-        x = input_2d
-        for i in range(self.nb_conv_blocks):
-            nb_filters = self.nb_filters * (2 ** i)
-            x = self.conv2d_block(x, filters=nb_filters, kernel_size=3)
+        if self.input_2d_size is not None:
+            input_2d = layers.Input(shape=self.input_2d_size, name='input_2d')
 
-        # Flatten
-        x = layers.Flatten()(x)
+            # 2D convolution
+            x = input_2d
+            for i in range(self.nb_conv_blocks):
+                nb_filters = self.nb_filters * (2 ** i)
+                x = self.conv2d_block(x, filters=nb_filters, kernel_size=3)
 
-        # Concatenate with 1D input
-        x = layers.concatenate([x, input_1d])
+            # Flatten
+            x = layers.Flatten()(x)
+
+        if self.input_1d_size is not None:
+            input_1d = layers.Input(shape=self.input_1d_size, name='input_1d')
+
+            if self.input_2d_size is not None:
+                # Concatenate with 1D input
+                x = layers.concatenate([x, input_1d])
+            else:
+                x = input_1d
 
         # Fully connected
         x = layers.Dense(256, activation=self.inner_activation)(x)
@@ -87,7 +107,15 @@ class DeepImpact(models.Model):
         # Last activation
         output = layers.Dense(1, activation=self.last_activation)(x)
 
-        self.model = models.Model(inputs=[input_2d, input_1d], outputs=output)
+        # Build model
+        if self.input_2d_size is not None and self.input_1d_size is not None:
+            self.model = models.Model(inputs=[input_2d, input_1d], outputs=output)
+        elif self.input_2d_size is None:
+            self.model = models.Model(inputs=input_1d, outputs=output)
+        elif self.input_1d_size is None:
+            self.model = models.Model(inputs=input_2d, outputs=output)
+        else:
+            raise ValueError("At least one input size must be provided")
 
     def conv2d_block(self, x, filters, kernel_size=3, initializer='he_normal',
                      activation='default'):

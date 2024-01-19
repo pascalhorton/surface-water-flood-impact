@@ -28,14 +28,18 @@ def main():
     args = parser.parse_args()
     print("config: ", args.config)
 
+    # Main options
+    use_precip = False
+    precip_resolution = 2
+    precip_time_step = 6
+    precip_days_before = 4
+    precip_days_after = 2
+
     # Load events
     events_filename = f'events_{DATASET}_with_target_values_{LABEL_EVENT_FILE}.pickle'
     events = load_events_from_pickle(filename=events_filename)
     n_pos = events.count_positives()
     events.reduce_number_of_negatives(FACTOR_NEG_EVENTS * n_pos, random_state=42)
-
-    # Create the impact function
-    dl = ImpactDeepLearning(events, target_type='occurrence', random_state=42)
 
     # Configuration-specific changes
     if args.config == 0:  # Manual configuration
@@ -43,18 +47,26 @@ def main():
     elif args.config == 1:
         pass
 
-    # Load DEM
-    dem = rxr.open_rasterio(config.get('DEM_PATH'), masked=True).squeeze()
-    dl.set_dem(dem)
+    # Create the impact function
+    dl = ImpactDeepLearning(
+        events, target_type='occurrence', random_state=42, precip_window_size=12,
+        use_precip=use_precip, precip_resolution=precip_resolution,
+        precip_time_step=precip_time_step, precip_days_before=precip_days_before,
+        precip_days_after=precip_days_after)
 
-    # Load CombiPrecip files
-    data_path = config.get('DIR_PRECIP')
-    files = sorted(glob(f"{data_path}/*.nc"))
-    precip = xr.open_mfdataset(files, parallel=False)
-    precip = precip.rename_vars({'CPC': 'precip'})
-    precip = precip.rename({'REFERENCE_TS': 'time'})
-    precip = precip.sel(x=dem.x, y=dem.y)  # Select the same domain as the DEM
-    dl.set_precipitation(precip)
+    if use_precip:
+        # Load DEM
+        dem = rxr.open_rasterio(config.get('DEM_PATH'), masked=True).squeeze()
+        dl.set_dem(dem)
+
+        # Load CombiPrecip files
+        data_path = config.get('DIR_PRECIP')
+        files = sorted(glob(f"{data_path}/*.nc"))
+        precip = xr.open_mfdataset(files, parallel=False)
+        precip = precip.rename_vars({'CPC': 'precip'})
+        precip = precip.rename({'REFERENCE_TS': 'time'})
+        precip = precip.sel(x=dem.x, y=dem.y)  # Select the same domain as the DEM
+        dl.set_precipitation(precip)
 
     # Load static features
     dl.load_features(['event', 'terrain', 'swf_map', 'flowacc', 'twi',

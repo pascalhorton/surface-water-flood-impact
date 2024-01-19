@@ -108,13 +108,16 @@ class DataGenerator(keras.utils.Sequence):
         self.std_dem = None
         self.min_dem = None
         self.max_dem = None
+        self.x_1d = None
+        self.x_2d = None
 
         self.X_static = x_static
         self.X_precip = x_precip
         self.X_dem = x_dem
 
-        self._restrict_spatial_domain()
-        self._restrict_temporal_selection()
+        if self.X_precip is not None:
+            self._restrict_spatial_domain()
+            self._restrict_temporal_selection()
 
         self._compute_predictor_statistics(
             transform_static, transform_2d, precip_transformation_domain,
@@ -129,7 +132,11 @@ class DataGenerator(keras.utils.Sequence):
 
         self.on_epoch_end()
 
+        if self.X_precip is None:
+            return
+
         self.X_dem.load()
+
         if self.preload_precip_events:
             print('Loading data into RAM')
             self._load_dump_precip_data(transform_2d, precip_transformation_domain,
@@ -167,34 +174,51 @@ class DataGenerator(keras.utils.Sequence):
         # Select the events
         y = self.y
 
+        x_2d = None
+        x_static = None
+
         # Select the 2D data
-        if self.preload_precip_events:
-            x_2d = self.x_2d[:, :, :, :]
-        else:
-            pixels_nb = int(self.precip_window_size / self.precip_resolution)
-            x_2d = np.zeros((self.n_samples,
-                             pixels_nb,
-                             pixels_nb,
-                             self.get_channels_nb()))
-            for i, event in enumerate(self.event_props):
-                x_2d[i], y[i] = self._extract_precipitation(event, y[i])
+        if self.x_2d is not None:
+            if self.preload_precip_events:
+                x_2d = self.x_2d[:, :, :, :]
+            else:
+                pixels_nb = int(self.precip_window_size / self.precip_resolution)
+                x_2d = np.zeros((self.n_samples,
+                                 pixels_nb,
+                                 pixels_nb,
+                                 self.get_channels_nb()))
+                for i, event in enumerate(self.event_props):
+                    x_2d[i], y[i] = self._extract_precipitation(event, y[i])
+
+            if self.X_static is None:
+                return x_2d, y
 
         # Select the static data
-        x_static = self.X_static[:, :]
+        if self.X_static is not None:
+            x_static = self.X_static[:, :]
+
+            if self.X_precip is None:
+                return x_static, y
 
         return (x_2d, x_static), y
 
     def _standardize_inputs(self):
-        self.X_static = (self.X_static - self.mean_static) / self.std_static
-        self.X_precip['precip'] = ((self.X_precip['precip'] - self.mean_precip) /
-                                   self.std_precip)
-        self.X_dem = (self.X_dem - self.mean_dem) / self.std_dem
+        if self.X_static is not None:
+            self.X_static = (self.X_static - self.mean_static) / self.std_static
+        if self.X_precip is not None:
+            self.X_precip['precip'] = ((self.X_precip['precip'] - self.mean_precip) /
+                                       self.std_precip)
+        if self.X_dem is not None:
+            self.X_dem = (self.X_dem - self.mean_dem) / self.std_dem
 
     def _normalize_inputs(self):
-        self.X_static = ((self.X_static - self.min_static) /
-                         (self.max_static - self.min_static))
-        self.X_precip['precip'] = self.X_precip['precip'] / self.max_precip
-        self.X_dem = (self.X_dem - self.min_dem) / (self.max_dem - self.min_dem)
+        if self.X_static is not None:
+            self.X_static = ((self.X_static - self.min_static) /
+                             (self.max_static - self.min_static))
+        if self.X_precip is not None:
+            self.X_precip['precip'] = self.X_precip['precip'] / self.max_precip
+        if self.X_dem is not None:
+            self.X_dem = (self.X_dem - self.min_dem) / (self.max_dem - self.min_dem)
 
     def _load_dump_precip_data(self, transform_2d, precip_transformation_domain,
                                log_transform_precip, tmp_dir):
@@ -257,28 +281,33 @@ class DataGenerator(keras.utils.Sequence):
                                       precip_transformation_domain,
                                       log_transform_precip, tmp_dir):
         print('Computing/assigning static predictor statistics')
-        if transform_static == 'standardize':
-            # Compute the mean and standard deviation of the static data
-            if self.mean_static is None:
-                self.mean_static = np.mean(self.X_static, axis=0)
-            if self.std_static is None:
-                self.std_static = np.std(self.X_static, axis=0)
-        elif transform_static == 'normalize':
-            # Compute the min and max of the static data
-            if self.min_static is None:
-                self.min_static = np.min(self.X_static, axis=0)
-            if self.max_static is None:
-                self.max_static = np.max(self.X_static, axis=0)
+        if self.X_static is not None:
+            if transform_static == 'standardize':
+                # Compute the mean and standard deviation of the static data
+                if self.mean_static is None:
+                    self.mean_static = np.mean(self.X_static, axis=0)
+                if self.std_static is None:
+                    self.std_static = np.std(self.X_static, axis=0)
+            elif transform_static == 'normalize':
+                # Compute the min and max of the static data
+                if self.min_static is None:
+                    self.min_static = np.min(self.X_static, axis=0)
+                if self.max_static is None:
+                    self.max_static = np.max(self.X_static, axis=0)
 
         print('Computing DEM predictor statistics')
-        if transform_2d == 'standardize':
-            # Compute the mean and standard deviation of the DEM (non-temporal)
-            self.mean_dem = self.X_dem.mean(('x', 'y')).compute().values
-            self.std_dem = self.X_dem.std(('x', 'y')).compute().values
-        elif transform_2d == 'normalize':
-            # Compute the min and max of the DEM (non-temporal)
-            self.min_dem = self.X_dem.min(('x', 'y')).compute().values
-            self.max_dem = self.X_dem.max(('x', 'y')).compute().values
+        if self.X_dem is not None:
+            if transform_2d == 'standardize':
+                # Compute the mean and standard deviation of the DEM (non-temporal)
+                self.mean_dem = self.X_dem.mean(('x', 'y')).compute().values
+                self.std_dem = self.X_dem.std(('x', 'y')).compute().values
+            elif transform_2d == 'normalize':
+                # Compute the min and max of the DEM (non-temporal)
+                self.min_dem = self.X_dem.min(('x', 'y')).compute().values
+                self.max_dem = self.X_dem.max(('x', 'y')).compute().values
+
+        if self.X_precip is None:
+            return
 
         # Log transform the precipitation (log(1 + x))
         if log_transform_precip:
@@ -374,20 +403,31 @@ class DataGenerator(keras.utils.Sequence):
         # Select the events
         y = self.y[idxs]
 
+        x_2d = None
+        x_static = None
+
         # Select the 2D data
-        if self.preload_precip_events:
-            x_2d = self.x_2d[idxs, :, :, :]
-        else:
-            pixels_nb = int(self.precip_window_size / self.precip_resolution)
-            x_2d = np.zeros((self.batch_size,
-                             pixels_nb,
-                             pixels_nb,
-                             self.get_channels_nb()))
-            for i_b, event in enumerate(self.event_props[idxs]):
-                x_2d[i_b], y[i_b] = self._extract_precipitation(event, y[i_b])
+        if self.x_2d is not None:
+            if self.preload_precip_events:
+                x_2d = self.x_2d[idxs, :, :, :]
+            else:
+                pixels_nb = int(self.precip_window_size / self.precip_resolution)
+                x_2d = np.zeros((self.batch_size,
+                                 pixels_nb,
+                                 pixels_nb,
+                                 self.get_channels_nb()))
+                for i_b, event in enumerate(self.event_props[idxs]):
+                    x_2d[i_b], y[i_b] = self._extract_precipitation(event, y[i_b])
+
+            if self.X_static is None:
+                return x_2d, y
 
         # Select the static data
-        x_static = self.X_static[idxs, :]
+        if self.X_static is not None:
+            x_static = self.X_static[idxs, :]
+
+            if self.X_precip is None:
+                return x_static, y
 
         return (x_2d, x_static), y
 
