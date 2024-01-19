@@ -32,7 +32,7 @@ def main():
 
     # Main options
     use_precip = False
-    precip_resolution = 2
+    precip_resolution = 1
     precip_time_step = 6
     precip_days_before = 4
     precip_days_after = 2
@@ -47,7 +47,19 @@ def main():
     if args.config == 0:  # Manual configuration
         pass
     elif args.config == 1:
-        pass
+        precip_time_step = 1
+    elif args.config == 2:
+        precip_time_step = 2
+    elif args.config == 3:
+        precip_time_step = 3
+    elif args.config == 4:
+        precip_time_step = 4
+    elif args.config == 5:
+        precip_time_step = 6
+    elif args.config == 6:
+        precip_time_step = 12
+    elif args.config == 7:
+        precip_time_step = 24
 
     # Create the impact function
     dl = ImpactDeepLearning(
@@ -78,7 +90,7 @@ def main():
     dl.reduce_negatives_on_train(FACTOR_NEG_REDUCTION)
     dl.compute_balanced_class_weights()
     dl.compute_corrected_class_weights(weight_denominator=WEIGHT_DENOMINATOR)
-    dl.fit()
+    dl.fit(dir_plots=config.get('OUTPUT_DIR'))
     dl.assess_model_on_all_periods()
 
 
