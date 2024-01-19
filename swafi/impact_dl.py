@@ -83,6 +83,7 @@ class ImpactDeepLearning(Impact):
         self.transform_static = 'standardize'  # 'standardize' or 'normalize'
         self.transform_2d = 'standardize'  # 'standardize' or 'normalize'
         self.precip_trans_domain = 'domain-average'  # 'domain-average' or 'per-pixel'
+        self.factor_neg_reduction = 1
 
         # Hyperparameters
         self.batch_size = batch_size
@@ -148,6 +149,17 @@ class ImpactDeepLearning(Impact):
 
         # Plot the training history
         self._plot_training_history(hist)
+
+    def reduce_negatives_on_train(self, factor):
+        """
+        Reduce the number of negatives on the training set.
+
+        Parameters
+        ----------
+        factor: float
+            The factor to reduce the number of negatives.
+        """
+        self.factor_neg_reduction = factor
 
     def assess_model_on_all_periods(self):
         """
@@ -272,6 +284,9 @@ class ImpactDeepLearning(Impact):
             precip_transformation_domain=self.precip_trans_domain,
             log_transform_precip=True
         )
+
+        if self.factor_neg_reduction != 1:
+            self.dg_train.reduce_negatives(self.factor_neg_reduction)
 
     def _create_data_generator_valid(self):
         self.dg_val = DataGenerator(

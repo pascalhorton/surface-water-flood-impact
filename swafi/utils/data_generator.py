@@ -144,7 +144,7 @@ class DataGenerator(keras.utils.Sequence):
 
             print('Pre-loading precipitation events')
             pixels_nb = int(self.precip_window_size / self.precip_resolution)
-            self.x_2d = np.zeros((self.n_samples,
+            self.x_2d = np.zeros((self.y.shape[0],
                                   pixels_nb,
                                   pixels_nb,
                                   self.get_channels_nb()))
@@ -160,6 +160,7 @@ class DataGenerator(keras.utils.Sequence):
             self.x_2d = None
 
     def get_channels_nb(self):
+        """ Get the number of channels of the 2D predictors. """
         input_2d_channels = 0
         if self.X_precip is not None:
             input_2d_channels += self.precip_days_after + self.precip_days_before
@@ -169,6 +170,38 @@ class DataGenerator(keras.utils.Sequence):
             input_2d_channels += 1  # Add one for the DEM layer
 
         return input_2d_channels
+
+    def reduce_negatives(self, factor):
+        """
+        Reduce the number of negative events. It is done by randomly subsampling
+        indices of negative events, but does not remove data.
+
+        Parameters
+        ----------
+        factor: int
+            The factor by which to reduce the number of negative events.
+        """
+        if factor == 1:
+            return
+
+        # Select the indices of the negative events
+        idxs_neg = np.where(self.y == 0)[0]
+        n_neg = idxs_neg.shape[0]
+        n_neg_new = int(n_neg / factor)
+        idxs_neg_new = np.random.choice(idxs_neg, size=n_neg_new, replace=False)
+
+        # Select the indices of the positive events
+        idxs_pos = np.where(self.y > 0)[0]
+
+        # Concatenate the indices
+        self.idxs = np.concatenate([idxs_neg_new, idxs_pos])
+        self.n_samples = self.idxs.shape[0]
+
+        print(f"Reduced the number of negative events from {n_neg} to {n_neg_new}")
+        print(f"Number of positive events: {idxs_pos.shape[0]}")
+
+        # Shuffle
+        np.random.shuffle(self.idxs)
 
     def get_all_data(self):
         # Select the events
@@ -183,7 +216,7 @@ class DataGenerator(keras.utils.Sequence):
                 x_2d = self.x_2d[:, :, :, :]
             else:
                 pixels_nb = int(self.precip_window_size / self.precip_resolution)
-                x_2d = np.zeros((self.n_samples,
+                x_2d = np.zeros((self.y.shape[0],
                                  pixels_nb,
                                  pixels_nb,
                                  self.get_channels_nb()))
@@ -485,6 +518,5 @@ class DataGenerator(keras.utils.Sequence):
 
     def on_epoch_end(self):
         """Updates indexes after each epoch"""
-        self.idxs = np.arange(self.n_samples)
         if self.shuffle:
             np.random.shuffle(self.idxs)

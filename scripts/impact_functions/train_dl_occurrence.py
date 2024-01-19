@@ -15,7 +15,8 @@ from swafi.events import load_events_from_pickle
 DATASET = 'gvz'  # 'mobiliar' or 'gvz'
 LABEL_EVENT_FILE = 'original_w_prior_pluvial_occurrence'
 FACTOR_NEG_EVENTS = 10
-WEIGHT_DENOMINATOR = 1
+FACTOR_NEG_REDUCTION = 10
+WEIGHT_DENOMINATOR = 27
 
 config = Config()
 
@@ -39,7 +40,7 @@ def main():
     events_filename = f'events_{DATASET}_with_target_values_{LABEL_EVENT_FILE}.pickle'
     events = load_events_from_pickle(filename=events_filename)
     n_pos = events.count_positives()
-    events.reduce_number_of_negatives(FACTOR_NEG_EVENTS * n_pos, random_state=42)
+    # events.reduce_number_of_negatives(FACTOR_NEG_EVENTS * n_pos, random_state=42)
 
     # Configuration-specific changes
     if args.config == 0:  # Manual configuration
@@ -73,6 +74,7 @@ def main():
                       'land_cover', 'runoff_coeff'])
 
     dl.split_sample()
+    dl.reduce_negatives_on_train(FACTOR_NEG_REDUCTION)
     dl.compute_balanced_class_weights()
     dl.compute_corrected_class_weights(weight_denominator=WEIGHT_DENOMINATOR)
     dl.fit()
