@@ -213,16 +213,16 @@ events = load_events_from_pickle(filename=events_filename)
 # Create the impact function
 lr = ImpactLogisticRegression(events)
 
-# Load the static attributes
+# Load the desired attributes
 lr.load_features(['event', 'terrain', 'swf_map', 'runoff_coeff'])
 
 # Split the data into training, validation, and test sets
 lr.split_sample()
 # Normalize the features
 lr.normalize_features()
-# Compute the class weights
+# Compute the class weights (claim/no claim)
 lr.compute_balanced_class_weights()
-# Decrease the weight of the events with damages by a certain factor
+# Decrease the weight of the events with claims by a certain factor (otherwise it will be too high)
 lr.compute_corrected_class_weights(weight_denominator=27)
 # Train the model
 lr.fit()
