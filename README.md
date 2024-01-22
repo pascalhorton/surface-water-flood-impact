@@ -174,18 +174,82 @@ The attributes are then saved as csv files.
 The following attributes can be computed:
 
 - Flow accumulation (using the PyShed library as in `compute_flow_accumulation_pysheds.py` or the RichDEM library as in `compute_flow_accumulation_richdem.py`):
-  - `dem_{RESOLUTION}_flowacc_{STATISTIC}`: flow accumulation from the DEM of resolution `{RESOLUTION}` aggregated using the statistic `{STATISTIC}`.
-  - `dem_{RESOLUTION}_flowacc_nolakes_{STATISTIC}`: flow accumulation from the DEM of resolution `{RESOLUTION}` aggregated using the statistic `{STATISTIC}` and removing lakes.
-  - `dem_{RESOLUTION}_flowacc_norivers_{STATISTIC}`: flow accumulation from the DEM of resolution `{RESOLUTION}` aggregated using the statistic `{STATISTIC}` and removing rivers.
+  - `dem_{RES}_flowacc_{STAT}`: flow accumulation from the DEM of resolution `{RES}` aggregated using the statistic `{STAT}`.
+  - `dem_{RES}_flowacc_nolakes_{STAT}`: flow accumulation from the DEM of resolution `{RES}` aggregated using the statistic `{STAT}` and removing lakes.
+  - `dem_{RES}_flowacc_norivers_{STAT}`: flow accumulation from the DEM of resolution `{RES}` aggregated using the statistic `{STAT}` and removing rivers.
 - Terrain (using `compute_terrain_attributes.py`):
-  - `dem_{RESOLUTION}_aspect_{STATISTIC}`: aspect from the DEM of resolution `{RESOLUTION}` aggregated using the statistic `{STATISTIC}`.
-  - `dem_{RESOLUTION}_curv_plan_{STATISTIC}`: plan curvature from the DEM of resolution `{RESOLUTION}` aggregated using the statistic `{STATISTIC}`.
-  - `dem_{RESOLUTION}_curv_prof_{STATISTIC}`: profile curvature from the DEM of resolution `{RESOLUTION}` aggregated using the statistic `{STATISTIC}`.
-  - `dem_{RESOLUTION}_curv_tot_{STATISTIC}`: total curvature from the DEM of resolution `{RESOLUTION}` aggregated using the statistic `{STATISTIC}`.
-  - `dem_{RESOLUTION}_slope_{STATISTIC}`: slope from the DEM of resolution `{RESOLUTION}` aggregated using the statistic `{STATISTIC}`.
+  - `dem_{RES}_aspect_{STAT}`: aspect from the DEM of resolution `{RES}` aggregated using the statistic `{STAT}`.
+  - `dem_{RES}_curv_plan_{STAT}`: plan curvature from the DEM of resolution `{RES}` aggregated using the statistic `{STAT}`.
+  - `dem_{RES}_curv_prof_{STAT}`: profile curvature from the DEM of resolution `{RES}` aggregated using the statistic `{STAT}`.
+  - `dem_{RES}_curv_tot_{STAT}`: total curvature from the DEM of resolution `{RES}` aggregated using the statistic `{STAT}`.
+  - `dem_{RES}_slope_{STAT}`: slope from the DEM of resolution `{RES}` aggregated using the statistic `{STAT}`.
 - Topographic wetness index (using `compute_topographic_wetness_index.py`):
-  - `dem_{RESOLUTION}_twi_{STATISTIC}`: topographic wetness index from the DEM of resolution `{RESOLUTION}` aggregated using the statistic `{STATISTIC}`.
+  - `dem_{RES}_twi_{STAT}`: topographic wetness index from the DEM of resolution `{RES}` aggregated using the statistic `{STAT}`.
 
 ### 4. Training and evaluating the impact functions
 
+The different impact functions are trained and assessed using relatively similar scripts.
+These scripts are located in `scripts/impact_functions`.
 
+For example, the code for training the logistic regression model is:
+
+```python
+from swafi.events import load_events_from_pickle
+from swafi.impact_lr import ImpactLogisticRegression
+
+# Load the events with the target values
+events_filename = f'events_mobiliar_with_target_values_pluvial_occurrence.pickle'
+events = load_events_from_pickle(filename=events_filename)
+
+# Create the impact function
+lr = ImpactLogisticRegression(events)
+
+# Load the static attributes
+lr.load_features(['event', 'terrain', 'swf_map', 'runoff_coeff'])
+
+# Split the data into training, validation, and test sets
+lr.split_sample()
+# Normalize the features
+lr.normalize_features()
+# Compute the class weights
+lr.compute_balanced_class_weights()
+# Decrease the weight of the events with damages by a certain factor
+lr.compute_corrected_class_weights(weight_denominator=27)
+# Train the model
+lr.fit()
+# Evaluate the model on all splits
+lr.assess_model_on_all_periods()
+```
+
+The functions `split_sample`, `normalize_features`, `compute_balanced_class_weights`, 
+`compute_corrected_class_weights`, and `assess_model_on_all_periods` are common to all impact functions.
+The function `fit` is specific to each impact function.
+
+#### Thresholds model
+
+The thresholds model is trained and evaluated using the `apply_thresholds_v2019.py` script.
+It requires the following data:
+- The events with the target values computed in step 2.
+
+### Logistic regression model
+
+The logistic regression model is trained and evaluated using the `train_lr_occurrence.py` script.
+It requires the following data:
+- The events with the target values computed in step 2.
+- The static attributes computed in step 3 (optional).
+
+### Random forest model
+
+The random forest model is trained and evaluated using the `train_rf_occurrence.py` script.
+An optimisation of the hyperparameters is performed using the `train_rf_occurrence_hyperparameters.py` script.
+They requires the following data:
+- The events with the target values computed in step 2.
+- The static attributes computed in step 3 (optional).
+
+### Deep learning model
+
+The deep learning model is trained and evaluated using the `train_dl_occurrence.py` script.
+it requires the following data:
+- The events with the target values computed in step 2.
+- The static attributes computed in step 3 (optional).
+- The original precipitation data in netCDF format.

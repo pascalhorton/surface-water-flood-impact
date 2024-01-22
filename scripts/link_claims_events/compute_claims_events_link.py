@@ -12,7 +12,6 @@ computed using the following criteria:
 """
 
 from swafi.config import Config
-from swafi.damages import Damages
 from swafi.damages_mobiliar import DamagesMobiliar
 from swafi.damages_gvz import DamagesGvz
 from swafi.events import Events
