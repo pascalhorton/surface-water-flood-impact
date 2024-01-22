@@ -240,14 +240,14 @@ The thresholds model is trained and evaluated using the `apply_thresholds_v2019.
 It requires the following data:
 - The events with the target values computed in step 2.
 
-### Logistic regression model
+#### Logistic regression model
 
 The logistic regression model is trained and evaluated using the `train_lr_occurrence.py` script.
 It requires the following data:
 - The events with the target values computed in step 2.
 - The static attributes computed in step 3 (optional).
 
-### Random forest model
+#### Random forest model
 
 The random forest model is trained and evaluated using the `train_rf_occurrence.py` script.
 An optimisation of the hyperparameters is performed using the `train_rf_occurrence_hyperparameters.py` script.
@@ -255,7 +255,7 @@ They requires the following data:
 - The events with the target values computed in step 2.
 - The static attributes computed in step 3 (optional).
 
-### Deep learning model
+#### Deep learning model
 
 The deep learning model is trained and evaluated using the `train_dl_occurrence.py` script.
 it requires the following data:
