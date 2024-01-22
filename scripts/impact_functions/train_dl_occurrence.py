@@ -24,7 +24,7 @@ config = Config()
 
 def main():
     parser = argparse.ArgumentParser(description="SWAFI DL")
-    parser.add_argument("config", type=int, default=-1,
+    parser.add_argument("config", type=int, default=-1, nargs='?',
                         help="Configuration ID (number corresponding to some options)")
     parser.add_argument("--do_not_use_precip", action="store_true",
                         help="Do not use precipitation data")

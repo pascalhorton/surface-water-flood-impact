@@ -140,7 +140,7 @@ class Impact:
         self.df = self.df[(self.df['nb_claims'] == 0) |
                           (self.df['nb_claims'] >= threshold)]
 
-    def split_sample(self, valid_test_size=0.45, test_size=0.6):
+    def split_sample(self, valid_test_size=0.5, test_size=0.5, stratify=True):
         """
         Split the sample into training, validation and test sets.
 
@@ -151,6 +151,12 @@ class Impact:
         test_size: float
             The size of the set for testing proportionally to the length of the
             validation and testing split (default: 0.6)
+        stratify: bool
+            Whether to stratify the split on the target (default: True). Only
+            available for the occurrence target type. If True, the proportion of
+            events with and without damages will be the same in each split.
+            It will be balanced by removing events without damages from the
+            corresponding split.
         """
         # Sort the dataframe by date
         self.df.sort_values(by=['e_end'], inplace=True)
@@ -204,6 +210,68 @@ class Impact:
         self.y_train = val_y_train
         self.y_valid = val_y_valid
         self.y_test = val_y_test
+
+        # Stratify the split on the target. Applied by removing events without
+        # damages from the corresponding split.
+        if stratify:
+            if self.target_type != 'occurrence':
+                raise NotImplemented("Stratification is only available for occurrence")
+
+            # Find the highest ratio of events with damages in the different splits
+            ratios = []
+            for y in [self.y_train, self.y_valid, self.y_test]:
+                events_with_damages = y[y > 0]
+                events_without_damages = y[y == 0]
+                ratios.append(len(events_with_damages) / len(y))
+            max_ratio = max(ratios)
+
+            # Remove events without damages from the training split
+            events_with_damages = self.y_train[self.y_train > 0]
+            ratio = len(events_with_damages) / len(self.y_train)
+            if ratio < max_ratio:
+                n_events_to_remove = int((max_ratio - ratio) * len(self.y_train))
+                events_without_damages = self.y_train == 0
+                # Get the corresponding random indices
+                rows_to_remove = np.random.choice(
+                    np.where(events_without_damages)[0], n_events_to_remove,
+                    replace=False)
+                print(f"Removing {len(rows_to_remove)} events without damages from "
+                      f"the training split")
+                self.x_train = np.delete(self.x_train, rows_to_remove, axis=0)
+                self.y_train = np.delete(self.y_train, rows_to_remove, axis=0)
+                self.events_train = np.delete(self.events_train, rows_to_remove, axis=0)
+
+            # Remove events without damages from the validation split
+            events_with_damages = self.y_valid[self.y_valid > 0]
+            ratio = len(events_with_damages) / len(self.y_valid)
+            if ratio < max_ratio:
+                n_events_to_remove = int((max_ratio - ratio) * len(self.y_valid))
+                events_without_damages = self.y_valid == 0
+                # Get the corresponding random indices
+                rows_to_remove = np.random.choice(
+                    np.where(events_without_damages)[0], n_events_to_remove,
+                    replace=False)
+                print(f"Removing {len(rows_to_remove)} events without damages from "
+                      f"the validation split")
+                self.x_valid = np.delete(self.x_valid, rows_to_remove, axis=0)
+                self.y_valid = np.delete(self.y_valid, rows_to_remove, axis=0)
+                self.events_valid = np.delete(self.events_valid, rows_to_remove, axis=0)
+
+            # Remove events without damages from the test split
+            events_with_damages = self.y_test[self.y_test > 0]
+            ratio = len(events_with_damages) / len(self.y_test)
+            if ratio < max_ratio:
+                n_events_to_remove = int((max_ratio - ratio) * len(self.y_test))
+                events_without_damages = self.y_test == 0
+                # Get the corresponding random indices
+                rows_to_remove = np.random.choice(
+                    np.where(events_without_damages)[0], n_events_to_remove,
+                    replace=False)
+                print(f"Removing {len(rows_to_remove)} events without damages from "
+                      f"the test split")
+                self.x_test = np.delete(self.x_test, rows_to_remove, axis=0)
+                self.y_test = np.delete(self.y_test, rows_to_remove, axis=0)
+                self.events_test = np.delete(self.events_test, rows_to_remove, axis=0)
 
         # Print the percentage of events with and without damages
         self.show_target_stats()

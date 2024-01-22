@@ -16,6 +16,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import tensorflow as tf
 import datetime
+import dask
 
 
 class ImpactDeepLearning(Impact):
@@ -429,16 +430,18 @@ class ImpactDeepLearning(Impact):
         assert len(precipitation.dims) == 3, "Precipitation must be 3D"
 
         # Adapt the spatial resolution
-        if self.precip_resolution != 1:
-            precipitation = precipitation.coarsen(
-                x=self.precip_resolution, y=self.precip_resolution, boundary='trim'
-            ).mean()
+        with dask.config.set(**{'array.slicing.split_large_chunks': False}):
+            if self.precip_resolution != 1:
+                precipitation = precipitation.coarsen(
+                    x=self.precip_resolution, y=self.precip_resolution, boundary='trim'
+                ).mean()
 
         # Aggregate the precipitation at the desired time step
-        if self.precip_time_step != 1:
-            precipitation = precipitation.coarsen(
-                time=self.precip_time_step, boundary='trim'
-            ).sum()
+        with dask.config.set(**{'array.slicing.split_large_chunks': False}):
+            if self.precip_time_step != 1:
+                precipitation = precipitation.coarsen(
+                    time=self.precip_time_step, boundary='trim'
+                ).sum()
 
         if self.dem is not None:
             assert precipitation['precip'].shape[1:] == self.dem.shape, \

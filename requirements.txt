@@ -8,3 +8,5 @@ matplotlib
 scikit-learn
 tensorflow
 keras==3.*
+xarray
+dask

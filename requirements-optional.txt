@@ -1,8 +1,6 @@
 pysheds
 richdem
 gdal
-xarray
-dask
 netcdf4
 geopandas
 optuna

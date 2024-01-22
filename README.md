@@ -262,3 +262,6 @@ it requires the following data:
 - The events with the target values computed in step 2.
 - The static attributes computed in step 3 (optional).
 - The original precipitation data in netCDF format.
+
+### 5. Applying the impact functions to other precipitation datasets
+
