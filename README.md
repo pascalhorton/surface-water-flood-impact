@@ -98,10 +98,94 @@ These are the impact functions aiming to predict the damages from the precipitat
 The impact functions are managed by the subclasses of the `Impact` class in `swafi/impact.py`.
 The subclasses implement the training and evaluation of the impact functions as well as the prediction of the damages.
 The following impact functions are implemented:
-- `ImpactThresholds` from the file `swafi/impact_thr.py`: predicts a damage if the precipitation exceeds a certain threshold.
+- `ImpactThresholds` from the file `swafi/impact_thr.py`: predicts a damage if the precipitation exceeds certain thresholds.
+  This is the approach introduced by [Bernet et al. (2019)](https://dx.doi.org/10.1088/1748-9326/ab127c).
+- `ImpactLogisticRegression` from the file `swafi/impact_lr.py`: predicts the damages using a regression model.
+- `ImpactRandomForest` from the file `swafi/impact_rf.py`: predicts the damages using a random forest model.
+- `ImpactDeepLearning` from the file `swafi/impact_dl.py`: predicts the damages using a deep learning model.
+  The deep-learning model itself (`DeepImpact`) is implemented in the file `model_dl.py` using the Keras and Tensorflow libraries. 
+
+## Workflow
+
+The workflow is structured in the steps described below.
+Before running the code, the configuration file `config.yaml` should be created to define the paths to the data and the parameters of the different operations.
+An example of the configuration file is provided in `config_example.yaml`.
+Pickle files are used to save the results of the different operations to avoid having to re-run some time-consuming operations.
+
+### 1. Extracting events
+
+The first step is to extract the events from the precipitation dataset.
+The events are extracted for the whole domain using the `extract_precipitation_events.py` 
+script in `scripts/data_preparation` and saved as a parquet files.
+
+### 2. Linking events and damages
+
+The second step is to link the events and the damages.
+The events and damages are linked using the `compute_claims_events_link.py` script in `scripts/link_claims_events`.
+
+This script will:
+
+1. Load the original contract and claims data (in their respective format) and save them as pickle files.
+   The operation is performed only if the pickle files do not exist yet.
+
+2. Select the claims and contracts for the selected categories. The selections by default are:
+   - Mobiliar data: 
+     - Exposure category: `external`
+     - Claim categories: `['external', 'pluvial']`
+   - GVZ data: 
+     - Exposure category: `all_buildings`
+     - Claim categories: `['likely_pluvial']`
+   
+   The selection can be changed by modifying the `EXPOSURE_CATEGORIES` and `CLAIM_CATEGORIES` variable in the script.
+   The selected claims and contracts are saved as pickle files.
+
+3. Select the events where we have insurance data, i.e. removing all cells where we do not have insurance data. 
+   The selection is performed using the `load_events_and_select_those_with_contracts` function in `scipts/data_preparation`.
+   The selected events are saved as pickle files.
+
+4. Link the damages to the events using the `link_with_events` function.
+   The function will try to match the claim date with the event date by picking the most likely event.
+   The procedure is the same as in [Bernet et al. (2019)](https://dx.doi.org/10.1088/1748-9326/ab127c).
+   The event attributes used to link the events and damages can be set in the `CRITERIA` variable in the script.
+   The default criteria are: `['prior', 'i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt']` 
+   (the `prior` criteria gives more weight to events happening before the damage occurrence).
+   The temporal windows used to look for events can be set in the `WINDOW_DAYS` variable in the script.
+   The default windows are: `[5, 3, 1]`.
+   The linked damages are saved as pickle files with the name `damages_{DATASET}_linked_{LABEL}.pickle`.
+
+5. Assign the target value to the damages, depending if the focus is on the `occurrence` or the `damage_ratio`.
+
+6. From the selection of events on step 3, assign the target value to the events based on the corresponding damages.
+   All events not linked to damages are assigned a target value of 0.
+   The selected events are saved as pickle files with the name `events_{DATASET}_with_target_values_{LABEL_RESULTING_FILE}`.
+
+The file resulting from this step is a pickle file with the events and the assigned target values.
+This file is needed to train or assess the impact functions.
+
+### 3. Preparing static attributes
+
+Some static attributes can be computed for each cell of the precipitation dataset.
+Some of these rely on DEM data, which should be provided in GeoTIFF format.
+The attributes can be computed on DEMs of different resolutions (e.g., 10m, 25m, 50m, 100m, 250m) and aggregated to the resolution of the precipitation dataset.
+Therefore, different DEMS can be provided in the configuration file.
+Each attribute name will then contain the DEM resolution (e.g., `dem_010m_flowacc`).
+The aggregation to the resolution of the precipitation dataset is performed for different statistics: `min`, `max`, `mean`, `std`, `median`.
+The attributes are then saved as csv files.
+The following attributes can be computed:
+
+- Flow accumulation (using the PyShed library as in `compute_flow_accumulation_pysheds.py` or the RichDEM library as in `compute_flow_accumulation_richdem.py`):
+  - `dem_{RESOLUTION}_flowacc_{STATISTIC}`: flow accumulation from the DEM of resolution `{RESOLUTION}` aggregated using the statistic `{STATISTIC}`.
+  - `dem_{RESOLUTION}_flowacc_nolakes_{STATISTIC}`: flow accumulation from the DEM of resolution `{RESOLUTION}` aggregated using the statistic `{STATISTIC}` and removing lakes.
+  - `dem_{RESOLUTION}_flowacc_norivers_{STATISTIC}`: flow accumulation from the DEM of resolution `{RESOLUTION}` aggregated using the statistic `{STATISTIC}` and removing rivers.
+- Terrain (using `compute_terrain_attributes.py`):
+  - `dem_{RESOLUTION}_aspect_{STATISTIC}`: aspect from the DEM of resolution `{RESOLUTION}` aggregated using the statistic `{STATISTIC}`.
+  - `dem_{RESOLUTION}_curv_plan_{STATISTIC}`: plan curvature from the DEM of resolution `{RESOLUTION}` aggregated using the statistic `{STATISTIC}`.
+  - `dem_{RESOLUTION}_curv_prof_{STATISTIC}`: profile curvature from the DEM of resolution `{RESOLUTION}` aggregated using the statistic `{STATISTIC}`.
+  - `dem_{RESOLUTION}_curv_tot_{STATISTIC}`: total curvature from the DEM of resolution `{RESOLUTION}` aggregated using the statistic `{STATISTIC}`.
+  - `dem_{RESOLUTION}_slope_{STATISTIC}`: slope from the DEM of resolution `{RESOLUTION}` aggregated using the statistic `{STATISTIC}`.
+- Topographic wetness index (using `compute_topographic_wetness_index.py`):
+  - `dem_{RESOLUTION}_twi_{STATISTIC}`: topographic wetness index from the DEM of resolution `{RESOLUTION}` aggregated using the statistic `{STATISTIC}`.
+
+### 4. Training and evaluating the impact functions
 
 
-
-
-The events are extracted for the whole domain using the `extract_precipitation_events.py` script in `scipts/data_preparation` and saved as a parquet files.
-Then, as we are interested in the events where we have insurance data, we filter the events using the `load_events_and_select_those_with_contracts` function in `scipts/data_preparation`.

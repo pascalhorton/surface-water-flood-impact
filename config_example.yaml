@@ -4,38 +4,47 @@ TMP_DIR: ''
 
 # General options
 CRS: 'EPSG:2056'
-YEAR_START: 2013
-YEAR_END: 2022
+YEAR_START_MOBILIAR: 2013
+YEAR_END_MOBILIAR: 2022
+YEAR_START_GVZ: 2005
+YEAR_END_GVZ: 2022
 
 # CID (cells IDs) raster path
 CID_PATH: '..\files\cids.tif'
 
 # Contract and damage data directories
-DIR_EXPOSURE: ''
-DIR_CLAIMS: ''
+DIR_EXPOSURE_MOBILIAR: ''
+DIR_CLAIMS_MOBILIAR: ''
+DIR_EXPOSURE_GVZ: ''
+DIR_CLAIMS_GVZ: ''
 
 # Path to the events parquet file
 EVENTS_PATH: ''
 
+# Path to the precipitation directory
+DIR_PRECIP: ''
+
 # DEMs (with different resolutions)
+DEM_PATH: 'path/to/dem_cids.tif'
 DEM_PATHS:
-  - ''
-  - ''
-  - ''
-  - ''
+  - 'path/to/dem_250m.tif'
+  - 'path/to/dem_100m.tif'
+  - 'path/to/dem_050m.tif'
+  - 'path/to/dem_025m.tif'
+  - 'path/to/dem_010m.tif'
 
 # Computation of the flow accumulation
 LAKES_PATH: ''
 FLOWACC_RIVER_THRESHOLD: 50000
 
 # Path to the static attributes as csv files
-CSV_FILE_SWF: 'cpc_grid_exposure_swf.csv'
-CSV_FILE_TERRAIN: 'static_terrain.csv'
-CSV_FILE_FLOWACC: 'static_flowacc.csv'
-CSV_FILE_TWI: 'static_twi.csv'
-CSV_FILE_RUNOFF_COEFF: 'static_runoff_coeff.csv'
-CSV_FILE_LAND_COVER: 'static_land_cover.csv'
+CSV_FILE_SWF: 'path/to/cpc_grid_exposure_swf.csv'
+CSV_FILE_TERRAIN: 'path/to/static_terrain.csv'
+CSV_FILE_FLOWACC: 'path/to/static_flowacc.csv'
+CSV_FILE_TWI: 'path/to/static_twi.csv'
+CSV_FILE_RUNOFF_COEFF: 'path/to/static_runoff_coeff.csv'
+CSV_FILE_LAND_COVER: 'path/to/static_land_cover.csv'
 
 # Path to the buildings layer
-BUILDINGS_GPKG: 'SWISSTLM3D_2023_LV95_LN02.gpkg'
+BUILDINGS_GPKG: 'path/to/Buildings_TLM.gpkg'
 BUILDINGS_LAYER: 'tlm_bauten_gebaeude_footprint'
