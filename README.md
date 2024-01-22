@@ -166,25 +166,34 @@ This file is needed to train or assess the impact functions.
 
 Some static attributes can be computed for each cell of the precipitation dataset.
 Some of these rely on DEM data, which should be provided in GeoTIFF format.
-The attributes can be computed on DEMs of different resolutions (e.g., 10m, 25m, 50m, 100m, 250m) and aggregated to the resolution of the precipitation dataset.
+The attributes can be computed on DEMs of different resolutions (e.g., 10m, 25m, 50m, 100m, 250m) and later aggregated to the resolution of the precipitation dataset.
 Therefore, different DEMS can be provided in the configuration file.
 Each attribute name will then contain the DEM resolution (e.g., `dem_010m_flowacc`).
-The aggregation to the resolution of the precipitation dataset is performed for different statistics: `min`, `max`, `mean`, `std`, `median`.
-The attributes are then saved as csv files.
 The following attributes can be computed:
 
 - Flow accumulation (using the PyShed library as in `compute_flow_accumulation_pysheds.py` or the RichDEM library as in `compute_flow_accumulation_richdem.py`):
-  - `dem_{RES}_flowacc_{STAT}`: flow accumulation from the DEM of resolution `{RES}` aggregated using the statistic `{STAT}`.
-  - `dem_{RES}_flowacc_nolakes_{STAT}`: flow accumulation from the DEM of resolution `{RES}` aggregated using the statistic `{STAT}` and removing lakes.
-  - `dem_{RES}_flowacc_norivers_{STAT}`: flow accumulation from the DEM of resolution `{RES}` aggregated using the statistic `{STAT}` and removing rivers.
+  - `dem_{RES}_flowacc`: flow accumulation from the DEM of resolution `{RES}`.
+  - `dem_{RES}_flowacc_nolakes`: flow accumulation from the DEM of resolution `{RES}` with lakes removed.
+  - `dem_{RES}_flowacc_norivers`: flow accumulation from the DEM of resolution `{RES}` with rivers and lakes removed.
 - Terrain (using `compute_terrain_attributes.py`):
-  - `dem_{RES}_aspect_{STAT}`: aspect from the DEM of resolution `{RES}` aggregated using the statistic `{STAT}`.
-  - `dem_{RES}_curv_plan_{STAT}`: plan curvature from the DEM of resolution `{RES}` aggregated using the statistic `{STAT}`.
-  - `dem_{RES}_curv_prof_{STAT}`: profile curvature from the DEM of resolution `{RES}` aggregated using the statistic `{STAT}`.
-  - `dem_{RES}_curv_tot_{STAT}`: total curvature from the DEM of resolution `{RES}` aggregated using the statistic `{STAT}`.
-  - `dem_{RES}_slope_{STAT}`: slope from the DEM of resolution `{RES}` aggregated using the statistic `{STAT}`.
+  - `dem_{RES}_aspect`: aspect from the DEM of resolution `{RES}`.
+  - `dem_{RES}_curv_plan`: plan curvature from the DEM of resolution `{RES}`.
+  - `dem_{RES}_curv_prof`: profile curvature from the DEM of resolution `{RES}`.
+  - `dem_{RES}_curv_tot`: total curvature from the DEM of resolution `{RES}`.
+  - `dem_{RES}_slope`: slope from the DEM of resolution `{RES}`.
 - Topographic wetness index (using `compute_topographic_wetness_index.py`):
-  - `dem_{RES}_twi_{STAT}`: topographic wetness index from the DEM of resolution `{RES}` aggregated using the statistic `{STAT}`.
+  - `dem_{RES}_twi`: topographic wetness index from the DEM of resolution `{RES}`.
+
+These scripts will generate GeoTIFF files with the computed attributes.
+These attributes can then be extracted for each GeoTIFF file using the `extract_static_data_to_csv.py` script.
+The aggregation to the resolution of the precipitation dataset is performed using different statistics: `min`, `max`, `mean`, `std`, `median`.
+The attributes are then saved as csv files adding the statistics to the attribute name (e.g., `dem_{RES}_flowacc_{STAT}`).
+
+Other attributes can be used as well by extracting them from other GeoTIFF files.
+Examples of such attributes are: 
+- `swf_map`: categories from the surface water flood map.
+- `land_cover`: coverage from each land cover class from the land cover map.
+- `runoff_coeff`: runoff coefficient computed from the land cover map.
 
 ### 4. Training and evaluating the impact functions
 

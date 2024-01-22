@@ -128,13 +128,14 @@ def rasterize(vector_path, ref_raster_path):
 
     ref_raster = rasterio.open(ref_raster_path)
 
-    rasterized = features.rasterize(geoms,
-                                    out_shape=ref_raster.shape,
-                                    fill=0,
-                                    out=None,
-                                    transform=ref_raster.transform,
-                                    all_touched=True,
-                                    default_value=1,
-                                    dtype=float)
+    rasterized = features.rasterize(
+        geoms,
+        out_shape=ref_raster.shape,
+        fill=0,
+        out=None,
+        transform=ref_raster.transform,
+        all_touched=True,
+        default_value=1,
+        dtype=float)
 
     return rasterized
