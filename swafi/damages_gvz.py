@@ -105,7 +105,7 @@ class DamagesGvz(Damages):
                 columns = [i for i in columns if i in ['A', 'B']]
                 continue
             elif cat_type.lower() == 'fluvial_or_pluvial':
-                columns = [i for i in columns if i in ['A', 'B', 'C']]
+                columns = [i for i in columns if i in ['A', 'B', 'C', 'D', 'E']]
                 continue
             elif cat_type.lower() == 'likely_fluvial':
                 columns = [i for i in columns if i in ['D', 'E']]
