@@ -146,7 +146,7 @@ class ImpactDeepLearning(Impact):
         )
 
         # Print the model summary
-        print(self.model.model.summary())
+        self.model.model.summary()
 
         # Fit the model
         hist = self.model.fit(
