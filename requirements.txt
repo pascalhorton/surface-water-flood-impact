@@ -11,3 +11,4 @@ keras
 xarray
 dask
 netcdf4
+rioxarray

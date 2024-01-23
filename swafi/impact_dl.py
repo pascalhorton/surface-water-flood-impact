@@ -147,12 +147,13 @@ class ImpactDeepLearning(Impact):
         self.model.model.summary()
 
         # Fit the model
+        verbose = 1 if show_plots else 2
         hist = self.model.fit(
             self.dg_train,
             epochs=self.epochs,
             validation_data=self.dg_val,
             callbacks=[callback],
-            verbose=1
+            verbose=verbose
         )
 
         # Plot the training history
