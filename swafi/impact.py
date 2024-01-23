@@ -234,9 +234,13 @@ class Impact:
 
         # Print the percentage of events with and without damages
         self.show_target_stats()
-        print(f"Split ratios: train={100 * (1 - valid_test_size):.1f}%, "
+        print(f"Theoretical split ratios: train={100 * (1 - valid_test_size):.1f}%, "
               f"valid={100 * valid_test_size * (1 - test_size):.1f}%, "
               f"test={100 * valid_test_size * test_size:.1f}%")
+        y_len = len(self.y_train) + len(self.y_valid) + len(self.y_test)
+        print(f"Actual split ratios: train={100 * len(self.y_train) / y_len:.1f}%, "
+              f"valid={100 * len(self.y_valid) / y_len:.1f}%, "
+              f"test={100 * len(self.y_test) / y_len:.1f}%")
 
     @staticmethod
     def _stratify_split(x, y, events, max_ratio):

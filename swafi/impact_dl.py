@@ -146,7 +146,6 @@ class ImpactDeepLearning(Impact):
         )
 
         # Print the model summary
-        print("Model summary:")
         print(self.model.model.summary())
 
         # Fit the model

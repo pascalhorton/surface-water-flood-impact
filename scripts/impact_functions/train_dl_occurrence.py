@@ -96,8 +96,7 @@ def main():
         dl.set_precipitation(precip)
 
     # Load static features
-    dl.load_features(['event', 'terrain', 'swf_map', 'flowacc', 'twi',
-                      'land_cover', 'runoff_coeff'])
+    dl.load_features(['event', 'terrain', 'swf_map', 'flowacc', 'twi'])
 
     dl.split_sample()
     dl.reduce_negatives_on_train(FACTOR_NEG_REDUCTION)
