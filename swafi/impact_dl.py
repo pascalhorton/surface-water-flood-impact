@@ -76,8 +76,6 @@ class ImpactDeepLearning(Impact):
         # Display if using GPU or CPU
         print("Built with CUDA: ", tf.test.is_built_with_cuda())
         print("Available GPU: ", tf.config.list_physical_devices('GPU'))
-        if len(tf.config.list_physical_devices('GPU')) > 0:
-            print("GPU name: ", tf.test.gpu_device_name())
 
         # Options
         self.random_state = random_state
