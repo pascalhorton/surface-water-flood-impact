@@ -220,64 +220,40 @@ class Impact:
             # Find the highest ratio of events with damages in the different splits
             ratios = []
             for y in [self.y_train, self.y_valid, self.y_test]:
-                events_with_damages = y[y > 0]
-                events_without_damages = y[y == 0]
-                ratios.append(len(events_with_damages) / len(y))
+                n_damages = len(y[y > 0])
+                ratios.append(n_damages / len(y))
             max_ratio = max(ratios)
 
             # Remove events without damages from the training split
-            events_with_damages = self.y_train[self.y_train > 0]
-            ratio = len(events_with_damages) / len(self.y_train)
-            if ratio < max_ratio:
-                n_events_to_remove = int((max_ratio - ratio) * len(self.y_train))
-                events_without_damages = self.y_train == 0
-                # Get the corresponding random indices
-                rows_to_remove = np.random.choice(
-                    np.where(events_without_damages)[0], n_events_to_remove,
-                    replace=False)
-                print(f"Removing {len(rows_to_remove)} events without damages from "
-                      f"the training split")
-                self.x_train = np.delete(self.x_train, rows_to_remove, axis=0)
-                self.y_train = np.delete(self.y_train, rows_to_remove, axis=0)
-                self.events_train = np.delete(self.events_train, rows_to_remove, axis=0)
-
-            # Remove events without damages from the validation split
-            events_with_damages = self.y_valid[self.y_valid > 0]
-            ratio = len(events_with_damages) / len(self.y_valid)
-            if ratio < max_ratio:
-                n_events_to_remove = int((max_ratio - ratio) * len(self.y_valid))
-                events_without_damages = self.y_valid == 0
-                # Get the corresponding random indices
-                rows_to_remove = np.random.choice(
-                    np.where(events_without_damages)[0], n_events_to_remove,
-                    replace=False)
-                print(f"Removing {len(rows_to_remove)} events without damages from "
-                      f"the validation split")
-                self.x_valid = np.delete(self.x_valid, rows_to_remove, axis=0)
-                self.y_valid = np.delete(self.y_valid, rows_to_remove, axis=0)
-                self.events_valid = np.delete(self.events_valid, rows_to_remove, axis=0)
-
-            # Remove events without damages from the test split
-            events_with_damages = self.y_test[self.y_test > 0]
-            ratio = len(events_with_damages) / len(self.y_test)
-            if ratio < max_ratio:
-                n_events_to_remove = int((max_ratio - ratio) * len(self.y_test))
-                events_without_damages = self.y_test == 0
-                # Get the corresponding random indices
-                rows_to_remove = np.random.choice(
-                    np.where(events_without_damages)[0], n_events_to_remove,
-                    replace=False)
-                print(f"Removing {len(rows_to_remove)} events without damages from "
-                      f"the test split")
-                self.x_test = np.delete(self.x_test, rows_to_remove, axis=0)
-                self.y_test = np.delete(self.y_test, rows_to_remove, axis=0)
-                self.events_test = np.delete(self.events_test, rows_to_remove, axis=0)
+            self.x_train, self.y_train, self.events_train = self._stratify_split(
+                self.x_train, self.y_train, self.events_train, max_ratio)
+            self.x_valid, self.y_valid, self.events_valid = self._stratify_split(
+                self.x_valid, self.y_valid, self.events_valid, max_ratio)
+            self.x_test, self.y_test, self.events_test = self._stratify_split(
+                self.x_test, self.y_test, self.events_test, max_ratio)
 
         # Print the percentage of events with and without damages
         self.show_target_stats()
         print(f"Split ratios: train={100 * (1 - valid_test_size):.1f}%, "
               f"valid={100 * valid_test_size * (1 - test_size):.1f}%, "
               f"test={100 * valid_test_size * test_size:.1f}%")
+
+    @staticmethod
+    def _stratify_split(x, y, events, max_ratio):
+        n_damages = len(y[y > 0])
+        ratio = n_damages / len(y)
+        if ratio < max_ratio:
+            n_to_remove = int(len(y) - n_damages / max_ratio)
+            ev_no_damages = y == 0
+            # Get the corresponding random indices
+            rows_to_remove = np.random.choice(
+                np.where(ev_no_damages)[0], n_to_remove,
+                replace=False)
+            print(f"Removing {len(rows_to_remove)} events without damages (stratify)")
+            x = np.delete(x, rows_to_remove, axis=0)
+            y = np.delete(y, rows_to_remove, axis=0)
+            events = np.delete(events, rows_to_remove, axis=0)
+        return x, y, events
 
     def normalize_features(self):
         """
