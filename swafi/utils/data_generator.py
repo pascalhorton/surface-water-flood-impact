@@ -211,7 +211,7 @@ class DataGenerator(keras.utils.Sequence):
         x_static = None
 
         # Select the 2D data
-        if self.x_2d is not None:
+        if self.X_precip is not None or self.x_2d is not None:
             if self.preload_precip_events:
                 x_2d = self.x_2d[:, :, :, :]
             else:

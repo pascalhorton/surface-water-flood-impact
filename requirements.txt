@@ -6,7 +6,7 @@ tqdm
 pyarrow
 matplotlib
 scikit-learn
-tensorflow
+tensorflow[and-cuda]
 keras
 xarray
 dask
