@@ -431,23 +431,41 @@ class ImpactDeepLearning(Impact):
 
         assert len(precipitation.dims) == 3, "Precipitation must be 3D"
 
-        # Adapt the spatial resolution
-        with dask.config.set(**{'array.slicing.split_large_chunks': False}):
-            if self.precip_resolution != 1:
-                precipitation = precipitation.coarsen(
-                    x=self.precip_resolution, y=self.precip_resolution, boundary='trim'
-                ).mean()
+        hash_tag = self._compute_hash_precip_full_data(precipitation)
+        filename = f"precip_full_{hash_tag}.pickle"
+        tmp_filename = self.tmp_dir / filename
 
-        # Aggregate the precipitation at the desired time step
-        with dask.config.set(**{'array.slicing.split_large_chunks': False}):
-            if self.precip_time_step != 1:
-                precipitation = precipitation.coarsen(
-                    time=self.precip_time_step, boundary='trim'
-                ).sum()
+        if tmp_filename.exists():
+            print("Precipitation already preloaded. Loading from pickle file.")
+            with open(tmp_filename, 'rb') as f:
+                precipitation = pickle.load(f)
 
+        else:
+            # Adapt the spatial resolution
+            with dask.config.set(**{'array.slicing.split_large_chunks': False}):
+                if self.precip_resolution != 1:
+                    precipitation = precipitation.coarsen(
+                        x=self.precip_resolution,
+                        y=self.precip_resolution,
+                        boundary='trim'
+                    ).mean()
+
+            # Aggregate the precipitation at the desired time step
+            with dask.config.set(**{'array.slicing.split_large_chunks': False}):
+                if self.precip_time_step != 1:
+                    precipitation = precipitation.resample(
+                        time=f'{self.precip_time_step}H',
+                    ).sum(dim='time')
+
+            # Save the precipitation
+            with open(tmp_filename, 'wb') as f:
+                pickle.dump(precipitation, f)
+
+        # Check the shape of the precipitation and the DEM
         if self.dem is not None:
             assert precipitation['precip'].shape[1:] == self.dem.shape, \
                 "DEM and precipitation must have the same shape"
+
         self.precipitation = precipitation
         self.precipitation['time'] = pd.to_datetime(self.precipitation['time'])
 
@@ -476,6 +494,18 @@ class ImpactDeepLearning(Impact):
             assert dem.shape == self.precipitation.isel(time=0).shape, \
                 "DEM and precipitation must have the same shape"
         self.dem = dem
+
+    def _compute_hash_precip_full_data(self, precipitation):
+        tag_data = (
+                pickle.dumps(self.precip_resolution) +
+                pickle.dumps(self.precip_time_step) +
+                pickle.dumps(precipitation['x']) +
+                pickle.dumps(precipitation['y']) +
+                pickle.dumps(precipitation['time'][0]) +
+                pickle.dumps(precipitation['time'][-1]) +
+                pickle.dumps(precipitation['precip'].shape))
+
+        return hashlib.md5(tag_data).hexdigest()
 
     @staticmethod
     def _plot_training_history(hist, dir_plots, show_plots):
