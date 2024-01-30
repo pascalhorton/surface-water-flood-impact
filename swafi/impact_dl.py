@@ -170,16 +170,16 @@ class ImpactDeepLearning(Impact):
         """
         self.factor_neg_reduction = factor
 
-    def assess_model_on_all_periods(self):
+    def assess_model_on_all_periods(self, show_plots=False):
         """
         Assess the model on all periods.
         """
         self._create_data_generator_test()
-        self._assess_model_dg(self.dg_train, 'Train period')
-        self._assess_model_dg(self.dg_val, 'Validation period')
-        self._assess_model_dg(self.dg_test, 'Test period')
+        self._assess_model_dg(self.dg_train, 'Train period', show_plots)
+        self._assess_model_dg(self.dg_val, 'Validation period', show_plots)
+        self._assess_model_dg(self.dg_test, 'Test period', show_plots)
 
-    def _assess_model_dg(self, dg, period_name):
+    def _assess_model_dg(self, dg, period_name, show_plots=False):
         """
         Assess the model on a single period.
         """
@@ -187,7 +187,8 @@ class ImpactDeepLearning(Impact):
             raise ValueError("Model not defined")
 
         x, y = dg.get_all_data()
-        y_pred = self.model.predict(x)
+        verbose = 1 if show_plots else 2
+        y_pred = self.model.predict(x, verbose=verbose)
 
         # Get rid of the single dimension
         y_pred = y_pred.squeeze()
