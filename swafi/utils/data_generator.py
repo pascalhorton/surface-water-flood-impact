@@ -512,7 +512,9 @@ class DataGenerator(keras.utils.Sequence):
             x_2d_ev = np.zeros((pixels_nb,
                                 pixels_nb,
                                 self.get_channels_nb()))
-            y = 0
+            if y > 0:
+                print(f"Warning: y > 0 but no precipitation data for event {event}.")
+                y = 0
 
         return x_2d_ev, y
 
