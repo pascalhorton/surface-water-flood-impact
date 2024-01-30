@@ -99,7 +99,7 @@ def main():
     dl.load_features(['event', 'terrain', 'swf_map', 'flowacc', 'twi'])
 
     dl.split_sample()
-    dl.reduce_negatives_on_train(FACTOR_NEG_REDUCTION)
+    dl.reduce_negatives_for_training(FACTOR_NEG_REDUCTION)
     dl.compute_balanced_class_weights()
     dl.compute_corrected_class_weights(weight_denominator=WEIGHT_DENOMINATOR)
     dl.fit(dir_plots=config.get('OUTPUT_DIR'), show_plots=interactive_mode,

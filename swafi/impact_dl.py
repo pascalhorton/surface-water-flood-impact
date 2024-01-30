@@ -159,7 +159,7 @@ class ImpactDeepLearning(Impact):
         # Plot the training history
         self._plot_training_history(hist, dir_plots, show_plots)
 
-    def reduce_negatives_on_train(self, factor):
+    def reduce_negatives_for_training(self, factor):
         """
         Reduce the number of negatives on the training set.
 
@@ -324,6 +324,9 @@ class ImpactDeepLearning(Impact):
             max_static=self.dg_train.max_static,
             max_precip=self.dg_train.max_precip
         )
+
+        if self.factor_neg_reduction != 1:
+            self.dg_val.reduce_negatives(self.factor_neg_reduction)
 
     def _create_data_generator_test(self):
         self.dg_test = DataGenerator(
