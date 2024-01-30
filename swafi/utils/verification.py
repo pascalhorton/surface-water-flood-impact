@@ -56,6 +56,10 @@ def compute_score_binary(metric, tp, tn, fp, fn):
     n = tp + fp + fn + tn
     assert n > 0
 
+    if (tp + fn) == 0:
+        print(f"Warning: metrics are undefined when tp + fn = 0")
+        return math.nan
+
     if metric in ['base_rate', 'brate']:
         # Base rate (brate) = (a+c) / n
         # [0, 1]
@@ -217,9 +221,9 @@ def compute_score_binary(metric, tp, tn, fp, fn):
 
         if h == 1 and f == 0:  # edi is undefined for perfect forecasts
             return 1
-        elif h == 0:  # edi has no skill when h = 0
+        elif h == 0:
             return 0
-        elif f == 0:  # edi is undefined when f = 0
+        elif f == 0:
             return math.nan
 
         edi = (math.log(f) - math.log(h)) / (math.log(f) + math.log(h))
@@ -230,6 +234,10 @@ def compute_score_binary(metric, tp, tn, fp, fn):
         # Symmetric Extremal Dependence Index
         # (SEDI) = (ln(F)-ln(H)+ln(1-H)-ln(1-F)) /
         #          (ln(F)+ln(H)+ln(1-H)+ln(1-F))
+
+        if (fp + tn) == 0:
+            return math.nan
+
         h = tp / (tp + fn)
         f = fp / (fp + tn)
 
