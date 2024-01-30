@@ -165,7 +165,6 @@ class DataGenerator(keras.utils.Sequence):
         if self.X_precip is not None:
             input_2d_channels += self.precip_days_after + self.precip_days_before
             input_2d_channels *= int(24 / self.precip_time_step)  # Time step
-            input_2d_channels += 1
         if self.X_dem is not None:
             input_2d_channels += 1  # Add one for the DEM layer
 
