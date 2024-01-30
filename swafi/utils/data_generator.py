@@ -90,6 +90,7 @@ class DataGenerator(keras.utils.Sequence):
         self.batch_size = batch_size
         self.shuffle = shuffle
         self.debug = debug
+        self.warning_counter = 0
         self.preload_precip_events = preload_precip_events
         self.precip_window_size = precip_window_size
         self.precip_resolution = precip_resolution
@@ -503,17 +504,40 @@ class DataGenerator(keras.utils.Sequence):
 
         # Handle missing precipitation data
         if x_2d_ev.shape[2] != self.get_channels_nb():
+            self.warning_counter += 1
+
             if self.debug:
-                print(f"Shape mismatch: {x_2d_ev.shape[2]} !="
-                      f" {self.get_channels_nb()}")
+                print(f"Shape mismatch: actual: {x_2d_ev.shape[2]} !="
+                      f" expected: {self.get_channels_nb()}")
                 print(f"Event: {event}")
-            pixels_nb = int(self.precip_window_size / self.precip_resolution)
-            x_2d_ev = np.zeros((pixels_nb,
-                                pixels_nb,
-                                self.get_channels_nb()))
-            if y > 0:
-                print(f"Warning: y > 0 but no precipitation data for event {event}.")
-                y = 0
+
+            if self.warning_counter in [10, 50, 100, 500, 1000, 5000, 10000]:
+                print(f"Shape mismatch: actual: {x_2d_ev.shape[2]} !="
+                      f" expected: {self.get_channels_nb()}")
+                print(f"Warning: {self.warning_counter} events with "
+                      f"shape missmatch (e.g., missing precipitation data).")
+
+            diff = x_2d_ev.shape[2] - self.get_channels_nb()
+            if abs(diff) > 3:
+                print(f"Warning: too many missing channels ({diff}).")
+
+                pixels_nb = int(self.precip_window_size / self.precip_resolution)
+                x_2d_ev = np.zeros((pixels_nb, pixels_nb, self.get_channels_nb()))
+
+                if y > 0:
+                    print(f"Warning: y > 0 but missing data for event {event}.")
+                    y = 0
+
+            else:
+                if x_2d_ev.shape[2] > self.get_channels_nb():  # Loaded too many
+                    x_2d_ev = x_2d_ev[:, :, :-diff]
+
+                elif x_2d_ev.shape[2] < self.get_channels_nb():  # Loaded too few
+                    diff = -diff
+                    x_2d_ev = np.concatenate(
+                        [x_2d_ev, np.zeros((x_2d_ev.shape[0],
+                                            x_2d_ev.shape[1],
+                                            diff))], axis=-1)
 
         return x_2d_ev, y
 
