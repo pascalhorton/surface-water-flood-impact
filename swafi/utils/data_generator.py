@@ -527,8 +527,9 @@ class DataGenerator(keras.utils.Sequence):
                       f"shape missmatch (e.g., missing precipitation data).")
 
             diff = x_2d_ev.shape[2] - self.get_channels_nb()
-            if abs(diff) > 3:
-                print(f"Warning: too many missing channels ({diff}).")
+            if abs(diff / self.get_channels_nb()) > 0.1:  # 10% tolerance
+                if self.debug:
+                    print(f"Warning: too many missing channels ({diff}).")
 
                 pixels_nb = int(self.precip_window_size / self.precip_resolution)
                 x_2d_ev = np.zeros((pixels_nb, pixels_nb, self.get_channels_nb()))

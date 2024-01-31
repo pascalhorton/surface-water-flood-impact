@@ -201,7 +201,7 @@ class ImpactDeepLearning(Impact):
 
         # Concatenate predictions from all batches
         y_pred = np.concatenate(all_predictions, axis=0)
-        
+
         print(f"\nSplit: {period_name}")
 
         # Compute the scores
