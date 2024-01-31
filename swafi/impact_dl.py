@@ -170,16 +170,16 @@ class ImpactDeepLearning(Impact):
         """
         self.factor_neg_reduction = factor
 
-    def assess_model_on_all_periods(self, show_plots=False):
+    def assess_model_on_all_periods(self):
         """
         Assess the model on all periods.
         """
         self._create_data_generator_test()
-        self._assess_model_dg(self.dg_train, 'Train period', show_plots)
-        self._assess_model_dg(self.dg_val, 'Validation period', show_plots)
-        self._assess_model_dg(self.dg_test, 'Test period', show_plots)
+        self._assess_model_dg(self.dg_train, 'Train period')
+        self._assess_model_dg(self.dg_val, 'Validation period')
+        self._assess_model_dg(self.dg_test, 'Test period')
 
-    def _assess_model_dg(self, dg, period_name, show_plots=False):
+    def _assess_model_dg(self, dg, period_name):
         """
         Assess the model on a single period.
         """
@@ -192,8 +192,7 @@ class ImpactDeepLearning(Impact):
         all_predictions = []
         for i in range(n_batches):
             x, y = dg.get_ordered_batch_from_full_dataset(i)
-            verbose = 1 if show_plots else 2
-            y_pred_batch = self.model.predict(x, verbose=verbose)
+            y_pred_batch = self.model.predict(x, verbose=0)
 
             # Get rid of the single dimension
             y_pred_batch = y_pred_batch.squeeze()

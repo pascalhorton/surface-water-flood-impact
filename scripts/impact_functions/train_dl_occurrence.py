@@ -104,7 +104,7 @@ def main():
     dl.compute_corrected_class_weights(weight_denominator=WEIGHT_DENOMINATOR)
     dl.fit(dir_plots=config.get('OUTPUT_DIR'), show_plots=interactive_mode,
            tag=args.config)
-    dl.assess_model_on_all_periods(show_plots=interactive_mode)
+    dl.assess_model_on_all_periods()
 
 
 if __name__ == '__main__':
