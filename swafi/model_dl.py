@@ -166,14 +166,15 @@ class DeepImpact(models.Model):
             pool_size=(2, 2),
         )(x)
 
-        if self.with_spatial_dropout and self.dropout_rate > 0:
-            x = layers.SpatialDropout2D(
-                rate=self.dropout_rate,
-            )(x)
-        elif self.dropout_rate > 0:
-            x = layers.Dropout(
-                rate=self.dropout_rate,
-            )(x)
+        if self.dropout_rate > 0:
+            if self.with_spatial_dropout and x.shape[1] > 1 and x.shape[2] > 1:
+                x = layers.SpatialDropout2D(
+                    rate=self.dropout_rate,
+                )(x)
+            else:
+                x = layers.Dropout(
+                    rate=self.dropout_rate,
+                )(x)
 
         return x
 
