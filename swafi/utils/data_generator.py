@@ -91,6 +91,7 @@ class DataGenerator(keras.utils.Sequence):
         self.shuffle = shuffle
         self.debug = debug
         self.warning_counter = 0
+        self.channels_nb = None
         self.preload_precip_events = preload_precip_events
         self.precip_window_size = precip_window_size
         self.precip_resolution = precip_resolution
@@ -162,6 +163,9 @@ class DataGenerator(keras.utils.Sequence):
 
     def get_channels_nb(self):
         """ Get the number of channels of the 2D predictors. """
+        if self.channels_nb is not None:
+            return self.channels_nb
+
         input_2d_channels = 0
         if self.X_precip is not None:
             input_2d_channels += self.precip_days_after + self.precip_days_before
@@ -169,6 +173,8 @@ class DataGenerator(keras.utils.Sequence):
             input_2d_channels += 1  # Because the 1st and last time steps are included.
         if self.X_dem is not None:
             input_2d_channels += 1  # Add one for the DEM layer
+
+        self.channels_nb = input_2d_channels
 
         return input_2d_channels
 
