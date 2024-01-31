@@ -558,6 +558,7 @@ class DataGenerator(keras.utils.Sequence):
         return x_2d_ev, y
 
     def on_epoch_end(self):
-        """Updates indexes after each epoch"""
+        """Updates indexes after each epoch and reset the warning counter."""
+        self.warning_counter = 0
         if self.shuffle:
             np.random.shuffle(self.idxs)
