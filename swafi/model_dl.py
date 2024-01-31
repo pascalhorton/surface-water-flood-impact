@@ -157,6 +157,9 @@ class DeepImpact(models.Model):
         )(x)
 
         if self.with_batchnorm:
+            # Batch normalization should be before any dropout
+            # https://stackoverflow.com/questions/59634780/correct-order-for-
+            # spatialdropout2d-batchnormalization-and-activation-function
             x = layers.BatchNormalization()(x)
 
         x = layers.MaxPooling2D(

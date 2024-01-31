@@ -204,37 +204,45 @@ class DataGenerator(keras.utils.Sequence):
         # Shuffle
         np.random.shuffle(self.idxs)
 
-    def get_all_data(self):
-        # Select the events
-        y = self.y
+    def get_number_of_batches_for_full_dataset(self):
+        """
+        Get the number of batches for the full data (i.e., without shuffling or
+        negative event removal).
 
-        x_2d = None
-        x_static = None
+        Returns
+        -------
+        The number of batches.
+        """
 
-        # Select the 2D data
-        if self.X_precip is not None or self.x_2d is not None:
-            if self.preload_precip_events:
-                x_2d = self.x_2d[:, :, :, :]
-            else:
-                pixels_nb = int(self.precip_window_size / self.precip_resolution)
-                x_2d = np.zeros((self.y.shape[0],
-                                 pixels_nb,
-                                 pixels_nb,
-                                 self.get_channels_nb()))
-                for i, event in enumerate(self.event_props):
-                    x_2d[i], y[i] = self._extract_precipitation(event, y[i])
+        return int(np.floor(len(self.y) / self.batch_size))
 
-            if self.X_static is None:
-                return x_2d, y
+    def get_ordered_batch_from_full_dataset(self, i):
+        """
+        Get a batch of data from the full data (i.e., without shuffling or negative
+        event removal).
 
-        # Select the static data
-        if self.X_static is not None:
-            x_static = self.X_static[:, :]
+        Parameters
+        ----------
+        i : int
+            The batch index.
 
-            if self.X_precip is None:
-                return x_static, y
+        Returns
+        -------
+        The batch of data.
+        """
 
-        return (x_2d, x_static), y
+        # Save the original indices
+        idxs_orig = self.idxs
+
+        # Reset the indices
+        self.idxs = np.arange(len(self.y))
+
+        batch = self.__getitem__(i)
+
+        # Restore the original indices
+        self.idxs = idxs_orig
+
+        return batch
 
     def _standardize_inputs(self):
         if self.X_static is not None:

@@ -186,13 +186,22 @@ class ImpactDeepLearning(Impact):
         if self.model is None:
             raise ValueError("Model not defined")
 
-        x, y = dg.get_all_data()
-        verbose = 1 if show_plots else 2
-        y_pred = self.model.predict(x, verbose=verbose)
+        n_batches = dg.get_number_of_batches_for_full_dataset()
 
-        # Get rid of the single dimension
-        y_pred = y_pred.squeeze()
+        # Predict
+        all_predictions = []
+        for i in range(n_batches):
+            x, y = dg.get_ordered_batch_from_full_dataset(i)
+            verbose = 1 if show_plots else 2
+            y_pred_batch = self.model.predict(x, verbose=verbose)
 
+            # Get rid of the single dimension
+            y_pred_batch = y_pred_batch.squeeze()
+            all_predictions.append(y_pred_batch)
+
+        # Concatenate predictions from all batches
+        y_pred = np.concatenate(all_predictions, axis=0)
+        
         print(f"\nSplit: {period_name}")
 
         # Compute the scores
@@ -454,7 +463,7 @@ class ImpactDeepLearning(Impact):
             with dask.config.set(**{'array.slicing.split_large_chunks': False}):
                 if self.precip_time_step != 1:
                     precipitation = precipitation.resample(
-                        time=f'{self.precip_time_step}H',
+                        time=f'{self.precip_time_step}h',
                     ).sum(dim='time')
 
             # Save the precipitation
