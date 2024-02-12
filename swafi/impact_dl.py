@@ -191,7 +191,7 @@ class ImpactDeepLearning(Impact):
         # Predict
         all_predictions = []
         for i in range(n_batches):
-            x, y = dg.get_ordered_batch_from_full_dataset(i)
+            x, _ = dg.get_ordered_batch_from_full_dataset(i)
             y_pred_batch = self.model.predict(x, verbose=0)
 
             # Get rid of the single dimension
@@ -206,11 +206,11 @@ class ImpactDeepLearning(Impact):
         # Compute the scores
         if self.target_type == 'occurrence':
             y_pred_class = (y_pred > 0.5).astype(int)
-            tp, tn, fp, fn = compute_confusion_matrix(y, y_pred_class)
+            tp, tn, fp, fn = compute_confusion_matrix(dg.y, y_pred_class)
             print_classic_scores(tp, tn, fp, fn)
-            assess_roc_auc(y, y_pred)
+            assess_roc_auc(dg.y, y_pred)
         else:
-            rmse = np.sqrt(np.mean((y - y_pred) ** 2))
+            rmse = np.sqrt(np.mean((dg.y - y_pred) ** 2))
             print(f"RMSE: {rmse}")
         print(f"----------------------------------------")
 
