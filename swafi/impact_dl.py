@@ -189,28 +189,31 @@ class ImpactDeepLearning(Impact):
         n_batches = dg.get_number_of_batches_for_full_dataset()
 
         # Predict
-        all_predictions = []
+        all_pred = []
+        all_obs = []
         for i in range(n_batches):
-            x, _ = dg.get_ordered_batch_from_full_dataset(i)
+            x, y = dg.get_ordered_batch_from_full_dataset(i)
+            all_obs.append(y)
             y_pred_batch = self.model.predict(x, verbose=0)
 
             # Get rid of the single dimension
             y_pred_batch = y_pred_batch.squeeze()
-            all_predictions.append(y_pred_batch)
+            all_pred.append(y_pred_batch)
 
-        # Concatenate predictions from all batches
-        y_pred = np.concatenate(all_predictions, axis=0)
+        # Concatenate predictions and obs from all batches
+        y_pred = np.concatenate(all_pred, axis=0)
+        y_obs = np.concatenate(all_obs, axis=0)
 
         print(f"\nSplit: {period_name}")
 
         # Compute the scores
         if self.target_type == 'occurrence':
             y_pred_class = (y_pred > 0.5).astype(int)
-            tp, tn, fp, fn = compute_confusion_matrix(dg.y, y_pred_class)
+            tp, tn, fp, fn = compute_confusion_matrix(y_obs, y_pred_class)
             print_classic_scores(tp, tn, fp, fn)
-            assess_roc_auc(dg.y, y_pred)
+            assess_roc_auc(y_obs, y_pred)
         else:
-            rmse = np.sqrt(np.mean((dg.y - y_pred) ** 2))
+            rmse = np.sqrt(np.mean((y_obs - y_pred) ** 2))
             print(f"RMSE: {rmse}")
         print(f"----------------------------------------")
 
