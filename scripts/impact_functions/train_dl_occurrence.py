@@ -19,6 +19,16 @@ FACTOR_NEG_REDUCTION = 10
 #WEIGHT_DENOMINATOR = 27
 WEIGHT_DENOMINATOR = 5
 
+# Remove dates where the precipitation data is not available
+DATES_TO_REMOVE = [
+    ('2005-01-01', '2005-01-05'),
+    ('2005-01-15', '2005-01-22'),
+    ('2009-04-23', '2009-05-08'),
+    ('2017-04-15', '2017-04-16'),
+    ('2017-10-05', '2017-10-06'),
+    ('2021-04-05', '2021-04-06'),
+    ]
+
 config = Config()
 
 
@@ -52,6 +62,11 @@ def main():
     # Load events
     events_filename = f'events_{DATASET}_with_target_values_{LABEL_EVENT_FILE}.pickle'
     events = load_events_from_pickle(filename=events_filename)
+
+    # Remove dates where the precipitation data is not available
+    for date_range in DATES_TO_REMOVE:
+        events.remove_period(date_range[0], date_range[1])
+
     n_pos = events.count_positives()
     # events.reduce_number_of_negatives(FACTOR_NEG_EVENTS * n_pos, random_state=42)
 

@@ -129,6 +129,22 @@ class Events:
         self.events['target'] = self.events['target'].fillna(0)
         self.events['nb_claims'] = self.events['nb_claims'].fillna(0)
 
+    def remove_period(self, start_date, end_date):
+        """
+        Remove a period of time from the events.
+
+        Parameters
+        ----------
+        start_date: str
+            The start date of the period to remove.
+        end_date: str
+            The end date of the period to remove.
+        """
+        self.events = self.events[
+            (self.events['e_end'] < start_date) |
+            (self.events['e_end'] > end_date)
+            ]
+
     def count_positives(self):
         """
         Count the number of positive events.

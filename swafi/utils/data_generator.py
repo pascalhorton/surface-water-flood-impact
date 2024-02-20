@@ -443,9 +443,6 @@ class DataGenerator(keras.utils.Sequence):
 
     def __getitem__(self, i):
         """Generate one batch of data"""
-        if self.debug:
-            print('Loading one batch of data')
-
         idxs = self.idxs[i * self.batch_size:(i + 1) * self.batch_size]
 
         # Select the events

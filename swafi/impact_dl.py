@@ -522,7 +522,7 @@ class ImpactDeepLearning(Impact):
         return hashlib.md5(tag_data).hexdigest()
 
     @staticmethod
-    def _plot_training_history(hist, dir_plots, show_plots, tag=None):
+    def _plot_training_history(hist, dir_plots, show_plots, prefix=None):
         """
         Plot the training history.
 
@@ -534,13 +534,13 @@ class ImpactDeepLearning(Impact):
             The directory where to save the plots.
         show_plots: bool
             Whether to show the plots or not.
-        tag: str
+        prefix: str
             A tag to add to the file name (prefix).
         """
         now = datetime.datetime.now()
 
-        if tag is not None:
-            tag = f"{tag}_"
+        if prefix is not None:
+            prefix = f"{prefix}_"
 
         plt.figure(figsize=(10, 5))
         plt.plot(hist.history['loss'], label='train')
@@ -548,7 +548,8 @@ class ImpactDeepLearning(Impact):
         plt.legend()
         plt.title('Loss')
         plt.tight_layout()
-        plt.savefig(f'{dir_plots}/{tag}loss_{now.strftime("%Y-%m-%d_%H-%M-%S")}.png')
+        plt.savefig(f'{dir_plots}/{prefix}loss_'
+                    f'{now.strftime("%Y-%m-%d_%H-%M-%S")}.png')
         if show_plots:
             plt.show()
 
@@ -558,6 +559,7 @@ class ImpactDeepLearning(Impact):
         plt.legend()
         plt.title('Accuracy')
         plt.tight_layout()
-        plt.savefig(f'{dir_plots}/{tag}accuracy_{now.strftime("%Y-%m-%d_%H-%M-%S")}.png')
+        plt.savefig(f'{dir_plots}/{prefix}accuracy_'
+                    f'{now.strftime("%Y-%m-%d_%H-%M-%S")}.png')
         if show_plots:
             plt.show()
