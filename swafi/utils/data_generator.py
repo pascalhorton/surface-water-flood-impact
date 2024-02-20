@@ -515,7 +515,7 @@ class DataGenerator(keras.utils.Sequence):
         x_dem_ev = np.expand_dims(x_dem_ev, axis=-1)
 
         # Concatenate
-        x_2d_ev = np.concatenate([x_precip_ev, x_dem_ev], axis=-1)
+        x_2d_ev = np.concatenate([x_dem_ev, x_precip_ev], axis=-1)
 
         # Handle missing precipitation data
         if x_2d_ev.shape[2] != self.get_channels_nb():
