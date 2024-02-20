@@ -101,7 +101,7 @@ class ImpactDeepLearning(Impact):
         Parameters
         ----------
         tag: str
-            The tag to add to the file name.
+            A tag to add to the file name.
         dir_plots: str
             The directory where to save the plots.
         show_plots: bool
@@ -157,7 +157,7 @@ class ImpactDeepLearning(Impact):
         )
 
         # Plot the training history
-        self._plot_training_history(hist, dir_plots, show_plots)
+        self._plot_training_history(hist, dir_plots, show_plots, tag)
 
     def reduce_negatives_for_training(self, factor):
         """
@@ -303,7 +303,8 @@ class ImpactDeepLearning(Impact):
             transform_static=self.transform_static,
             transform_2d=self.transform_2d,
             precip_transformation_domain=self.precip_trans_domain,
-            log_transform_precip=True
+            log_transform_precip=True,
+            debug=True
         )
 
         if self.factor_neg_reduction != 1:
@@ -334,7 +335,8 @@ class ImpactDeepLearning(Impact):
             std_precip=self.dg_train.std_precip,
             min_static=self.dg_train.min_static,
             max_static=self.dg_train.max_static,
-            max_precip=self.dg_train.max_precip
+            max_precip=self.dg_train.max_precip,
+            debug=True
         )
 
         if self.factor_neg_reduction != 1:
@@ -365,7 +367,8 @@ class ImpactDeepLearning(Impact):
             std_precip=self.dg_train.std_precip,
             min_static=self.dg_train.min_static,
             max_static=self.dg_train.max_static,
-            max_precip=self.dg_train.max_precip
+            max_precip=self.dg_train.max_precip,
+            debug=True
         )
 
     def _define_model(self, input_2d_size, input_1d_size):
@@ -519,7 +522,7 @@ class ImpactDeepLearning(Impact):
         return hashlib.md5(tag_data).hexdigest()
 
     @staticmethod
-    def _plot_training_history(hist, dir_plots, show_plots):
+    def _plot_training_history(hist, dir_plots, show_plots, tag=None):
         """
         Plot the training history.
 
@@ -531,8 +534,13 @@ class ImpactDeepLearning(Impact):
             The directory where to save the plots.
         show_plots: bool
             Whether to show the plots or not.
+        tag: str
+            A tag to add to the file name (prefix).
         """
         now = datetime.datetime.now()
+
+        if tag is not None:
+            tag = f"{tag}_"
 
         plt.figure(figsize=(10, 5))
         plt.plot(hist.history['loss'], label='train')
@@ -540,7 +548,7 @@ class ImpactDeepLearning(Impact):
         plt.legend()
         plt.title('Loss')
         plt.tight_layout()
-        plt.savefig(f'{dir_plots}/loss_{now.strftime("%Y-%m-%d_%H-%M-%S")}.png')
+        plt.savefig(f'{dir_plots}/{tag}loss_{now.strftime("%Y-%m-%d_%H-%M-%S")}.png')
         if show_plots:
             plt.show()
 
@@ -550,6 +558,6 @@ class ImpactDeepLearning(Impact):
         plt.legend()
         plt.title('Accuracy')
         plt.tight_layout()
-        plt.savefig(f'{dir_plots}/accuracy_{now.strftime("%Y-%m-%d_%H-%M-%S")}.png')
+        plt.savefig(f'{dir_plots}/{tag}accuracy_{now.strftime("%Y-%m-%d_%H-%M-%S")}.png')
         if show_plots:
             plt.show()
