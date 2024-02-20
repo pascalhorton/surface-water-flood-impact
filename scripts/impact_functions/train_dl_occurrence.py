@@ -3,6 +3,7 @@ Train a deep learning model to predict the occurrence of damages.
 """
 
 import argparse
+import warnings
 import xarray as xr
 import rioxarray as rxr
 from glob import glob
@@ -24,9 +25,13 @@ DATES_TO_REMOVE = [
     ('2005-01-01', '2005-01-05'),
     ('2005-01-15', '2005-01-22'),
     ('2009-04-23', '2009-05-08'),
-    ('2017-04-15', '2017-04-16'),
-    ('2017-10-05', '2017-10-06'),
-    ('2021-04-05', '2021-04-06'),
+    ('2016-12-05', '2016-12-06'),
+    ('2017-04-12', '2017-04-16'),
+    ('2017-10-05', '2017-10-08'),
+    ('2021-04-05', '2021-04-08'),
+    ('2022-06-26', '2022-07-01'),
+    ('2022-08-15', '2022-08-22'),
+    ('2022-10-16', '2022-10-24'),
     ]
 
 config = Config()
@@ -98,8 +103,10 @@ def main():
 
     if use_precip:
         # Load DEM
-        dem = rxr.open_rasterio(config.get('DEM_PATH'), masked=True).squeeze()
-        dl.set_dem(dem)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=UserWarning)  # pyproj
+            dem = rxr.open_rasterio(config.get('DEM_PATH'), masked=True).squeeze()
+            dl.set_dem(dem)
 
         # Load CombiPrecip files
         data_path = config.get('DIR_PRECIP')
