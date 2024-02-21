@@ -278,8 +278,7 @@ class DataGenerator(keras.utils.Sequence):
             raise ValueError('tmp_dir must be specified')
 
         file_hash = self._compute_hash_precip_full()
-        file_precip = (self.tmp_dir / 'precip_events' / f'{file_hash[0:2]}' /
-                       f'{file_hash}.pickle')
+        file_precip = self.tmp_dir / f'precip_{file_hash}.pickle'
 
         # If pickle file exists, load it
         if file_precip.exists():
