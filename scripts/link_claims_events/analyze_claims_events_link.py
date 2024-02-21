@@ -5,7 +5,7 @@ This script is used to analyze the results of the link between claims and events
 from swafi.config import Config
 from swafi.damages_mobiliar import DamagesMobiliar
 from swafi.events import Events
-from swafi.precipitation import Precipitation
+from swafi.precip import Precipitation
 from swafi.utils.plotting import *
 from pathlib import Path
 

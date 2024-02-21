@@ -6,11 +6,13 @@ import argparse
 import warnings
 import xarray as xr
 import rioxarray as rxr
+import pandas as pd
 from glob import glob
 
 from swafi.config import Config
 from swafi.impact_dl import ImpactDeepLearning
 from swafi.events import load_events_from_pickle
+from swafi.precip_combiprecip import CombiPrecip
 
 
 DATASET = 'gvz'  # 'mobiliar' or 'gvz'
@@ -19,20 +21,6 @@ LABEL_EVENT_FILE = 'original_w_prior_pluvial_occurrence'
 FACTOR_NEG_REDUCTION = 10
 #WEIGHT_DENOMINATOR = 27
 WEIGHT_DENOMINATOR = 5
-
-# Remove dates where the precipitation data is not available
-DATES_TO_REMOVE = [
-    ('2005-01-01', '2005-01-05'),
-    ('2005-01-15', '2005-01-22'),
-    ('2009-04-23', '2009-05-08'),
-    ('2016-12-05', '2016-12-06'),
-    ('2017-04-12', '2017-04-16'),
-    ('2017-10-05', '2017-10-08'),
-    ('2021-04-05', '2021-04-08'),
-    ('2022-06-26', '2022-07-01'),
-    ('2022-08-15', '2022-08-22'),
-    ('2022-10-16', '2022-10-24'),
-    ]
 
 config = Config()
 
@@ -69,8 +57,12 @@ def main():
     events = load_events_from_pickle(filename=events_filename)
 
     # Remove dates where the precipitation data is not available
-    for date_range in DATES_TO_REMOVE:
-        events.remove_period(date_range[0], date_range[1])
+    for date_range in CombiPrecip.missing:
+        remove_start = (pd.to_datetime(date_range[0])
+                        - pd.Timedelta(days=precip_days_before + 1))
+        remove_end = (pd.to_datetime(date_range[1])
+                      + pd.Timedelta(days=precip_days_after + 1))
+        events.remove_period(remove_start, remove_end)
 
     n_pos = events.count_positives()
     # events.reduce_number_of_negatives(FACTOR_NEG_EVENTS * n_pos, random_state=42)
