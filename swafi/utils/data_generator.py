@@ -23,8 +23,10 @@ class DataGenerator(keras.utils.Sequence):
                  max_static=None, max_precip=None, debug=False):
         """
         Data generator class.
-        Template from https://stanford.edu/~shervine/blog/keras-how-to-generate-data-on-the-fly
-        Adapted by https://github.com/pangeo-data/WeatherBench/blob/master/src/train_nn.py
+        Template from:
+        https://stanford.edu/~shervine/blog/keras-how-to-generate-data-on-the-fly
+        Adapted by :
+        https://github.com/pangeo-data/WeatherBench/blob/master/src/train_nn.py
 
         Parameters
         ----------
@@ -287,11 +289,13 @@ class DataGenerator(keras.utils.Sequence):
 
         # If pickle file exists, load it
         if file_precip.exists():
+            print('Loading precipitation data from pickle file')
             with open(file_precip, 'rb') as f:
                 self.X_precip = pickle.load(f)
             return
 
         # Otherwise, load the data and save it to a pickle file
+        print('Loading precipitation data from netCDF files')
         self.X_precip.load()
         with open(file_precip, 'wb') as f:
             pickle.dump(self.X_precip, f)
