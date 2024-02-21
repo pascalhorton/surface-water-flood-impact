@@ -95,6 +95,7 @@ class DataGenerator(keras.utils.Sequence):
         self.warning_counter = 0
         self.channels_nb = None
         self.use_pickle_events_precip_data = use_pickle_events_precip_data
+        self.use_pickle_full_precip_data = use_pickle_full_precip_data
         self.precip_window_size = precip_window_size
         self.precip_resolution = precip_resolution
         self.precip_time_step = precip_time_step
@@ -142,25 +143,25 @@ class DataGenerator(keras.utils.Sequence):
 
         self.X_dem.load()
 
+    def prepare_precip_data(self):
         if self.use_pickle_events_precip_data:
             print('Pre-loading precipitation events')
             # Check if all the pickle files exist.
             full_precip_data_loaded = False
-            for i, event in enumerate(event_props):
-                file_hash = self._compute_hash_precip_event(event)
-                file_precip = tmp_dir / f'precip_event_{file_hash}.pickle'
-
+            for i, event in enumerate(self.event_props):
+                file_precip = self._get_precip_event_filename(event)
                 if not file_precip.exists():
                     if not full_precip_data_loaded:
                         print('Loading data into RAM')
-                        self._load_dump_precip_data()
+                        if self.use_pickle_full_precip_data:
+                            self._load_dump_precip_data()
                         full_precip_data_loaded = True
 
                     x_2d = self._extract_precipitation(event)
                     with open(file_precip, 'wb') as f:
                         pickle.dump(x_2d, f)
 
-        elif use_pickle_full_precip_data:
+        elif self.use_pickle_full_precip_data:
             print('Loading data into RAM')
             self._load_dump_precip_data()
 
@@ -277,7 +278,8 @@ class DataGenerator(keras.utils.Sequence):
             raise ValueError('tmp_dir must be specified')
 
         file_hash = self._compute_hash_precip_full()
-        file_precip = self.tmp_dir / f'precip_{file_hash}.pickle'
+        file_precip = (self.tmp_dir / 'precip_events' / f'{file_hash[0:2]}' /
+                       f'{file_hash}.pickle')
 
         # If pickle file exists, load it
         if file_precip.exists():
@@ -454,6 +456,11 @@ class DataGenerator(keras.utils.Sequence):
 
         return hashlib.md5(tag_data).hexdigest()
 
+    def _get_precip_event_filename(self, event):
+        file_hash = self._compute_hash_precip_event(event)
+        return (self.tmp_dir / 'precip_events' / f'{file_hash[0:2]}' /
+                f'{file_hash}.pickle')
+
     def __len__(self):
         """Denotes the number of batches per epoch"""
         return int(np.floor(self.n_samples / self.batch_size))
@@ -478,9 +485,7 @@ class DataGenerator(keras.utils.Sequence):
 
             if self.use_pickle_events_precip_data:
                 for i_b, event in enumerate(self.event_props[idxs]):
-                    file_hash = self._compute_hash_precip_event(event)
-                    file_precip = self.tmp_dir / f'precip_event_{file_hash}.pickle'
-
+                    file_precip = self._get_precip_event_filename(event)
                     with open(file_precip, 'rb') as f:
                         x_2d[i_b] = pickle.load(f)
 

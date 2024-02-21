@@ -304,11 +304,14 @@ class ImpactDeepLearning(Impact):
             transform_2d=self.transform_2d,
             precip_transformation_domain=self.precip_trans_domain,
             log_transform_precip=True,
+            use_pickle_events_precip_data=True,
             debug=True
         )
 
         if self.factor_neg_reduction != 1:
             self.dg_train.reduce_negatives(self.factor_neg_reduction)
+
+        self.dg_train.prepare_precip_data()
 
     def _create_data_generator_valid(self):
         self.dg_val = DataGenerator(
@@ -329,6 +332,7 @@ class ImpactDeepLearning(Impact):
             transform_2d=self.transform_2d,
             precip_transformation_domain=self.precip_trans_domain,
             log_transform_precip=True,
+            use_pickle_events_precip_data=True,
             mean_static=self.dg_train.mean_static,
             std_static=self.dg_train.std_static,
             mean_precip=self.dg_train.mean_precip,
@@ -341,6 +345,8 @@ class ImpactDeepLearning(Impact):
 
         if self.factor_neg_reduction != 1:
             self.dg_val.reduce_negatives(self.factor_neg_reduction)
+
+        self.dg_val.prepare_precip_data()
 
     def _create_data_generator_test(self):
         self.dg_test = DataGenerator(
@@ -361,6 +367,7 @@ class ImpactDeepLearning(Impact):
             transform_2d=self.transform_2d,
             precip_transformation_domain=self.precip_trans_domain,
             log_transform_precip=True,
+            use_pickle_events_precip_data=False,
             mean_static=self.dg_train.mean_static,
             std_static=self.dg_train.std_static,
             mean_precip=self.dg_train.mean_precip,
@@ -370,6 +377,8 @@ class ImpactDeepLearning(Impact):
             max_precip=self.dg_train.max_precip,
             debug=True
         )
+
+        self.dg_test.prepare_precip_data()
 
     def _define_model(self, input_2d_size, input_1d_size):
         """
