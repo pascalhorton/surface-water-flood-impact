@@ -12,9 +12,9 @@ config = Config()
 
 
 class Precipitation:
-    def __init__(self, data_path, cid_file=None, dataset='CombiPrecip'):
+    def __init__(self, cid_file=None):
         """
-        The Precipitation class. Used for CombiPrecip data. Must be netCDF files.
+        The generic Precipitation class. Must be netCDF files as relies on xarray.
         """
         if not cid_file:
             cid_file = config.get('CID_PATH')
@@ -22,13 +22,11 @@ class Precipitation:
         self.x_axis = 'x'
         self.y_axis = 'y'
         self.time_axis = 'time'
-        if dataset == 'CombiPrecip':
-            self.time_axis = 'REFERENCE_TS'
+        self.precip_var = 'prec'
 
         self.data = None
+        self.missing = None
         self.domain = Domain(cid_file)
-
-        self._load_data(data_path)
 
     def get_time_series(self, cid, start, end, size=3):
         """
@@ -60,8 +58,5 @@ class Precipitation:
                              self.y_axis: slice(y + dy * dpx, y - dy * dpx),
                              self.time_axis: slice(start, end)})
 
-        return dat.CPC.mean(dim=[self.x_axis, self.y_axis]).to_numpy()
+        return dat[self.precip_var].mean(dim=[self.x_axis, self.y_axis]).to_numpy()
 
-    def _load_data(self, data_path):
-        files = sorted(glob(f"{data_path}/*.nc"))
-        self.data = xr.open_mfdataset(files, parallel=False)
