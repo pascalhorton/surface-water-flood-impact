@@ -5,6 +5,7 @@ Class to compute the impact function.
 import hashlib
 import pickle
 import keras
+import os
 import numpy as np
 from pathlib import Path
 
@@ -156,6 +157,10 @@ class DataGenerator(keras.utils.Sequence):
                         if self.use_pickle_full_precip_data:
                             self._load_dump_precip_data()
                         full_precip_data_loaded = True
+
+                    # Create directories if it does not exist
+                    dir_name = os.path.dirname(file_precip)
+                    os.makedirs(dir_name, exist_ok=True)
 
                     x_2d = self._extract_precipitation(event)
                     with open(file_precip, 'wb') as f:
