@@ -24,11 +24,13 @@ WEIGHT_DENOMINATOR = 5
 
 config = Config()
 
-MISSING_DATES = CombiPrecip.missingx
+MISSING_DATES = CombiPrecip.missing
 # Additional missing dates for ZH region (specific radar data)
-MISSING_DATES.append(('2009-05-02', '2009-05-02'))
-MISSING_DATES.append(('2017-04-16', '2017-04-16'))
-MISSING_DATES.append(('2022-07-04', '2022-07-04'))
+MISSING_DATES.append([
+    ('2009-05-02', '2009-05-02'),
+    ('2017-04-16', '2017-04-16'),
+    ('2022-07-04', '2022-07-04')
+])
 
 
 def main():
