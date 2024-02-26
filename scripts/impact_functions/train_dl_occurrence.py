@@ -24,6 +24,13 @@ WEIGHT_DENOMINATOR = 5
 
 config = Config()
 
+MISSING_DATES = CombiPrecip.missing
+MISSING_DATES.append(
+    ('2009-05-02', '2009-05-02'),
+    ('2017-04-16', '2017-04-16'),
+    ('2022-07-04', '2022-07-04'),
+)
+
 
 def main():
     parser = argparse.ArgumentParser(description="SWAFI DL")
@@ -57,7 +64,7 @@ def main():
     events = load_events_from_pickle(filename=events_filename)
 
     # Remove dates where the precipitation data is not available
-    for date_range in CombiPrecip.missing:
+    for date_range in MISSING_DATES:
         remove_start = (pd.to_datetime(date_range[0])
                         - pd.Timedelta(days=precip_days_before + 1))
         remove_end = (pd.to_datetime(date_range[1])
