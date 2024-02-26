@@ -26,7 +26,7 @@ config = Config()
 
 MISSING_DATES = CombiPrecip.missing
 # Additional missing dates for ZH region (specific radar data)
-MISSING_DATES.append([
+MISSING_DATES.extend([
     ('2009-05-02', '2009-05-02'),
     ('2017-04-16', '2017-04-16'),
     ('2022-07-04', '2022-07-04')
