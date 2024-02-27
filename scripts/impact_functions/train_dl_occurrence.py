@@ -39,6 +39,8 @@ def main():
                         help="Configuration ID (number corresponding to some options)")
     parser.add_argument("--do_not_use_precip", action="store_true",
                         help="Do not use precipitation data")
+    parser.add_argument("--precip_window_size", type=int, default=12,
+                        help="Size of the precipitation window [km]")
     parser.add_argument("--precip_resolution", type=int, default=1,
                         help="Desired resolution of the precipitation data [km]")
     parser.add_argument("--precip_time_step", type=int, default=6,
@@ -55,6 +57,7 @@ def main():
 
     # Main options
     use_precip = not args.do_not_use_precip
+    precip_window_size = args.precip_window_size
     precip_resolution = args.precip_resolution
     precip_time_step = args.precip_time_step
     precip_days_before = args.precip_days_before
@@ -75,31 +78,44 @@ def main():
     n_pos = events.count_positives()
     # events.reduce_number_of_negatives(FACTOR_NEG_EVENTS * n_pos, random_state=42)
 
+    precip_time_step = 2
+    precip_window_size = 12
+
     # Configuration-specific changes
     interactive_mode = False
     if args.config == -1:  # Manual configuration
         interactive_mode = True
+        precip_window_size = 4
     elif args.config == 1:
-        precip_time_step = 1
+        precip_window_size = 2
     elif args.config == 2:
-        precip_time_step = 2
+        precip_window_size = 4
     elif args.config == 3:
-        precip_time_step = 3
+        precip_window_size = 6
     elif args.config == 4:
-        precip_time_step = 4
+        precip_window_size = 8
     elif args.config == 5:
-        precip_time_step = 6
+        precip_window_size = 12
+        use_precip = False
     elif args.config == 6:
-        precip_time_step = 12
+        precip_window_size = 12
+        precip_resolution = 2
     elif args.config == 7:
-        precip_time_step = 24
+        precip_window_size = 12
+        precip_resolution = 4
 
     # Create the impact function
     dl = ImpactDeepLearning(
-        events, target_type='occurrence', random_state=42, precip_window_size=12,
-        use_precip=use_precip, precip_resolution=precip_resolution,
-        precip_time_step=precip_time_step, precip_days_before=precip_days_before,
-        precip_days_after=precip_days_after)
+        events,
+        target_type='occurrence',
+        random_state=42,
+        precip_window_size=precip_window_size,
+        use_precip=use_precip,
+        precip_resolution=precip_resolution,
+        precip_time_step=precip_time_step,
+        precip_days_before=precip_days_before,
+        precip_days_after=precip_days_after,
+    )
 
     if use_precip:
         # Load DEM
