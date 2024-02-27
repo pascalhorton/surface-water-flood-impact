@@ -140,7 +140,7 @@ class ImpactDeepLearning(Impact):
         self.model.compile(
             loss=loss_fn,
             optimizer=optimizer,
-            metrics=['accuracy']
+            metrics=[self._csi]
         )
 
         # Print the model summary
@@ -285,6 +285,17 @@ class ImpactDeepLearning(Impact):
 
         return weighted_binary_cross_entropy
 
+    @staticmethod
+    def _csi(y_true, y_pred):
+        y_true = tf.cast(y_true, tf.float32)
+        y_pred = tf.round(y_pred)  # convert probabilities to binary predictions
+        tp = tf.reduce_sum(y_true * y_pred)
+        fp = tf.reduce_sum((1 - y_true) * y_pred)
+        fn = tf.reduce_sum(y_true * (1 - y_pred))
+        csi = tp / (tp + fp + fn)
+
+        return csi
+
     def _create_data_generator_train(self):
         self.dg_train = DataGenerator(
             event_props=self.events_train,
@@ -304,8 +315,6 @@ class ImpactDeepLearning(Impact):
             transform_2d=self.transform_2d,
             precip_transformation_domain=self.precip_trans_domain,
             log_transform_precip=True,
-            use_pickle_full_precip_data=True,
-            use_pickle_events_precip_data=False,
             debug=True
         )
 
@@ -333,8 +342,6 @@ class ImpactDeepLearning(Impact):
             transform_2d=self.transform_2d,
             precip_transformation_domain=self.precip_trans_domain,
             log_transform_precip=True,
-            use_pickle_full_precip_data=True,
-            use_pickle_events_precip_data=False,
             mean_static=self.dg_train.mean_static,
             std_static=self.dg_train.std_static,
             mean_precip=self.dg_train.mean_precip,
@@ -369,8 +376,6 @@ class ImpactDeepLearning(Impact):
             transform_2d=self.transform_2d,
             precip_transformation_domain=self.precip_trans_domain,
             log_transform_precip=True,
-            use_pickle_full_precip_data=True,
-            use_pickle_events_precip_data=False,
             mean_static=self.dg_train.mean_static,
             std_static=self.dg_train.std_static,
             mean_precip=self.dg_train.mean_precip,
@@ -404,13 +409,13 @@ class ImpactDeepLearning(Impact):
         Parameters
         ----------
         n_samples: int
-            The number of samples.
+            The number of samples. Used for the option 'cosine_decay'.
         lr_method: str
             The learning rate method. Options are: 'cosine_decay', 'constant'
         lr: float
-            The learning rate.
+            The learning rate. Used for the option 'constant'.
         init_lr: float
-            The initial learning rate (for the cyclical and cosine_decay options).
+            The initial learning rate. Used for the option 'cosine_decay'.
 
         Returns
         -------
