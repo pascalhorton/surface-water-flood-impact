@@ -17,7 +17,7 @@ class DataGenerator(keras.utils.Sequence):
                  precip_resolution=1, precip_time_step=1, precip_days_before=8,
                  precip_days_after=3, tmp_dir=None, transform_static='standardize',
                  transform_2d='standardize',
-                 precip_transformation_domain='domain-average',
+                 precip_transformation_domain='per-pixel',
                  log_transform_precip=True, mean_static=None, std_static=None,
                  mean_precip=None, std_precip=None, min_static=None,
                  max_static=None, max_precip=None, debug=False):
@@ -46,8 +46,11 @@ class DataGenerator(keras.utils.Sequence):
             Whether to shuffle the data or not.
         use_pickle_events_precip_data: bool
             Whether to use pickle files to handle the precipitation data for each event.
+            This option is not recommended as it generates a lot of files and is not
+            significantly faster.
         use_pickle_full_precip_data: bool
             Whether to load the full data into memory and dump it to a pickle file.
+            This option is recommended as it speeds up the data loading.
         precip_window_size: int
             The window size for the 2D predictors [km].
         precip_resolution: int

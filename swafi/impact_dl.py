@@ -87,7 +87,7 @@ class ImpactDeepLearning(Impact):
         self.precip_time_step = precip_time_step
         self.transform_static = 'standardize'  # 'standardize' or 'normalize'
         self.transform_2d = 'standardize'  # 'standardize' or 'normalize'
-        self.precip_trans_domain = 'domain-average'  # 'domain-average' or 'per-pixel'
+        self.precip_trans_domain = 'per-pixel'  # 'domain-average' or 'per-pixel'
         self.factor_neg_reduction = 1
 
         # Hyperparameters
