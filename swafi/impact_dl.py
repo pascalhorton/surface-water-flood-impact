@@ -76,6 +76,7 @@ class ImpactDeepLearning(Impact):
         # Display if using GPU or CPU
         print("Built with CUDA: ", tf.test.is_built_with_cuda())
         print("Available GPU: ", tf.config.list_physical_devices('GPU'))
+        tf.debugging.set_log_device_placement(True)
 
         # Options
         self.random_state = random_state
@@ -304,7 +305,8 @@ class ImpactDeepLearning(Impact):
             transform_2d=self.transform_2d,
             precip_transformation_domain=self.precip_trans_domain,
             log_transform_precip=True,
-            use_pickle_events_precip_data=True,
+            use_pickle_full_precip_data=True,
+            use_pickle_events_precip_data=False,
             debug=True
         )
 
@@ -332,7 +334,8 @@ class ImpactDeepLearning(Impact):
             transform_2d=self.transform_2d,
             precip_transformation_domain=self.precip_trans_domain,
             log_transform_precip=True,
-            use_pickle_events_precip_data=True,
+            use_pickle_full_precip_data=True,
+            use_pickle_events_precip_data=False,
             mean_static=self.dg_train.mean_static,
             std_static=self.dg_train.std_static,
             mean_precip=self.dg_train.mean_precip,
@@ -367,6 +370,7 @@ class ImpactDeepLearning(Impact):
             transform_2d=self.transform_2d,
             precip_transformation_domain=self.precip_trans_domain,
             log_transform_precip=True,
+            use_pickle_full_precip_data=True,
             use_pickle_events_precip_data=False,
             mean_static=self.dg_train.mean_static,
             std_static=self.dg_train.std_static,
