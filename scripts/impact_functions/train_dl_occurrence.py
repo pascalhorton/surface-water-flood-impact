@@ -102,7 +102,7 @@ def main():
         precip_resolution = 2
     elif args.config == 7:
         precip_window_size = 12
-        precip_resolution = 4
+        precip_resolution = 3
 
     # Create the impact function
     dl = ImpactDeepLearning(

@@ -18,6 +18,8 @@ import tensorflow as tf
 import datetime
 import dask
 
+epsilon = 1e-7  # a small constant to avoid division by zero
+
 
 class ImpactDeepLearning(Impact):
     """
@@ -140,7 +142,7 @@ class ImpactDeepLearning(Impact):
         self.model.compile(
             loss=loss_fn,
             optimizer=optimizer,
-            metrics=[self._csi]
+            metrics=[self.csi]
         )
 
         # Print the model summary
@@ -286,13 +288,28 @@ class ImpactDeepLearning(Impact):
         return weighted_binary_cross_entropy
 
     @staticmethod
-    def _csi(y_true, y_pred):
-        y_true = tf.cast(y_true, tf.float32)
+    def csi(y_true, y_pred):
+        """
+        Compute the critical success index (CSI) for use in tensorflow.
+
+        Parameters
+        ----------
+        y_true: array-like
+            The true values.
+        y_pred: array-like
+            The predicted values.
+
+        Returns
+        -------
+        The CSI score.
+        """
+        y_true = tf.cast(y_true, dtype=y_pred.dtype)
+        y_pred = tf.cast(y_pred, dtype=y_pred.dtype)
         y_pred = tf.round(y_pred)  # convert probabilities to binary predictions
         tp = tf.reduce_sum(y_true * y_pred)
         fp = tf.reduce_sum((1 - y_true) * y_pred)
         fn = tf.reduce_sum(y_true * (1 - y_pred))
-        csi = tp / (tp + fp + fn)
+        csi = tp / (tp + fp + fn + epsilon)
 
         return csi
 
@@ -321,7 +338,8 @@ class ImpactDeepLearning(Impact):
         if self.factor_neg_reduction != 1:
             self.dg_train.reduce_negatives(self.factor_neg_reduction)
 
-        self.dg_train.prepare_precip_data()
+        if self.use_precip:
+            self.dg_train.prepare_precip_data()
 
     def _create_data_generator_valid(self):
         self.dg_val = DataGenerator(
@@ -355,7 +373,8 @@ class ImpactDeepLearning(Impact):
         if self.factor_neg_reduction != 1:
             self.dg_val.reduce_negatives(self.factor_neg_reduction)
 
-        self.dg_val.prepare_precip_data()
+        if self.use_precip:
+            self.dg_val.prepare_precip_data()
 
     def _create_data_generator_test(self):
         self.dg_test = DataGenerator(
@@ -386,7 +405,8 @@ class ImpactDeepLearning(Impact):
             debug=True
         )
 
-        self.dg_test.prepare_precip_data()
+        if self.use_precip:
+            self.dg_test.prepare_precip_data()
 
     def _define_model(self, input_2d_size, input_1d_size):
         """
