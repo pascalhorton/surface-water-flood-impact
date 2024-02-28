@@ -2,6 +2,7 @@
 Class to compute the impact function.
 """
 
+import math
 from keras import layers, models
 
 
@@ -65,11 +66,14 @@ class DeepImpact(models.Model):
         if self.input_2d_size is not None:
             assert len(self.input_2d_size) == 3, \
                 "Input 2D size must be 3D (with channels)"
-            # Assert that the input 2D size is divisible by 2 * nb_conv_blocks
-            assert self.input_2d_size[0] % (2 * self.nb_conv_blocks) == 0, \
-                "Input 2D size must be divisible by 2 * nb_conv_blocks"
-            assert self.input_2d_size[1] % (2 * self.nb_conv_blocks) == 0, \
-                "Input 2D size must be divisible by 2 * nb_conv_blocks"
+
+            # Check the input 2D size vs nb_conv_blocks
+            input_2d_size = min(self.input_2d_size[0], self.input_2d_size[1])
+            nb_conv_blocks_max = math.floor(math.log(input_2d_size, 2))
+            if self.nb_conv_blocks > nb_conv_blocks_max:
+                self.nb_conv_blocks = nb_conv_blocks_max
+                print(f"Warning: number of convolution blocks was reduced "
+                      f"to {self.nb_conv_blocks}")
 
     def _build_model(self):
         """
