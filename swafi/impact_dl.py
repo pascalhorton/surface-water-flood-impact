@@ -55,7 +55,7 @@ class ImpactDeepLearning(Impact):
     """
 
     def __init__(self, events, target_type='occurrence', random_state=42,
-                 reload_trained_models=False, use_precip=True, precip_window_size=12,
+                 reload_trained_models=False, use_precip=True, precip_window_size=8,
                  precip_resolution=1, precip_time_step=1, precip_days_before=8,
                  precip_days_after=3, batch_size=32, epochs=100):
         super().__init__(events, target_type=target_type, random_state=random_state)

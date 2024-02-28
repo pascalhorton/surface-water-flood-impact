@@ -518,6 +518,7 @@ class DataGenerator(keras.utils.Sequence):
 
     def _extract_precipitation(self, event):
         precip_window_size_m = self.precip_window_size * 1000
+        pixels_nb = int(self.precip_window_size / self.precip_resolution)
 
         # Temporal selection
         t_start = event[0] - np.timedelta64(self.precip_days_before, 'D')
@@ -525,9 +526,9 @@ class DataGenerator(keras.utils.Sequence):
 
         # Spatial domain
         x_start = event[1] - precip_window_size_m / 2
-        x_end = event[1] + precip_window_size_m / 2 - 1000
+        x_end = event[1] + precip_window_size_m / 2
         y_start = event[2] + precip_window_size_m / 2
-        y_end = event[2] - precip_window_size_m / 2 + 1000
+        y_end = event[2] - precip_window_size_m / 2
 
         # Select the corresponding precipitation data (5 days prior the event)
         x_precip_ev = self.X_precip['precip'].sel(
@@ -536,7 +537,13 @@ class DataGenerator(keras.utils.Sequence):
             y=slice(y_start, y_end)
         ).to_numpy()
 
-        # Extract the precipitation data
+        # If too large, remove the last line or column
+        if x_precip_ev.shape[1] > pixels_nb:
+            x_precip_ev = x_precip_ev[:, :-1, :]
+        if x_precip_ev.shape[2] > pixels_nb:
+            x_precip_ev = x_precip_ev[:, :, :-1]
+
+        # Move the time axis to the last position
         x_precip_ev = np.moveaxis(x_precip_ev, 0, -1)
 
         # Select the corresponding DEM data in the window

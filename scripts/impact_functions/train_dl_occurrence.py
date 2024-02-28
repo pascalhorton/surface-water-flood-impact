@@ -39,7 +39,7 @@ def main():
                         help="Configuration ID (number corresponding to some options)")
     parser.add_argument("--do_not_use_precip", action="store_true",
                         help="Do not use precipitation data")
-    parser.add_argument("--precip_window_size", type=int, default=12,
+    parser.add_argument("--precip_window_size", type=int, default=8,
                         help="Size of the precipitation window [km]")
     parser.add_argument("--precip_resolution", type=int, default=1,
                         help="Desired resolution of the precipitation data [km]")
@@ -79,7 +79,7 @@ def main():
     # events.reduce_number_of_negatives(FACTOR_NEG_EVENTS * n_pos, random_state=42)
 
     precip_time_step = 2
-    precip_window_size = 12
+    precip_window_size = 8
 
     # Configuration-specific changes
     interactive_mode = False
@@ -96,13 +96,12 @@ def main():
         precip_window_size = 8
     elif args.config == 5:
         precip_window_size = 12
-        use_precip = False
     elif args.config == 6:
-        precip_window_size = 12
+        precip_window_size = 8
         precip_resolution = 2
     elif args.config == 7:
         precip_window_size = 12
-        precip_resolution = 3
+        precip_resolution = 2
 
     # Create the impact function
     dl = ImpactDeepLearning(
