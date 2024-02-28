@@ -591,12 +591,12 @@ class ImpactDeepLearning(Impact):
             plt.show()
 
         plt.figure(figsize=(10, 5))
-        plt.plot(hist.history['accuracy'], label='train')
-        plt.plot(hist.history['val_accuracy'], label='valid')
+        plt.plot(hist.history['csi'], label='train')
+        plt.plot(hist.history['val_csi'], label='valid')
         plt.legend()
-        plt.title('Accuracy')
+        plt.title('CSI')
         plt.tight_layout()
-        plt.savefig(f'{dir_plots}/{prefix}accuracy_'
+        plt.savefig(f'{dir_plots}/{prefix}csi_'
                     f'{now.strftime("%Y-%m-%d_%H-%M-%S")}.png')
         if show_plots:
             plt.show()
