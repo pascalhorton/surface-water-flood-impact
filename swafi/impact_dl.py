@@ -180,23 +180,29 @@ class ImpactDeepLearningOptions:
         print("- use_precip: ", self.use_precip)
         print("- use_dem: ", self.use_dem)
         print("- use_simple_features: ", self.use_simple_features)
-        print("- simple_features: ", self.simple_features)
-        print("- precip_window_size: ", self.precip_window_size)
-        print("- precip_resolution: ", self.precip_resolution)
-        print("- precip_time_step: ", self.precip_time_step)
-        print("- precip_days_before: ", self.precip_days_before)
-        print("- precip_days_after: ", self.precip_days_after)
-        print("- transform_static: ", self.transform_static)
-        print("- transform_2d: ", self.transform_2d)
-        print("- precip_trans_domain: ", self.precip_trans_domain)
+        if self.use_simple_features:
+            print("- simple_features: ", self.simple_features)
+        if self.use_precip:
+            print("- precip_window_size: ", self.precip_window_size)
+            print("- precip_resolution: ", self.precip_resolution)
+            print("- precip_time_step: ", self.precip_time_step)
+            print("- precip_days_before: ", self.precip_days_before)
+            print("- precip_days_after: ", self.precip_days_after)
+        if self.use_simple_features:
+            print("- transform_static: ", self.transform_static)
+        if self.use_precip:
+            print("- transform_2d: ", self.transform_2d)
+            print("- precip_trans_domain: ", self.precip_trans_domain)
         print("- batch_size: ", self.batch_size)
         print("- epochs: ", self.epochs)
         print("- learning_rate: ", self.learning_rate)
         print("- dropout_rate: ", self.dropout_rate)
-        print("- with_spatial_dropout: ", self.with_spatial_dropout)
+        if self.use_precip:
+            print("- with_spatial_dropout: ", self.with_spatial_dropout)
         print("- with_batchnorm: ", self.with_batchnorm)
-        print("- nb_filters: ", self.nb_filters)
-        print("- nb_conv_blocks: ", self.nb_conv_blocks)
+        if self.use_precip:
+            print("- nb_filters: ", self.nb_filters)
+            print("- nb_conv_blocks: ", self.nb_conv_blocks)
         print("- nb_dense_layers: ", self.nb_dense_layers)
         print("- nb_dense_units: ", self.nb_dense_units)
         print("- nb_dense_units_decreasing: ", self.nb_dense_units_decreasing)
@@ -440,6 +446,7 @@ class ImpactDeepLearning(Impact):
         """
         Assess the model on all periods.
         """
+        print("Assessing the model on all periods.")
         self._create_data_generator_test()
         self._assess_model_dg(self.dg_train, 'Train period')
         self._assess_model_dg(self.dg_val, 'Validation period')
