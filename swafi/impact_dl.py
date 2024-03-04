@@ -41,6 +41,12 @@ class ImpactDeepLearningOptions:
         Default: 42. Set to None to not set the random seed.
     use_precip: bool
         Whether to use precipitation data (CombiPrecip) or not.
+    use_dem: bool
+        Whether to use DEM data or not.
+    use_simple_features: bool
+        Whether to use simple features (event properties and static attributes) or not.
+    simple_features: list
+        The list of simple features to use.
     precip_window_size: int
         The precipitation window size [km].
     precip_resolution: int
@@ -64,19 +70,44 @@ class ImpactDeepLearningOptions:
         The batch size.
     epochs: int
         The number of epochs.
+    learning_rate: float
+        The learning rate.
+    dropout_rate: float
+        The dropout rate.
+    with_spatial_dropout: bool
+        Whether to use spatial dropout or not.
+    with_batchnorm: bool
+        Whether to use batch normalization or not.
+    nb_filters: int
+        The number of filters.
+    nb_conv_blocks: int
+        The number of convolutional blocks.
+    nb_dense_layers: int
+        The number of dense layers.
+    nb_dense_units: int
+        The number of dense units.
+    nb_dense_units_decreasing: bool
+        Whether the number of dense units should decrease or not.
+    inner_activation: str
+        The inner activation function.
     """
 
     def __init__(self):
         self.parser = argparse.ArgumentParser(description="SWAFI DL")
         self._set_parser_arguments()
 
-        # Main options
+        # General options
         self.run_id = 0
         self.target_type = ''
         self.factor_neg_reduction = 10
         self.weight_denominator = 5
         self.random_state = None
+
+        # Data options
         self.use_precip = True
+        self.use_dem = True
+        self.use_simple_features = True
+        self.simple_features = []
         self.precip_window_size = 0
         self.precip_resolution = 0
         self.precip_time_step = 0
@@ -85,8 +116,22 @@ class ImpactDeepLearningOptions:
         self.transform_static = ''
         self.transform_2d = ''
         self.precip_trans_domain = ''
+
+        # Training options
         self.batch_size = 0
         self.epochs = 0
+        self.learning_rate = 0
+
+        # Model options
+        self.dropout_rate = 0
+        self.with_spatial_dropout = True
+        self.with_batchnorm = True
+        self.nb_filters = 0
+        self.nb_conv_blocks = 0
+        self.nb_dense_layers = 0
+        self.nb_dense_units = 0
+        self.nb_dense_units_decreasing = True
+        self.inner_activation = ''
 
     def parse_args(self):
         """
@@ -99,6 +144,9 @@ class ImpactDeepLearningOptions:
         self.weight_denominator = args.weight_denominator
         self.random_state = args.random_state
         self.use_precip = not args.do_not_use_precip
+        self.use_dem = not args.do_not_use_dem
+        self.use_simple_features = not args.do_not_use_simple_features
+        self.simple_features = args.simple_features
         self.precip_window_size = args.precip_window_size
         self.precip_resolution = args.precip_resolution
         self.precip_time_step = args.precip_time_step
@@ -109,6 +157,16 @@ class ImpactDeepLearningOptions:
         self.precip_trans_domain = args.precip_trans_domain
         self.batch_size = args.batch_size
         self.epochs = args.epochs
+        self.learning_rate = args.learning_rate
+        self.dropout_rate = args.dropout_rate
+        self.with_spatial_dropout = not args.no_spatial_dropout
+        self.with_batchnorm = not args.no_batchnorm
+        self.nb_filters = args.nb_filters
+        self.nb_conv_blocks = args.nb_conv_blocks
+        self.nb_dense_layers = args.nb_dense_layers
+        self.nb_dense_units = args.nb_dense_units
+        self.nb_dense_units_decreasing = not args.no_dense_units_decreasing
+        self.inner_activation = args.inner_activation
 
     def print(self):
         """
@@ -120,6 +178,9 @@ class ImpactDeepLearningOptions:
         print("- weight_denominator: ", self.weight_denominator)
         print("- random_state: ", self.random_state)
         print("- use_precip: ", self.use_precip)
+        print("- use_dem: ", self.use_dem)
+        print("- use_simple_features: ", self.use_simple_features)
+        print("- simple_features: ", self.simple_features)
         print("- precip_window_size: ", self.precip_window_size)
         print("- precip_resolution: ", self.precip_resolution)
         print("- precip_time_step: ", self.precip_time_step)
@@ -130,6 +191,16 @@ class ImpactDeepLearningOptions:
         print("- precip_trans_domain: ", self.precip_trans_domain)
         print("- batch_size: ", self.batch_size)
         print("- epochs: ", self.epochs)
+        print("- learning_rate: ", self.learning_rate)
+        print("- dropout_rate: ", self.dropout_rate)
+        print("- with_spatial_dropout: ", self.with_spatial_dropout)
+        print("- with_batchnorm: ", self.with_batchnorm)
+        print("- nb_filters: ", self.nb_filters)
+        print("- nb_conv_blocks: ", self.nb_conv_blocks)
+        print("- nb_dense_layers: ", self.nb_dense_layers)
+        print("- nb_dense_units: ", self.nb_dense_units)
+        print("- nb_dense_units_decreasing: ", self.nb_dense_units_decreasing)
+        print("- inner_activation: ", self.inner_activation)
 
     def is_ok(self):
         """
@@ -148,6 +219,11 @@ class ImpactDeepLearningOptions:
         assert self.precip_days_before >= 0, "precip_days_before must be >= 0"
         assert self.precip_days_after >= 0, "precip_days_after must be >= 0"
 
+        if not self.use_precip:
+            if self.use_dem:
+                self.use_dem = False
+                print("Warning: DEM will not be used as precipitation is not.")
+
         return True
 
     def _set_parser_arguments(self):
@@ -155,57 +231,94 @@ class ImpactDeepLearningOptions:
         Set the parser arguments.
         """
         self.parser.add_argument(
-            '--run_id', type=int, default=0,
+            '--run-id', type=int, default=0,
             help='The run ID')
         self.parser.add_argument(
-            '--target_type', type=str, default='occurrence',
+            '--target-type', type=str, default='occurrence',
             help='The target type. Options are: occurrence, damage_ratio')
         self.parser.add_argument(
-            '--factor_neg_reduction', type=int, default=10,
+            '--factor-neg-reduction', type=int, default=10,
             help='The factor to reduce the number of negatives only for training')
         self.parser.add_argument(
-            '--weight_denominator', type=int, default=5,
+            '--weight-denominator', type=int, default=5,
             help='The weight denominator to reduce the negative class weights')
         self.parser.add_argument(
-            '--random_state', type=int, default=42,
+            '--random-state', type=int, default=42,
             help='The random state to use for the random number generator')
         self.parser.add_argument(
-            '--do_not_use_precip', action='store_true',
+            '--do-not-use-precip', action='store_true',
             help='Do not use precipitation data')
         self.parser.add_argument(
-            '--precip_window_size', type=int, default=8,
+            '--do-not-use-dem', action='store_true',
+            help='Do not use DEM data')
+        self.parser.add_argument(
+            '--do-not-use-simple-features', action='store_true',
+            help='Do not use simple features (event properties and static attributes)')
+        self.parser.add_argument(
+            '--simple-features', nargs='+',
+            default=['event', 'terrain', 'swf_map', 'flowacc', 'twi'],
+            help='The list of simple features to use')
+        self.parser.add_argument(
+            '--precip-window-size', type=int, default=8,
             help='The precipitation window size [km]')
         self.parser.add_argument(
-            '--precip_resolution', type=int, default=1,
+            '--precip-resolution', type=int, default=1,
             help='The precipitation resolution [km]')
         self.parser.add_argument(
-            '--precip_time_step', type=int, default=1,
+            '--precip-time-step', type=int, default=1,
             help='The precipitation time step [h]')
         self.parser.add_argument(
-            '--precip_days_before', type=int, default=8,
+            '--precip-days-before', type=int, default=8,
             help='The number of days before the event to use for the precipitation')
         self.parser.add_argument(
-            '--precip_days_after', type=int, default=3,
+            '--precip-days-after', type=int, default=3,
             help='The number of days after the event to use for the precipitation')
         self.parser.add_argument(
-            '--transform_static', type=str, default='standardize',
+            '--transform-static', type=str, default='standardize',
             help='The transformation to apply to the static data')
         self.parser.add_argument(
-            '--transform_2d', type=str, default='standardize',
+            '--transform-2d', type=str, default='standardize',
             help='The transformation to apply to the 2D data')
         self.parser.add_argument(
-            '--precip_trans_domain', type=str, default='per-pixel',
+            '--precip-trans-domain', type=str, default='per-pixel',
             help='The precipitation transformation domain. '
                  'Options are: domain-average, per-pixel')
         self.parser.add_argument(
-            '--batch_size', type=int, default=32,
+            '--batch-size', type=int, default=32,
             help='The batch size')
         self.parser.add_argument(
             '--epochs', type=int, default=100,
             help='The number of epochs')
-
-
-
+        self.parser.add_argument(
+            '--learning-rate', type=float, default=0.001,
+            help='The learning rate')
+        self.parser.add_argument(
+            '--dropout-rate', type=float, default=0.2,
+            help='The dropout rate')
+        self.parser.add_argument(
+            '--no-spatial-dropout', action='store_true',
+            help='Do not use spatial dropout')
+        self.parser.add_argument(
+            '--no-batchnorm', action='store_true',
+            help='Do not use batch normalization')
+        self.parser.add_argument(
+            '--nb-filters', type=int, default=64,
+            help='The number of filters')
+        self.parser.add_argument(
+            '--nb-conv-blocks', type=int, default=3,
+            help='The number of convolutional blocks')
+        self.parser.add_argument(
+            '--nb-dense-layers', type=int, default=4,
+            help='The number of dense layers')
+        self.parser.add_argument(
+            '--nb-dense-units', type=int, default=256,
+            help='The number of dense units')
+        self.parser.add_argument(
+            '--no-dense-units-decreasing', action='store_true',
+            help='The number of dense units should not decrease')
+        self.parser.add_argument(
+            '--inner-activation', type=str, default='relu',
+            help='The inner activation function')
 
 
 class ImpactDeepLearning(Impact):
@@ -241,7 +354,7 @@ class ImpactDeepLearning(Impact):
         print("Built with CUDA: ", tf.test.is_built_with_cuda())
         print("Available GPU: ", tf.config.list_physical_devices('GPU'))
 
-        # Other options
+        # Options that will be set later
         self.factor_neg_reduction = 1
 
     def fit(self, tag=None, dir_plots=None, show_plots=False):
@@ -282,7 +395,9 @@ class ImpactDeepLearning(Impact):
 
         # Define the optimizer
         optimizer = self._define_optimizer(
-            n_samples=len(self.dg_train), lr_method='constant', lr=0.001)
+            n_samples=len(self.dg_train),
+            lr_method='constant',
+            lr=self.options.learning_rate)
 
         # Get loss function
         loss_fn = self._get_loss_function()
@@ -301,7 +416,7 @@ class ImpactDeepLearning(Impact):
         verbose = 1 if show_plots else 2
         hist = self.model.fit(
             self.dg_train,
-            epochs=self.epochs,
+            epochs=self.options.epochs,
             validation_data=self.dg_val,
             callbacks=[callback],
             verbose=verbose
@@ -563,12 +678,9 @@ class ImpactDeepLearning(Impact):
         """
         self.model = DeepImpact(
             task=self.target_type,
+            options=self.options,
             input_2d_size=input_2d_size,
             input_1d_size=input_1d_size,
-            dropout_rate=0.2,
-            with_spatial_dropout=True,
-            with_batchnorm=True,
-            inner_activation='relu'
         )
 
     def _define_optimizer(self, n_samples, lr_method='constant', lr=.001, init_lr=0.01):

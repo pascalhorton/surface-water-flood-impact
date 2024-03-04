@@ -15,40 +15,30 @@ class DeepImpact(models.Model):
     ----------
     task: str
         The task. Options are: 'regression', 'classification'
+    options: ImpactDeepLearningOptions
+        The options.
     input_2d_size: ?list
         The input 2D size.
     input_1d_size: ?list
         The input 1D size.
-    dropout_rate: float
-        The dropout rate.
-    with_spatial_dropout: bool
-        Whether to use spatial dropout or not.
-    with_batchnorm: bool
-        Whether to use batch normalization or not.
-    inner_activation: str
-        The inner activation function.
     """
 
-    def __init__(self, task, input_2d_size, input_1d_size, dropout_rate=0.2,
-                 with_spatial_dropout=True, with_batchnorm=True,
-                 inner_activation='relu'):
+    def __init__(self, task, options, input_2d_size, input_1d_size):
         super(DeepImpact, self).__init__()
         self.model = None
         self.task = task
+        self.options = options
+
         if input_2d_size is None:
             self.input_2d_size = None
         else:
             self.input_2d_size = list(input_2d_size)
+
         if input_1d_size is None:
             self.input_1d_size = None
         else:
             self.input_1d_size = list(input_1d_size)
-        self.dropout_rate = dropout_rate
-        self.nb_conv_blocks = 3
-        self.nb_filters = 64
-        self.with_spatial_dropout = with_spatial_dropout
-        self.with_batchnorm = with_batchnorm
-        self.inner_activation = inner_activation
+
         self.last_activation = 'relu' if task == 'regression' else 'sigmoid'
 
         self._check_input_size()
@@ -71,10 +61,10 @@ class DeepImpact(models.Model):
             # Check the input 2D size vs nb_conv_blocks
             input_2d_size = min(self.input_2d_size[0], self.input_2d_size[1])
             nb_conv_blocks_max = math.floor(math.log(input_2d_size, 2))
-            if self.nb_conv_blocks > nb_conv_blocks_max:
-                self.nb_conv_blocks = nb_conv_blocks_max
+            if self.options.nb_conv_blocks > nb_conv_blocks_max:
+                self.options.nb_conv_blocks = nb_conv_blocks_max
                 warnings.warn(f"Number of convolution blocks was reduced "
-                              f"to {self.nb_conv_blocks}")
+                              f"to {self.options.nb_conv_blocks}")
 
     def _build_model(self):
         """
@@ -87,8 +77,8 @@ class DeepImpact(models.Model):
 
             # 2D convolution
             x = input_2d
-            for i in range(self.nb_conv_blocks):
-                nb_filters = self.nb_filters * (2 ** i)
+            for i in range(self.options.nb_conv_blocks):
+                nb_filters = self.options.nb_filters * (2 ** i)
                 x = self.conv2d_block(x, filters=nb_filters, kernel_size=3)
 
             # Flatten
@@ -104,10 +94,12 @@ class DeepImpact(models.Model):
                 x = input_1d
 
         # Fully connected
-        x = layers.Dense(256, activation=self.inner_activation)(x)
-        x = layers.Dense(128, activation=self.inner_activation)(x)
-        x = layers.Dense(64, activation=self.inner_activation)(x)
-        x = layers.Dense(32, activation=self.inner_activation)(x)
+        for i in range(self.options.nb_dense_layers):
+            if self.options.nb_dense_units_decreasing:
+                nb_units = self.options.nb_dense_units // (2 ** i)
+            else:
+                nb_units = self.options.nb_dense_units
+            x = layers.Dense(nb_units, activation=self.options.inner_activation)(x)
 
         # Last activation
         output = layers.Dense(1, activation=self.last_activation)(x)
@@ -145,7 +137,7 @@ class DeepImpact(models.Model):
         The output layer.
         """
         if activation == 'default':
-            activation = self.inner_activation
+            activation = self.options.inner_activation
 
         x = layers.Conv2D(
             filters=filters,
@@ -161,7 +153,7 @@ class DeepImpact(models.Model):
             activation=activation,
         )(x)
 
-        if self.with_batchnorm:
+        if self.options.with_batchnorm:
             # Batch normalization should be before any dropout
             # https://stackoverflow.com/questions/59634780/correct-order-for-
             # spatialdropout2d-batchnormalization-and-activation-function
@@ -171,14 +163,14 @@ class DeepImpact(models.Model):
             pool_size=(2, 2),
         )(x)
 
-        if self.dropout_rate > 0:
-            if self.with_spatial_dropout and x.shape[1] > 1 and x.shape[2] > 1:
+        if self.options.dropout_rate > 0:
+            if self.options.with_spatial_dropout and x.shape[1] > 1 and x.shape[2] > 1:
                 x = layers.SpatialDropout2D(
-                    rate=self.dropout_rate,
+                    rate=self.options.dropout_rate,
                 )(x)
             else:
                 x = layers.Dropout(
-                    rate=self.dropout_rate,
+                    rate=self.options.dropout_rate,
                 )(x)
 
         return x

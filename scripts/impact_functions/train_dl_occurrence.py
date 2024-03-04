@@ -31,7 +31,9 @@ MISSING_DATES.extend([
 def main():
     options = ImpactDeepLearningOptions()
     options.parse_args()
+    # options.parser.print_help()
     options.print()
+    assert options.is_ok()
 
     # Load events
     events_filename = f'events_{DATASET}_with_target_values_{LABEL_EVENT_FILE}.pickle'
@@ -54,11 +56,12 @@ def main():
     dl = ImpactDeepLearning(events, options=options)
 
     if options.use_precip:
-        # Load DEM
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", category=UserWarning)  # pyproj
-            dem = rxr.open_rasterio(config.get('DEM_PATH'), masked=True).squeeze()
-            dl.set_dem(dem)
+        if options.use_dem:
+            # Load DEM
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=UserWarning)  # pyproj
+                dem = rxr.open_rasterio(config.get('DEM_PATH'), masked=True).squeeze()
+                dl.set_dem(dem)
 
         # Load CombiPrecip files
         data_path = config.get('DIR_PRECIP')
@@ -66,11 +69,13 @@ def main():
         precip = xr.open_mfdataset(files, parallel=False)
         precip = precip.rename_vars({'CPC': 'precip'})
         precip = precip.rename({'REFERENCE_TS': 'time'})
-        precip = precip.sel(x=dem.x, y=dem.y)  # Select the same domain as the DEM
+        if options.use_dem:
+            precip = precip.sel(x=dem.x, y=dem.y)  # Select the same domain as the DEM
         dl.set_precipitation(precip)
 
     # Load static features
-    dl.load_features(['event', 'terrain', 'swf_map', 'flowacc', 'twi'])
+    if options.use_simple_features:
+        dl.load_features(options.simple_features)
 
     dl.split_sample()
     dl.reduce_negatives_for_training(options.factor_neg_reduction)

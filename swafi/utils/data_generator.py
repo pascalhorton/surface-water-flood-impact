@@ -340,8 +340,8 @@ class DataGenerator(keras.utils.Sequence):
             )
 
     def _compute_predictor_statistics(self):
-        print('Computing/assigning static predictor statistics')
         if self.X_static is not None:
+            print('Computing/assigning static predictor statistics')
             if self.transform_static == 'standardize':
                 # Compute the mean and standard deviation of the static data
                 if self.mean_static is None:
@@ -355,8 +355,8 @@ class DataGenerator(keras.utils.Sequence):
                 if self.max_static is None:
                     self.max_static = np.max(self.X_static, axis=0)
 
-        print('Computing DEM predictor statistics')
         if self.X_dem is not None:
+            print('Computing DEM predictor statistics')
             if self.transform_2d == 'standardize':
                 # Compute the mean and standard deviation of the DEM (non-temporal)
                 self.mean_dem = self.X_dem.mean(('x', 'y')).compute().values
