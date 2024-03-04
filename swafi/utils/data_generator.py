@@ -375,7 +375,6 @@ class DataGenerator(keras.utils.Sequence):
             self.X_precip['precip'] = np.log1p(self.X_precip['precip'])
 
         # Compute the mean and standard deviation of the precipitation
-        print('Computing/assigning precipitation predictor statistics')
         if (self.transform_2d == 'standardize' and self.mean_precip is not None
                 and self.std_precip is not None):
             return
@@ -391,6 +390,7 @@ class DataGenerator(keras.utils.Sequence):
 
         if (self.transform_2d == 'standardize' and file_mean_precip.exists()
                 and file_std_precip.exists()):
+            print('Loading precipitation statistics from pickle files')
             with open(file_mean_precip, 'rb') as f:
                 self.mean_precip = pickle.load(f)
             with open(file_std_precip, 'rb') as f:
@@ -398,10 +398,13 @@ class DataGenerator(keras.utils.Sequence):
             return
 
         if self.transform_2d == 'normalize' and file_max_precip.exists():
+            print('Loading precipitation statistics from pickle files')
             with open(file_max_precip, 'rb') as f:
                 self.max_precip = pickle.load(f)
             return
 
+        # Otherwise, compute the statistics and save them to a pickle file
+        print('Computing precipitation statistics')
         if self.precip_transformation_domain == 'domain-average':
             if self.transform_2d == 'standardize':
                 self.mean_precip = self.X_precip['precip'].mean(

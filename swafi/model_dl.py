@@ -3,7 +3,6 @@ Class to compute the impact function.
 """
 
 import math
-import warnings
 from keras import layers, models
 
 
@@ -63,8 +62,8 @@ class DeepImpact(models.Model):
             nb_conv_blocks_max = math.floor(math.log(input_2d_size, 2))
             if self.options.nb_conv_blocks > nb_conv_blocks_max:
                 self.options.nb_conv_blocks = nb_conv_blocks_max
-                warnings.warn(f"Number of convolution blocks was reduced "
-                              f"to {self.options.nb_conv_blocks}")
+                print(f"Warning: Number of convolution blocks was reduced "
+                      f"to {self.options.nb_conv_blocks}")
 
     def _build_model(self):
         """

@@ -274,10 +274,10 @@ class ImpactDeepLearningOptions:
             '--precip-time-step', type=int, default=1,
             help='The precipitation time step [h]')
         self.parser.add_argument(
-            '--precip-days-before', type=int, default=8,
+            '--precip-days-before', type=int, default=4,
             help='The number of days before the event to use for the precipitation')
         self.parser.add_argument(
-            '--precip-days-after', type=int, default=3,
+            '--precip-days-after', type=int, default=2,
             help='The number of days after the event to use for the precipitation')
         self.parser.add_argument(
             '--transform-static', type=str, default='standardize',
