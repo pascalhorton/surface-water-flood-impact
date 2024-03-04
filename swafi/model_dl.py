@@ -100,6 +100,8 @@ class DeepImpact(models.Model):
             else:
                 nb_units = self.options.nb_dense_units
             x = layers.Dense(nb_units, activation=self.options.inner_activation)(x)
+            if self.options.dropout_rate > 0:
+                x = layers.Dropout(rate=self.options.dropout_rate)(x)
 
         # Last activation
         output = layers.Dense(1, activation=self.last_activation)(x)
