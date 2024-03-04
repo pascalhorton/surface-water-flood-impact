@@ -2,7 +2,6 @@
 Train a deep learning model to predict the occurrence of damages.
 """
 
-import argparse
 import warnings
 import xarray as xr
 import rioxarray as rxr
@@ -10,17 +9,13 @@ import pandas as pd
 from glob import glob
 
 from swafi.config import Config
-from swafi.impact_dl import ImpactDeepLearning
+from swafi.impact_dl import ImpactDeepLearning, ImpactDeepLearningOptions
 from swafi.events import load_events_from_pickle
 from swafi.precip_combiprecip import CombiPrecip
 
 
 DATASET = 'gvz'  # 'mobiliar' or 'gvz'
 LABEL_EVENT_FILE = 'original_w_prior_pluvial_occurrence'
-# FACTOR_NEG_EVENTS = 100
-FACTOR_NEG_REDUCTION = 10
-#WEIGHT_DENOMINATOR = 27
-WEIGHT_DENOMINATOR = 5
 
 config = Config()
 
@@ -34,34 +29,9 @@ MISSING_DATES.extend([
 
 
 def main():
-    parser = argparse.ArgumentParser(description="SWAFI DL")
-    parser.add_argument("config", type=int, default=-1, nargs='?',
-                        help="Configuration ID (number corresponding to some options)")
-    parser.add_argument("--do_not_use_precip", action="store_true",
-                        help="Do not use precipitation data")
-    parser.add_argument("--precip_window_size", type=int, default=8,
-                        help="Size of the precipitation window [km]")
-    parser.add_argument("--precip_resolution", type=int, default=1,
-                        help="Desired resolution of the precipitation data [km]")
-    parser.add_argument("--precip_time_step", type=int, default=6,
-                        help="Desired time step of the precipitation data [hours]")
-    parser.add_argument("--precip_days_before", type=int, default=4,
-                        help="Number of days before the event to consider for the "
-                             "precipitation data")
-    parser.add_argument("--precip_days_after", type=int, default=2,
-                        help="Number of days after the event to consider for the "
-                             "precipitation data")
-
-    args = parser.parse_args()
-    print("config: ", args.config)
-
-    # Main options
-    use_precip = not args.do_not_use_precip
-    precip_window_size = args.precip_window_size
-    precip_resolution = args.precip_resolution
-    precip_time_step = args.precip_time_step
-    precip_days_before = args.precip_days_before
-    precip_days_after = args.precip_days_after
+    options = ImpactDeepLearningOptions()
+    options.parse_args()
+    options.print()
 
     # Load events
     events_filename = f'events_{DATASET}_with_target_values_{LABEL_EVENT_FILE}.pickle'
@@ -70,53 +40,20 @@ def main():
     # Remove dates where the precipitation data is not available
     for date_range in MISSING_DATES:
         remove_start = (pd.to_datetime(date_range[0])
-                        - pd.Timedelta(days=precip_days_before + 1))
+                        - pd.Timedelta(days=options.precip_days_before + 1))
         remove_end = (pd.to_datetime(date_range[1])
-                      + pd.Timedelta(days=precip_days_after + 1))
+                      + pd.Timedelta(days=options.precip_days_after + 1))
         events.remove_period(remove_start, remove_end)
-
-    n_pos = events.count_positives()
-    # events.reduce_number_of_negatives(FACTOR_NEG_EVENTS * n_pos, random_state=42)
-
-    precip_time_step = 2
-    precip_window_size = 8
 
     # Configuration-specific changes
     interactive_mode = False
-    if args.config == -1:  # Manual configuration
+    if options.run_id == 0:  # Manual configuration
         interactive_mode = True
-        precip_window_size = 4
-    elif args.config == 1:
-        precip_window_size = 2
-    elif args.config == 2:
-        precip_window_size = 4
-    elif args.config == 3:
-        precip_window_size = 6
-    elif args.config == 4:
-        precip_window_size = 8
-    elif args.config == 5:
-        precip_window_size = 12
-    elif args.config == 6:
-        precip_window_size = 8
-        precip_resolution = 2
-    elif args.config == 7:
-        precip_window_size = 12
-        precip_resolution = 2
 
     # Create the impact function
-    dl = ImpactDeepLearning(
-        events,
-        target_type='occurrence',
-        random_state=42,
-        precip_window_size=precip_window_size,
-        use_precip=use_precip,
-        precip_resolution=precip_resolution,
-        precip_time_step=precip_time_step,
-        precip_days_before=precip_days_before,
-        precip_days_after=precip_days_after,
-    )
+    dl = ImpactDeepLearning(events, options=options)
 
-    if use_precip:
+    if options.use_precip:
         # Load DEM
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=UserWarning)  # pyproj
@@ -136,11 +73,11 @@ def main():
     dl.load_features(['event', 'terrain', 'swf_map', 'flowacc', 'twi'])
 
     dl.split_sample()
-    dl.reduce_negatives_for_training(FACTOR_NEG_REDUCTION)
+    dl.reduce_negatives_for_training(options.factor_neg_reduction)
     dl.compute_balanced_class_weights()
-    dl.compute_corrected_class_weights(weight_denominator=WEIGHT_DENOMINATOR)
+    dl.compute_corrected_class_weights(weight_denominator=options.weight_denominator)
     dl.fit(dir_plots=config.get('OUTPUT_DIR'), show_plots=interactive_mode,
-           tag=args.config)
+           tag=options.run_id)
     dl.assess_model_on_all_periods()
 
 

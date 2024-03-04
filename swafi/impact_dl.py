@@ -8,6 +8,7 @@ from .utils.data_generator import DataGenerator
 from .utils.verification import compute_confusion_matrix, print_classic_scores, \
     assess_roc_auc, compute_score_binary
 
+import argparse
 import hashlib
 import pickle
 import keras
@@ -21,21 +22,23 @@ import dask
 epsilon = 1e-7  # a small constant to avoid division by zero
 
 
-class ImpactDeepLearning(Impact):
+class ImpactDeepLearningOptions:
     """
-    The Deep Learning Impact class.
+    The Deep Learning Impact class options.
 
-    Parameters
+    Attributes
     ----------
-    events: Events
-        The events object.
+    run_id: int
+        The run ID.
     target_type: str
         The target type. Options are: 'occurrence', 'damage_ratio'
+    factor_neg_reduction: int
+        The factor to reduce the number of negatives only for training.
+    weight_denominator: int
+        The weight denominator to reduce the negative class weights.
     random_state: int|None
         The random state to use for the random number generator.
         Default: 42. Set to None to not set the random seed.
-    reload_trained_models: bool
-        Whether to reload the previously trained models or not.
     use_precip: bool
         Whether to use precipitation data (CombiPrecip) or not.
     precip_window_size: int
@@ -48,17 +51,181 @@ class ImpactDeepLearning(Impact):
         The number of days before the event to use for the precipitation.
     precip_days_after: int
         The number of days after the event to use for the precipitation.
+    transform_static: str
+        The transformation to apply to the static data.
+        Options are: 'standardize', 'normalize'.
+    transform_2d: str
+        The transformation to apply to the 2D data.
+        Options are: 'standardize', 'normalize'.
+    precip_trans_domain: str
+        The precipitation transformation domain.
+        Options are: 'domain-average', 'per-pixel'.
     batch_size: int
         The batch size.
     epochs: int
         The number of epochs.
     """
 
-    def __init__(self, events, target_type='occurrence', random_state=42,
-                 reload_trained_models=False, use_precip=True, precip_window_size=8,
-                 precip_resolution=1, precip_time_step=1, precip_days_before=8,
-                 precip_days_after=3, batch_size=32, epochs=100):
-        super().__init__(events, target_type=target_type, random_state=random_state)
+    def __init__(self):
+        self.parser = argparse.ArgumentParser(description="SWAFI DL")
+        self._set_parser_arguments()
+
+        # Main options
+        self.run_id = 0
+        self.target_type = ''
+        self.factor_neg_reduction = 10
+        self.weight_denominator = 5
+        self.random_state = None
+        self.use_precip = True
+        self.precip_window_size = 0
+        self.precip_resolution = 0
+        self.precip_time_step = 0
+        self.precip_days_before = 0
+        self.precip_days_after = 0
+        self.transform_static = ''
+        self.transform_2d = ''
+        self.precip_trans_domain = ''
+        self.batch_size = 0
+        self.epochs = 0
+
+    def parse_args(self):
+        """
+        Parse the arguments.
+        """
+        args = self.parser.parse_args()
+        self.run_id = args.run_id
+        self.target_type = args.target_type
+        self.factor_neg_reduction = args.factor_neg_reduction
+        self.weight_denominator = args.weight_denominator
+        self.random_state = args.random_state
+        self.use_precip = not args.do_not_use_precip
+        self.precip_window_size = args.precip_window_size
+        self.precip_resolution = args.precip_resolution
+        self.precip_time_step = args.precip_time_step
+        self.precip_days_before = args.precip_days_before
+        self.precip_days_after = args.precip_days_after
+        self.transform_static = args.transform_static
+        self.transform_2d = args.transform_2d
+        self.precip_trans_domain = args.precip_trans_domain
+        self.batch_size = args.batch_size
+        self.epochs = args.epochs
+
+    def print(self):
+        """
+        Print the options.
+        """
+        print(f"Options (run {self.run_id}):")
+        print("- target_type: ", self.target_type)
+        print("- factor_neg_reduction: ", self.factor_neg_reduction)
+        print("- weight_denominator: ", self.weight_denominator)
+        print("- random_state: ", self.random_state)
+        print("- use_precip: ", self.use_precip)
+        print("- precip_window_size: ", self.precip_window_size)
+        print("- precip_resolution: ", self.precip_resolution)
+        print("- precip_time_step: ", self.precip_time_step)
+        print("- precip_days_before: ", self.precip_days_before)
+        print("- precip_days_after: ", self.precip_days_after)
+        print("- transform_static: ", self.transform_static)
+        print("- transform_2d: ", self.transform_2d)
+        print("- precip_trans_domain: ", self.precip_trans_domain)
+        print("- batch_size: ", self.batch_size)
+        print("- epochs: ", self.epochs)
+
+    def is_ok(self):
+        """
+        Check if the options are ok.
+
+        Returns
+        -------
+        bool
+            Whether the options are ok or not.
+        """
+        # Check the precipitation parameters
+        assert self.precip_window_size % self.precip_resolution == 0, \
+            "precip_window_size must be divisible by precip_resolution"
+        pixels_per_side = self.precip_window_size // self.precip_resolution
+        assert pixels_per_side % 2 == 0, "pixels per side must be even"
+        assert self.precip_days_before >= 0, "precip_days_before must be >= 0"
+        assert self.precip_days_after >= 0, "precip_days_after must be >= 0"
+
+        return True
+
+    def _set_parser_arguments(self):
+        """
+        Set the parser arguments.
+        """
+        self.parser.add_argument(
+            '--run_id', type=int, default=0,
+            help='The run ID')
+        self.parser.add_argument(
+            '--target_type', type=str, default='occurrence',
+            help='The target type. Options are: occurrence, damage_ratio')
+        self.parser.add_argument(
+            '--factor_neg_reduction', type=int, default=10,
+            help='The factor to reduce the number of negatives only for training')
+        self.parser.add_argument(
+            '--weight_denominator', type=int, default=5,
+            help='The weight denominator to reduce the negative class weights')
+        self.parser.add_argument(
+            '--random_state', type=int, default=42,
+            help='The random state to use for the random number generator')
+        self.parser.add_argument(
+            '--do_not_use_precip', action='store_true',
+            help='Do not use precipitation data')
+        self.parser.add_argument(
+            '--precip_window_size', type=int, default=8,
+            help='The precipitation window size [km]')
+        self.parser.add_argument(
+            '--precip_resolution', type=int, default=1,
+            help='The precipitation resolution [km]')
+        self.parser.add_argument(
+            '--precip_time_step', type=int, default=1,
+            help='The precipitation time step [h]')
+        self.parser.add_argument(
+            '--precip_days_before', type=int, default=8,
+            help='The number of days before the event to use for the precipitation')
+        self.parser.add_argument(
+            '--precip_days_after', type=int, default=3,
+            help='The number of days after the event to use for the precipitation')
+        self.parser.add_argument(
+            '--transform_static', type=str, default='standardize',
+            help='The transformation to apply to the static data')
+        self.parser.add_argument(
+            '--transform_2d', type=str, default='standardize',
+            help='The transformation to apply to the 2D data')
+        self.parser.add_argument(
+            '--precip_trans_domain', type=str, default='per-pixel',
+            help='The precipitation transformation domain. '
+                 'Options are: domain-average, per-pixel')
+        self.parser.add_argument(
+            '--batch_size', type=int, default=32,
+            help='The batch size')
+        self.parser.add_argument(
+            '--epochs', type=int, default=100,
+            help='The number of epochs')
+
+
+
+
+
+class ImpactDeepLearning(Impact):
+    """
+    The Deep Learning Impact class.
+
+    Parameters
+    ----------
+    events: Events
+        The events object.
+    options: ImpactDeepLearningOptions
+        The model options.
+    reload_trained_models: bool
+        Whether to reload the previously trained models or not.
+    """
+
+    def __init__(self, events, options, reload_trained_models=False):
+        super().__init__(events, target_type=options.target_type,
+                         random_state=options.random_state)
+        self.options = options
         self.reload_trained_models = reload_trained_models
 
         self.precipitation = None
@@ -67,34 +234,15 @@ class ImpactDeepLearning(Impact):
         self.dg_val = None
         self.dg_test = None
 
-        # Check the precipitation parameters
-        assert precip_window_size % precip_resolution == 0, \
-            "precip_window_size must be divisible by precip_resolution"
-        pixels_per_side = precip_window_size // precip_resolution
-        assert pixels_per_side % 2 == 0, "pixels per side must be even"
-        assert precip_days_before >= 0, "precip_days_before must be >= 0"
-        assert precip_days_after >= 0, "precip_days_after must be >= 0"
+        if not self.options.is_ok():
+            raise ValueError("Options are not ok.")
 
         # Display if using GPU or CPU
         print("Built with CUDA: ", tf.test.is_built_with_cuda())
         print("Available GPU: ", tf.config.list_physical_devices('GPU'))
 
-        # Options
-        self.random_state = random_state
-        self.use_precip = use_precip
-        self.precip_days_before = precip_days_before
-        self.precip_days_after = precip_days_after
-        self.precip_window_size = precip_window_size
-        self.precip_resolution = precip_resolution
-        self.precip_time_step = precip_time_step
-        self.transform_static = 'standardize'  # 'standardize' or 'normalize'
-        self.transform_2d = 'standardize'  # 'standardize' or 'normalize'
-        self.precip_trans_domain = 'per-pixel'  # 'domain-average' or 'per-pixel'
+        # Other options
         self.factor_neg_reduction = 1
-
-        # Hyperparameters
-        self.batch_size = batch_size
-        self.epochs = epochs
 
     def fit(self, tag=None, dir_plots=None, show_plots=False):
         """
@@ -113,8 +261,9 @@ class ImpactDeepLearning(Impact):
         self._create_data_generator_valid()
 
         # Define the model
-        pixels_per_side = self.precip_window_size // self.precip_resolution
-        if self.use_precip:
+        pixels_per_side = (self.options.precip_window_size //
+                           self.options.precip_resolution)
+        if self.options.use_precip:
             self._define_model(input_2d_size=[pixels_per_side,
                                               pixels_per_side,
                                               self.dg_train.get_channels_nb()],
@@ -129,7 +278,7 @@ class ImpactDeepLearning(Impact):
 
         # Clear session and set the seed
         keras.backend.clear_session()
-        keras.utils.set_random_seed(self.random_state)
+        keras.utils.set_random_seed(self.options.random_state)
 
         # Define the optimizer
         optimizer = self._define_optimizer(
@@ -320,17 +469,17 @@ class ImpactDeepLearning(Impact):
             x_precip=self.precipitation,
             x_dem=self.dem,
             y=self.y_train,
-            batch_size=self.batch_size,
+            batch_size=self.options.batch_size,
             shuffle=True,
-            precip_window_size=self.precip_window_size,
-            precip_resolution=self.precip_resolution,
-            precip_time_step=self.precip_time_step,
-            precip_days_before=self.precip_days_before,
-            precip_days_after=self.precip_days_after,
+            precip_window_size=self.options.precip_window_size,
+            precip_resolution=self.options.precip_resolution,
+            precip_time_step=self.options.precip_time_step,
+            precip_days_before=self.options.precip_days_before,
+            precip_days_after=self.options.precip_days_after,
             tmp_dir=self.tmp_dir,
-            transform_static=self.transform_static,
-            transform_2d=self.transform_2d,
-            precip_transformation_domain=self.precip_trans_domain,
+            transform_static=self.options.transform_static,
+            transform_2d=self.options.transform_2d,
+            precip_transformation_domain=self.options.precip_trans_domain,
             log_transform_precip=True,
             debug=True
         )
@@ -338,7 +487,7 @@ class ImpactDeepLearning(Impact):
         if self.factor_neg_reduction != 1:
             self.dg_train.reduce_negatives(self.factor_neg_reduction)
 
-        if self.use_precip:
+        if self.options.use_precip:
             self.dg_train.prepare_precip_data()
 
     def _create_data_generator_valid(self):
@@ -348,17 +497,17 @@ class ImpactDeepLearning(Impact):
             x_precip=self.precipitation,
             x_dem=self.dem,
             y=self.y_valid,
-            batch_size=self.batch_size,
+            batch_size=self.options.batch_size,
             shuffle=True,
-            precip_window_size=self.precip_window_size,
-            precip_resolution=self.precip_resolution,
-            precip_time_step=self.precip_time_step,
-            precip_days_before=self.precip_days_before,
-            precip_days_after=self.precip_days_after,
+            precip_window_size=self.options.precip_window_size,
+            precip_resolution=self.options.precip_resolution,
+            precip_time_step=self.options.precip_time_step,
+            precip_days_before=self.options.precip_days_before,
+            precip_days_after=self.options.precip_days_after,
             tmp_dir=self.tmp_dir,
-            transform_static=self.transform_static,
-            transform_2d=self.transform_2d,
-            precip_transformation_domain=self.precip_trans_domain,
+            transform_static=self.options.transform_static,
+            transform_2d=self.options.transform_2d,
+            precip_transformation_domain=self.options.precip_trans_domain,
             log_transform_precip=True,
             mean_static=self.dg_train.mean_static,
             std_static=self.dg_train.std_static,
@@ -373,7 +522,7 @@ class ImpactDeepLearning(Impact):
         if self.factor_neg_reduction != 1:
             self.dg_val.reduce_negatives(self.factor_neg_reduction)
 
-        if self.use_precip:
+        if self.options.use_precip:
             self.dg_val.prepare_precip_data()
 
     def _create_data_generator_test(self):
@@ -383,17 +532,17 @@ class ImpactDeepLearning(Impact):
             x_precip=self.precipitation,
             x_dem=self.dem,
             y=self.y_test,
-            batch_size=self.batch_size,
+            batch_size=self.options.batch_size,
             shuffle=True,
-            precip_window_size=self.precip_window_size,
-            precip_resolution=self.precip_resolution,
-            precip_time_step=self.precip_time_step,
-            precip_days_before=self.precip_days_before,
-            precip_days_after=self.precip_days_after,
+            precip_window_size=self.options.precip_window_size,
+            precip_resolution=self.options.precip_resolution,
+            precip_time_step=self.options.precip_time_step,
+            precip_days_before=self.options.precip_days_before,
+            precip_days_after=self.options.precip_days_after,
             tmp_dir=self.tmp_dir,
-            transform_static=self.transform_static,
-            transform_2d=self.transform_2d,
-            precip_transformation_domain=self.precip_trans_domain,
+            transform_static=self.options.transform_static,
+            transform_2d=self.options.transform_2d,
+            precip_transformation_domain=self.options.precip_trans_domain,
             log_transform_precip=True,
             mean_static=self.dg_train.mean_static,
             std_static=self.dg_train.std_static,
@@ -405,7 +554,7 @@ class ImpactDeepLearning(Impact):
             debug=True
         )
 
-        if self.use_precip:
+        if self.options.use_precip:
             self.dg_test.prepare_precip_data()
 
     def _define_model(self, input_2d_size, input_1d_size):
@@ -442,7 +591,7 @@ class ImpactDeepLearning(Impact):
         The optimizer.
         """
         if lr_method == 'cosine_decay':
-            decay_steps = self.epochs * (n_samples / self.batch_size)
+            decay_steps = self.options.epochs * (n_samples / self.options.batch_size)
             lr_decayed_fn = keras.optimizers.schedules.CosineDecay(
                 init_lr, decay_steps)
             optimizer = keras.optimizers.Adam(lr_decayed_fn)
@@ -458,9 +607,12 @@ class ImpactDeepLearning(Impact):
         Create the temporary file name for the model.
         """
         tag_model = (
-                pickle.dumps(self.df.shape) + pickle.dumps(self.df.columns) +
-                pickle.dumps(self.df.iloc[0]) + pickle.dumps(self.features) +
-                pickle.dumps(self.class_weight) + pickle.dumps(self.random_state) +
+                pickle.dumps(self.df.shape) +
+                pickle.dumps(self.df.columns) +
+                pickle.dumps(self.df.iloc[0]) +
+                pickle.dumps(self.features) +
+                pickle.dumps(self.class_weight) +
+                pickle.dumps(self.options.random_state) +
                 pickle.dumps(self.target_type))
         model_hashed_name = f'dl_model_{hashlib.md5(tag_model).hexdigest()}.pickle'
         tmp_filename = self.tmp_dir / model_hashed_name
@@ -476,7 +628,7 @@ class ImpactDeepLearning(Impact):
         precipitation: xarray.Dataset
             The precipitation data.
         """
-        if not self.use_precip:
+        if not self.options.use_precip:
             print("Precipitation is not used and is therefore not loaded.")
             return
 
@@ -494,18 +646,18 @@ class ImpactDeepLearning(Impact):
         else:
             # Adapt the spatial resolution
             with dask.config.set(**{'array.slicing.split_large_chunks': False}):
-                if self.precip_resolution != 1:
+                if self.options.precip_resolution != 1:
                     precipitation = precipitation.coarsen(
-                        x=self.precip_resolution,
-                        y=self.precip_resolution,
+                        x=self.options.precip_resolution,
+                        y=self.options.precip_resolution,
                         boundary='trim'
                     ).mean()
 
             # Aggregate the precipitation at the desired time step
             with dask.config.set(**{'array.slicing.split_large_chunks': False}):
-                if self.precip_time_step != 1:
+                if self.options.precip_time_step != 1:
                     precipitation = precipitation.resample(
-                        time=f'{self.precip_time_step}h',
+                        time=f'{self.options.precip_time_step}h',
                     ).sum(dim='time')
 
             # Save the precipitation
@@ -529,16 +681,18 @@ class ImpactDeepLearning(Impact):
         dem: xarray.Dataset
             The DEM data.
         """
-        if not self.use_precip:
+        if not self.options.use_precip:
             print("DEM is not used and is therefore not loaded.")
             return
 
         assert dem.ndim == 2, "DEM must be 2D"
 
         # Adapt the spatial resolution
-        if self.precip_resolution != 1:
+        if self.options.precip_resolution != 1:
             dem = dem.coarsen(
-                x=self.precip_resolution, y=self.precip_resolution, boundary='trim'
+                x=self.options.precip_resolution,
+                y=self.options.precip_resolution,
+                boundary='trim'
             ).mean()
 
         if self.precipitation is not None:
@@ -548,8 +702,8 @@ class ImpactDeepLearning(Impact):
 
     def _compute_hash_precip_full_data(self, precipitation):
         tag_data = (
-                pickle.dumps(self.precip_resolution) +
-                pickle.dumps(self.precip_time_step) +
+                pickle.dumps(self.options.precip_resolution) +
+                pickle.dumps(self.options.precip_time_step) +
                 pickle.dumps(precipitation['x']) +
                 pickle.dumps(precipitation['y']) +
                 pickle.dumps(precipitation['time'][0]) +
