@@ -537,11 +537,13 @@ class DataGenerator(keras.utils.Sequence):
             y=slice(y_start, y_end)
         ).to_numpy()
 
-        # If too large, remove the last line or column
+        # If too large, remove the last line(s) or column(s)
         if x_precip_ev.shape[1] > pixels_nb:
-            x_precip_ev = x_precip_ev[:, :-1, :]
+            diff = x_precip_ev.shape[1] - pixels_nb
+            x_precip_ev = x_precip_ev[:, :-diff, :]
         if x_precip_ev.shape[2] > pixels_nb:
-            x_precip_ev = x_precip_ev[:, :, :-1]
+            diff = x_precip_ev.shape[2] - pixels_nb
+            x_precip_ev = x_precip_ev[:, :, :-diff]
 
         # Move the time axis to the last position
         x_precip_ev = np.moveaxis(x_precip_ev, 0, -1)
@@ -557,6 +559,14 @@ class DataGenerator(keras.utils.Sequence):
 
         # Add a new axis for the channels
         x_dem_ev = np.expand_dims(x_dem_ev, axis=-1)
+
+        # If too large, remove the last line(s) or column(s)
+        if x_dem_ev.shape[0] > pixels_nb:
+            diff = x_dem_ev.shape[0] - pixels_nb
+            x_dem_ev = x_dem_ev[:-diff, :, :]
+        if x_dem_ev.shape[1] > pixels_nb:
+            diff = x_dem_ev.shape[1] - pixels_nb
+            x_dem_ev = x_dem_ev[:, :-diff, :]
 
         # Concatenate
         x_2d_ev = np.concatenate([x_dem_ev, x_precip_ev], axis=-1)
