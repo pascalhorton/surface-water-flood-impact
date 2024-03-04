@@ -100,6 +100,10 @@ class DeepImpact(models.Model):
             else:
                 nb_units = self.options.nb_dense_units
             x = layers.Dense(nb_units, activation=self.options.inner_activation)(x)
+
+            if self.options.with_batchnorm:
+                x = layers.BatchNormalization()(x)
+
             if self.options.dropout_rate > 0:
                 x = layers.Dropout(rate=self.options.dropout_rate)(x)
 
