@@ -544,20 +544,23 @@ class DataGenerator(keras.utils.Sequence):
         # Move the time axis to the last position
         x_precip_ev = np.moveaxis(x_precip_ev, 0, -1)
 
-        # Select the corresponding DEM data in the window
-        x_dem_ev = self.X_dem.sel(
-            x=slice(x_start, x_end),
-            y=slice(y_start, y_end)
-        ).to_numpy()
+        if self.X_dem is not None:
+            # Select the corresponding DEM data in the window
+            x_dem_ev = self.X_dem.sel(
+                x=slice(x_start, x_end),
+                y=slice(y_start, y_end)
+            ).to_numpy()
 
-        # Replace the NaNs by zeros
-        x_dem_ev = np.nan_to_num(x_dem_ev)
+            # Replace the NaNs by zeros
+            x_dem_ev = np.nan_to_num(x_dem_ev)
 
-        # Add a new axis for the channels
-        x_dem_ev = np.expand_dims(x_dem_ev, axis=-1)
+            # Add a new axis for the channels
+            x_dem_ev = np.expand_dims(x_dem_ev, axis=-1)
 
-        # Concatenate
-        x_2d_ev = np.concatenate([x_dem_ev, x_precip_ev], axis=-1)
+            # Concatenate
+            x_2d_ev = np.concatenate([x_dem_ev, x_precip_ev], axis=-1)
+        else:
+            x_2d_ev = x_precip_ev
 
         # If too large, remove the last line(s) or column(s)
         if x_2d_ev.shape[0] > pixels_nb:
