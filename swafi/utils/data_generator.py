@@ -147,7 +147,8 @@ class DataGenerator(keras.utils.Sequence):
         if self.X_precip is None:
             return
 
-        self.X_dem.load()
+        if self.X_dem is not None:
+            self.X_dem.load()
 
     def prepare_precip_data(self):
         if self.use_pickle_events_precip_data:
