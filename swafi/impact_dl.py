@@ -269,7 +269,7 @@ class ImpactDeepLearningOptions:
             help='The list of simple feature classes to use (e.g. event terrain)')
         self.parser.add_argument(
             '--simple-features', nargs='+',
-            default=['event', 'terrain', 'swf_map', 'flowacc', 'twi'],
+            default=[],
             help='The list of specific simple features to use (e.g. event:i_max_q).'
                  'If not specified, the default class features will be used.'
                  'If specified, the default class features will be overridden for'
