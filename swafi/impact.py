@@ -77,6 +77,9 @@ class Impact:
         # Extract the features/classes mapping from the provided options (class:feature)
         features_selection = {}
         for feature in features:
+            if ':' not in feature:
+                raise ValueError(f"Invalid feature format: {feature}. "
+                                 f"Use 'class:feature'")
             feature_class = feature.split(':')[0]
             feature_name = feature.split(':')[1]
             if feature_class not in self.tabular_features.keys():
