@@ -58,6 +58,38 @@ class Impact:
         # Initialize the data properties
         self._define_potential_features()
 
+    def select_features(self, features):
+        """
+        Select the features to use for the model. The features are selected by
+        providing a list of feature names with the following format:
+        'class:feature'. For example: 'event:i_max_q'.
+        This method replaces the default features with the selected ones for the
+        selected classes. Classes that are not in the provided list will not be altered.
+
+        Parameters
+        ----------
+        features: list
+            The list of features to use. The features are selected by providing a list
+            of feature names with the following format: 'class:feature'. For example:
+            'event:i_max_q'.
+        """
+
+        # Extract the features/classes mapping from the provided options (class:feature)
+        features_selection = {}
+        for feature in features:
+            feature_class = feature.split(':')[0]
+            feature_name = feature.split(':')[1]
+            if feature_class not in self.tabular_features.keys():
+                raise ValueError(f"Unknown feature class: {feature_class}")
+            if feature_class in features_selection:
+                features_selection[feature_class].append(feature_name)
+            else:
+                features_selection[feature_class] = [feature_name]
+
+        # Replace the features with the selected ones for the selected classes
+        for feature_class in features_selection:
+            self.tabular_features[feature_class] = features_selection[feature_class]
+
     def load_features(self, feature_types):
         """
         Load the features from the given feature types.

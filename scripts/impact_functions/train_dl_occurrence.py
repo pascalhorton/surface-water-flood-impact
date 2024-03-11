@@ -49,7 +49,7 @@ def main():
                       + pd.Timedelta(days=options.precip_days_after + 1))
         events.remove_period(remove_start, remove_end)
 
-    # Configuration-specific changes
+    # Interactive mode (show plots)
     interactive_mode = False
     if options.run_id == 0:  # Manual configuration
         interactive_mode = True
@@ -77,7 +77,8 @@ def main():
 
     # Load static features
     if options.use_simple_features:
-        dl.load_features(options.simple_features)
+        dl.select_features(options.simple_features)
+        dl.load_features(options.simple_feature_classes)
 
     dl.split_sample()
     dl.reduce_negatives_for_training(options.factor_neg_reduction)

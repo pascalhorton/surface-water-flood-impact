@@ -107,6 +107,7 @@ class ImpactDeepLearningOptions:
         self.use_precip = True
         self.use_dem = True
         self.use_simple_features = True
+        self.simple_feature_classes = []
         self.simple_features = []
         self.precip_window_size = 0
         self.precip_resolution = 0
@@ -146,6 +147,7 @@ class ImpactDeepLearningOptions:
         self.use_precip = not args.do_not_use_precip
         self.use_dem = not args.do_not_use_dem
         self.use_simple_features = not args.do_not_use_simple_features
+        self.simple_feature_classes = args.simple_feature_classes
         self.simple_features = args.simple_features
         self.precip_window_size = args.precip_window_size
         self.precip_resolution = args.precip_resolution
@@ -181,6 +183,7 @@ class ImpactDeepLearningOptions:
         print("- use_dem: ", self.use_dem)
         print("- use_simple_features: ", self.use_simple_features)
         if self.use_simple_features:
+            print("- simple_feature_classes: ", self.simple_feature_classes)
             print("- simple_features: ", self.simple_features)
         if self.use_precip:
             print("- precip_window_size: ", self.precip_window_size)
@@ -261,9 +264,16 @@ class ImpactDeepLearningOptions:
             '--do-not-use-simple-features', action='store_true',
             help='Do not use simple features (event properties and static attributes)')
         self.parser.add_argument(
+            '--simple-feature-classes', nargs='+',
+            default=['event', 'terrain', 'swf_map', 'flowacc', 'twi'],
+            help='The list of simple feature classes to use (e.g. event terrain)')
+        self.parser.add_argument(
             '--simple-features', nargs='+',
             default=['event', 'terrain', 'swf_map', 'flowacc', 'twi'],
-            help='The list of simple features to use')
+            help='The list of specific simple features to use (e.g. event:i_max_q).'
+                 'If not specified, the default class features will be used.'
+                 'If specified, the default class features will be overridden for'
+                 'this class only (e.g. event).')
         self.parser.add_argument(
             '--precip-window-size', type=int, default=8,
             help='The precipitation window size [km]')
