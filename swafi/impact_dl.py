@@ -9,6 +9,7 @@ from .utils.verification import compute_confusion_matrix, print_classic_scores, 
     assess_roc_auc, compute_score_binary
 
 import argparse
+import copy
 import hashlib
 import pickle
 import keras
@@ -453,7 +454,18 @@ class ImpactDeepLearning(Impact):
         # Options that will be set later
         self.factor_neg_reduction = 1
 
-    def fit(self, tag=None, do_plot=True, dir_plots=None, show_plots=False):
+    def copy(self):
+        """
+        Make a copy of the object.
+        Returns
+        -------
+        ImpactDeepLearning
+            The copy of the object.
+        """
+        return copy.deepcopy(self)
+
+    def fit(self, tag=None, do_plot=True, dir_plots=None, show_plots=False,
+            silent=False):
         """
         Fit the model.
 
@@ -467,6 +479,8 @@ class ImpactDeepLearning(Impact):
             The directory where to save the plots.
         show_plots: bool
             Whether to show the plots or not.
+        silent: bool
+            Hide model summary and training progress.
         """
         self._create_data_generator_train()
         self._create_data_generator_valid()
@@ -508,10 +522,12 @@ class ImpactDeepLearning(Impact):
         )
 
         # Print the model summary
-        self.model.model.summary()
+        if not silent:
+            self.model.model.summary()
 
         # Fit the model
         verbose = 1 if show_plots else 2
+        verbose = 0 if silent else verbose
         hist = self.model.fit(
             self.dg_train,
             epochs=self.options.epochs,
@@ -540,8 +556,8 @@ class ImpactDeepLearning(Impact):
         if not has_optuna:
             raise ValueError("Optuna is not installed")
 
-        study = optuna.create_study(direction='maximize', n_jobs=n_jobs)
-        study.optimize(self._objective, n_trials=n_trials)
+        study = optuna.create_study(direction='maximize')
+        study.optimize(self._objective, n_trials=n_trials, n_jobs=n_jobs)
 
         print("Number of finished trials: ", len(study.trials))
         print("Best trial:")
@@ -557,36 +573,6 @@ class ImpactDeepLearning(Impact):
         self.compute_corrected_class_weights(
             weight_denominator=self.options.weight_denominator)
         self.fit(dir_plots=dir_plots, tag='best_optuna_' + str(self.options.run_id))
-
-    def _objective(self, trial):
-        """
-        The objective function for Optuna.
-
-        Parameters
-        ----------
-        trial: optuna.Trial
-            The trial.
-
-        Returns
-        -------
-        float
-            The score.
-        """
-        # Generate the options for Optuna
-        self.options.generate_for_optuna(trial)
-
-        # Recompute the class weights
-        self.compute_balanced_class_weights()
-        self.compute_corrected_class_weights(
-            weight_denominator=self.options.weight_denominator)
-
-        # Fit the model
-        self.fit(do_plot=False)
-
-        # Assess the model
-        score = self._compute_f1_score(self.dg_val)
-
-        return score
 
     def reduce_negatives_for_training(self, factor):
         """
@@ -647,7 +633,7 @@ class ImpactDeepLearning(Impact):
             print(f"RMSE: {rmse}")
         print(f"----------------------------------------")
 
-    def _compute_f1_score(self, dg):
+    def compute_f1_score(self, dg):
         """
         Compute the F1 score on the given set.
 
