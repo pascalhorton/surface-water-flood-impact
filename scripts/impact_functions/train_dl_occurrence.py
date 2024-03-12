@@ -85,7 +85,8 @@ def main():
     dl.compute_balanced_class_weights()
     dl.compute_corrected_class_weights(weight_denominator=options.weight_denominator)
     if options.optimize_with_optuna:
-        dl.optimize_model_with_optuna()
+        dl.optimize_model_with_optuna(n_jobs=options.optuna_jobs_nb,
+                                      n_trials=options.optuna_trials_nb)
     else:
         dl.fit(dir_plots=config.get('OUTPUT_DIR'),
                show_plots=interactive_mode,

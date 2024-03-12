@@ -106,6 +106,8 @@ class ImpactDeepLearningOptions:
         # General options
         self.run_id = 0
         self.optimize_with_optuna = False
+        self.optuna_jobs_nb = 4
+        self.optuna_trials_nb = 100
         self.target_type = ''
         self.factor_neg_reduction = 10
         self.weight_denominator = 5
@@ -150,6 +152,8 @@ class ImpactDeepLearningOptions:
         self.run_id = args.run_id
         self.target_type = args.target_type
         self.optimize_with_optuna = args.optimize_with_optuna
+        self.optuna_jobs_nb = args.optuna_jobs_nb
+        self.optuna_trials_nb = args.optuna_trials_nb
         self.factor_neg_reduction = args.factor_neg_reduction
         self.weight_denominator = args.weight_denominator
         self.random_state = args.random_state
@@ -312,6 +316,12 @@ class ImpactDeepLearningOptions:
         self.parser.add_argument(
             '--optimize-with-optuna', action='store_true',
             help='Optimize the hyperparameters with Optuna')
+        self.parser.add_argument(
+            '--optuna-jobs-nb', type=int, default=4,
+            help='The number of jobs to run in parallel for Optuna')
+        self.parser.add_argument(
+            '--optuna-trials-nb', type=int, default=100,
+            help='The number of trials for Optuna')
         self.parser.add_argument(
             '--target-type', type=str, default='occurrence',
             help='The target type. Options are: occurrence, damage_ratio')
@@ -511,15 +521,20 @@ class ImpactDeepLearning(Impact):
         # Plot the training history
         self._plot_training_history(hist, dir_plots, show_plots, tag)
 
-    def optimize_model_with_optuna(self):
+    def optimize_model_with_optuna(self, n_trials=100, n_jobs=4):
         """
         Optimize the model with Optuna.
+
+        Parameters
+        ----------
+        n_trials: int
+            The number of trials.
         """
         if not has_optuna:
             raise ValueError("Optuna is not installed")
 
-        study = optuna.create_study(direction='maximize')
-        study.optimize(self._objective, n_trials=100)
+        study = optuna.create_study(direction='maximize', n_jobs=n_jobs)
+        study.optimize(self._objective, n_trials=n_trials)
 
         print("Number of finished trials: ", len(study.trials))
         print("Best trial:")
