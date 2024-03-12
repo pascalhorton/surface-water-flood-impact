@@ -84,9 +84,13 @@ def main():
     dl.reduce_negatives_for_training(options.factor_neg_reduction)
     dl.compute_balanced_class_weights()
     dl.compute_corrected_class_weights(weight_denominator=options.weight_denominator)
-    dl.fit(dir_plots=config.get('OUTPUT_DIR'), show_plots=interactive_mode,
-           tag=options.run_id)
-    dl.assess_model_on_all_periods()
+    if options.optimize_with_optuna:
+        dl.optimize_model_with_optuna()
+    else:
+        dl.fit(dir_plots=config.get('OUTPUT_DIR'),
+               show_plots=interactive_mode,
+               tag=options.run_id)
+        dl.assess_model_on_all_periods()
 
 
 if __name__ == '__main__':

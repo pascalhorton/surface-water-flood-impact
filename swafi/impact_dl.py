@@ -19,6 +19,13 @@ import tensorflow as tf
 import datetime
 import dask
 
+has_optuna = False
+try:
+    import optuna
+    has_optuna = True
+except ImportError:
+    pass
+
 epsilon = 1e-7  # a small constant to avoid division by zero
 
 
@@ -98,6 +105,7 @@ class ImpactDeepLearningOptions:
 
         # General options
         self.run_id = 0
+        self.optimize_with_optuna = False
         self.target_type = ''
         self.factor_neg_reduction = 10
         self.weight_denominator = 5
@@ -141,6 +149,7 @@ class ImpactDeepLearningOptions:
         args = self.parser.parse_args()
         self.run_id = args.run_id
         self.target_type = args.target_type
+        self.optimize_with_optuna = args.optimize_with_optuna
         self.factor_neg_reduction = args.factor_neg_reduction
         self.weight_denominator = args.weight_denominator
         self.random_state = args.random_state
@@ -170,42 +179,100 @@ class ImpactDeepLearningOptions:
         self.nb_dense_units_decreasing = not args.no_dense_units_decreasing
         self.inner_activation = args.inner_activation
 
+        if self.optimize_with_optuna:
+            print("Optimizing with Optuna; some options will be ignored.")
+
+    def generate_for_optuna(self, trial):
+        """
+        Generate the options for Optuna.
+
+        Parameters
+        ----------
+        trial: optuna.Trial
+            The trial.
+
+        Returns
+        -------
+        ImpactDeepLearningOptions
+            The options.
+        """
+        if not has_optuna:
+            raise ValueError("Optuna is not installed")
+
+        assert self.optimize_with_optuna, "Optimize with Optuna is not set to True"
+
+        self.weight_denominator = trial.suggest_int('weight_denominator', 1, 100)
+        self.precip_window_size = trial.suggest_categorical('precip_window_size', [2, 4, 6, 8, 12])
+        self.precip_resolution = trial.suggest_categorical('precip_resolution', [1, 2])
+        self.precip_time_step = trial.suggest_categorical('precip_time_step', [1, 2, 3, 4, 6, 12])
+        self.precip_days_before = trial.suggest_int('precip_days_before', 1, 10)
+        self.precip_days_after = trial.suggest_int('precip_days_after', 1, 5)
+        self.transform_static = trial.suggest_categorical('transform_static', ['standardize', 'normalize'])
+        self.transform_2d = trial.suggest_categorical('transform_2d', ['standardize', 'normalize'])
+        self.precip_trans_domain = trial.suggest_categorical('precip_trans_domain', ['domain-average', 'per-pixel'])
+        self.batch_size = trial.suggest_categorical('batch_size', [16, 32, 64, 128])
+        self.learning_rate = trial.suggest_float('learning_rate', 1e-5, 1e-1, log=True)
+        self.dropout_rate = trial.suggest_float('dropout_rate', 0.0, 0.5)
+        self.with_spatial_dropout = trial.suggest_categorical('with_spatial_dropout', [True, False])
+        self.with_batchnorm = trial.suggest_categorical('with_batchnorm', [True, False])
+        self.nb_filters = trial.suggest_categorical('nb_filters', [16, 32, 64, 128, 256])
+        self.nb_conv_blocks = trial.suggest_int('nb_conv_blocks', 1, 5)
+        self.nb_dense_layers = trial.suggest_int('nb_dense_layers', 1, 5)
+        self.nb_dense_units = trial.suggest_int('nb_dense_units', 16, 512)
+        self.nb_dense_units_decreasing = trial.suggest_categorical('nb_dense_units_decreasing', [True, False])
+        self.inner_activation = trial.suggest_categorical('inner_activation', ['relu', 'tanh', 'sigmoid'])
+
     def print(self):
         """
         Print the options.
         """
         print(f"Options (run {self.run_id}):")
         print("- target_type: ", self.target_type)
-        print("- factor_neg_reduction: ", self.factor_neg_reduction)
-        print("- weight_denominator: ", self.weight_denominator)
         print("- random_state: ", self.random_state)
+        print("- factor_neg_reduction: ", self.factor_neg_reduction)
         print("- use_precip: ", self.use_precip)
         print("- use_dem: ", self.use_dem)
         print("- use_simple_features: ", self.use_simple_features)
+
         if self.use_simple_features:
             print("- simple_feature_classes: ", self.simple_feature_classes)
             print("- simple_features: ", self.simple_features)
+
+        if self.optimize_with_optuna:
+            print("- optimize_with_optuna: ", self.optimize_with_optuna)
+            print("- epochs: ", self.epochs)
+            return  # Do not print the other options
+
+        print("- weight_denominator: ", self.weight_denominator)
+
         if self.use_precip:
             print("- precip_window_size: ", self.precip_window_size)
             print("- precip_resolution: ", self.precip_resolution)
             print("- precip_time_step: ", self.precip_time_step)
             print("- precip_days_before: ", self.precip_days_before)
             print("- precip_days_after: ", self.precip_days_after)
+
         if self.use_simple_features:
             print("- transform_static: ", self.transform_static)
+
         if self.use_precip:
             print("- transform_2d: ", self.transform_2d)
             print("- precip_trans_domain: ", self.precip_trans_domain)
+
         print("- batch_size: ", self.batch_size)
         print("- epochs: ", self.epochs)
         print("- learning_rate: ", self.learning_rate)
         print("- dropout_rate: ", self.dropout_rate)
+
         if self.use_precip:
             print("- with_spatial_dropout: ", self.with_spatial_dropout)
+
         print("- with_batchnorm: ", self.with_batchnorm)
+
         if self.use_precip:
             print("- nb_filters: ", self.nb_filters)
             print("- nb_conv_blocks: ", self.nb_conv_blocks)
+
         print("- nb_dense_layers: ", self.nb_dense_layers)
         print("- nb_dense_units: ", self.nb_dense_units)
         print("- nb_dense_units_decreasing: ", self.nb_dense_units_decreasing)
@@ -242,6 +309,9 @@ class ImpactDeepLearningOptions:
         self.parser.add_argument(
             '--run-id', type=int, default=0,
             help='The run ID')
+        self.parser.add_argument(
+            '--optimize-with-optuna', action='store_true',
+            help='Optimize the hyperparameters with Optuna')
         self.parser.add_argument(
             '--target-type', type=str, default='occurrence',
             help='The target type. Options are: occurrence, damage_ratio')
@@ -441,6 +511,54 @@ class ImpactDeepLearning(Impact):
         # Plot the training history
         self._plot_training_history(hist, dir_plots, show_plots, tag)
 
+    def optimize_model_with_optuna(self):
+        """
+        Optimize the model with Optuna.
+        """
+        if not has_optuna:
+            raise ValueError("Optuna is not installed")
+
+        study = optuna.create_study(direction='maximize')
+        study.optimize(self._objective, n_trials=100)
+
+        print("Number of finished trials: ", len(study.trials))
+        print("Best trial:")
+        trial = study.best_trial
+        print("  Value: ", trial.value)
+        print("  Params: ")
+        for key, value in trial.params.items():
+            print(f"    {key}: {value}")
+
+    def _objective(self, trial):
+        """
+        The objective function for Optuna.
+
+        Parameters
+        ----------
+        trial: optuna.Trial
+            The trial.
+
+        Returns
+        -------
+        float
+            The score.
+        """
+        # Generate the options for Optuna
+        self.options.generate_for_optuna(trial)
+
+        # Recompute the class weights
+        self.compute_balanced_class_weights()
+        self.compute_corrected_class_weights(
+            weight_denominator=self.options.weight_denominator)
+
+        # Fit the model
+        self.fit()
+
+        # Assess the model
+        score = self._compute_f1_score(self.dg_val)
+
+        return score
+
     def reduce_negatives_for_training(self, factor):
         """
         Reduce the number of negatives on the training set.
@@ -499,6 +617,44 @@ class ImpactDeepLearning(Impact):
             rmse = np.sqrt(np.mean((y_obs - y_pred) ** 2))
             print(f"RMSE: {rmse}")
         print(f"----------------------------------------")
+
+    def _compute_f1_score(self, dg):
+        """
+        Compute the F1 score on the given set.
+
+        Parameters
+        ----------
+        dg: DataGenerator
+            The data generator.
+
+        Returns
+        -------
+        float
+            The F1 score.
+        """
+        n_batches = dg.get_number_of_batches_for_full_dataset()
+
+        # Predict
+        all_pred = []
+        all_obs = []
+        for i in range(n_batches):
+            x, y = dg.get_ordered_batch_from_full_dataset(i)
+            all_obs.append(y)
+            y_pred_batch = self.model.predict(x, verbose=0)
+
+            # Get rid of the single dimension
+            y_pred_batch = y_pred_batch.squeeze()
+            all_pred.append(y_pred_batch)
+
+        # Concatenate predictions and obs from all batches
+        y_pred = np.concatenate(all_pred, axis=0)
+        y_obs = np.concatenate(all_obs, axis=0)
+
+        y_pred_class = (y_pred > 0.5).astype(int)
+        tp, tn, fp, fn = compute_confusion_matrix(y_obs, y_pred_class)
+        f1 = 2 * tp / (2 * tp + fp + fn + epsilon)
+
+        return f1
 
     def _get_loss_function(self):
         """

@@ -263,5 +263,83 @@ it requires the following data:
 - The static attributes computed in step 3 (optional).
 - The original precipitation data in netCDF format.
 
-### 5. Applying the impact functions to other precipitation datasets
+## Training the deep learning model
+
+The deep learning model is implemented in the `DeepImpact` class in the `model_dl.py` file.
+The model is built using the Keras and Tensorflow libraries.
+The model can be trained using the `train_dl_occurrence.py` script.
+The different input data (precipitation, DEM, static features) can be turned on or off.
+All the hyperparameters of the model can be set as options of the script.
+The model can be trained using the following command:
+
+```bash
+train_dl_occurrence.py [-h] [--run-id RUN_ID] [--optimize-with-optuna]
+                       [--target-type TARGET_TYPE]
+                       [--factor-neg-reduction FACTOR_NEG_REDUCTION]
+                       [--weight-denominator WEIGHT_DENOMINATOR]
+                       [--random-state RANDOM_STATE]
+                       [--do-not-use-precip] [--do-not-use-dem]
+                       [--do-not-use-simple-features]
+                       [--simple-feature-classes SIMPLE_FEATURE_CLASSES [SIMPLE_FEATURE_CLASSES ...]]
+                       [--simple-features SIMPLE_FEATURES [SIMPLE_FEATURES ...]]
+                       [--precip-window-size PRECIP_WINDOW_SIZE]
+                       [--precip-resolution PRECIP_RESOLUTION]
+                       [--precip-time-step PRECIP_TIME_STEP]
+                       [--precip-days-before PRECIP_DAYS_BEFORE]
+                       [--precip-days-after PRECIP_DAYS_AFTER]
+                       [--transform-static TRANSFORM_STATIC]
+                       [--transform-2d TRANSFORM_2D]
+                       [--precip-trans-domain PRECIP_TRANS_DOMAIN]
+                       [--batch-size BATCH_SIZE] [--epochs EPOCHS]
+                       [--learning-rate LEARNING_RATE]
+                       [--dropout-rate DROPOUT_RATE]
+                       [--no-spatial-dropout] [--no-batchnorm]
+                       [--nb-filters NB_FILTERS]
+                       [--nb-conv-blocks NB_CONV_BLOCKS]
+                       [--nb-dense-layers NB_DENSE_LAYERS]
+                       [--nb-dense-units NB_DENSE_UNITS]
+                       [--no-dense-units-decreasing]
+                       [--inner-activation INNER_ACTIVATION]
+```
+
+Options
+* `-h`, `--help`: show this help message and exit
+* `--run-id RUN_ID`: The run ID
+* `--optimize-with-optuna`: Optimize the hyperparameters with Optuna
+* `--target-type TARGET_TYPE`: The target type. Options are: occurrence, damage_ratio
+* `--factor-neg-reduction FACTOR_NEG_REDUCTION`: The factor to reduce the number of negatives only for training
+* `--weight-denominator WEIGHT_DENOMINATOR`: The weight denominator to reduce the negative class weights
+* `--random-state RANDOM_STATE`: The random state to use for the random number generator
+* `--do-not-use-precip`: Do not use precipitation data
+* `--do-not-use-dem`: Do not use DEM data
+* `--do-not-use-simple-features`: Do not use simple features (event properties and static attributes)
+* `--simple-feature-classes SIMPLE_FEATURE_CLASSES [SIMPLE_FEATURE_CLASSES ...]`: The list of simple feature classes to use (e.g. event terrain)
+* `--simple-features SIMPLE_FEATURES [SIMPLE_FEATURES ...]`: The list of specific simple features to use (e.g. event:i_max_q). If not specified, the default class features will be used. If specified, the default class features will be overridden for this class only (e.g. event).
+* `--precip-window-size PRECIP_WINDOW_SIZE`: The precipitation window size [km]
+* `--precip-resolution PRECIP_RESOLUTION`: The precipitation resolution [km]
+* `--precip-time-step PRECIP_TIME_STEP`: The precipitation time step [h]
+* `--precip-days-before PRECIP_DAYS_BEFORE`: The number of days before the event to use for the precipitation
+* `--precip-days-after PRECIP_DAYS_AFTER`: The number of days after the event to use for the precipitation
+* `--transform-static TRANSFORM_STATIC`: The transformation to apply to the static data
+* `--transform-2d TRANSFORM_2D`: The transformation to apply to the 2D data
+* `--precip-trans-domain PRECIP_TRANS_DOMAIN`: The precipitation transformation domain. Options are: domain-average, per-pixel
+* `--batch-size BATCH_SIZE`: The batch size
+* `--epochs EPOCHS`: The number of epochs
+* `--learning-rate LEARNING_RATE`: The learning rate
+* `--dropout-rate DROPOUT_RATE`: The dropout rate
+* `--no-spatial-dropout`: Do not use spatial dropout
+* `--no-batchnorm`: Do not use batch normalization
+* `--nb-filters NB_FILTERS`: The number of filters
+* `--nb-conv-blocks NB_CONV_BLOCKS`: The number of convolutional blocks
+* `--nb-dense-layers NB_DENSE_LAYERS`: The number of dense layers
+* `--nb-dense-units NB_DENSE_UNITS`: The number of dense units
+* `--no-dense-units-decreasing`: The number of dense units should not decrease
+* `--inner-activation INNER_ACTIVATION`: The inner activation function
+
+When using Optuna, all but the following options are opimized: `run-id`,
+`target-type`, `random-state`, `factor-neg-reduction`,
+`do-not-use-precip`, `do-not-use-dem`, `do-not-use-simple-features`, 
+`simple-feature-classes`, `simple-features`.
+
+## Applying the impact functions to other precipitation datasets
 
