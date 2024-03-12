@@ -338,10 +338,10 @@ class Impact:
             events_with_damages = y[y > 0]
             events_without_damages = y[y == 0]
             print(f"Number of events with damages ({split}): "
-                  f"({len(events_with_damages) / len(y):.4f}%)"
+                  f"({100 * len(events_with_damages) / len(y):.3f}%)"
                   f"({len(events_with_damages)})")
             print(f"Number of events without damages ({split}): "
-                  f"({len(events_without_damages) / len(y):.4f}%)"
+                  f"({100 * len(events_without_damages) / len(y):.3f}%)"
                   f"({len(events_without_damages)})")
 
     def create_benchmark_model(self, model_type='random'):

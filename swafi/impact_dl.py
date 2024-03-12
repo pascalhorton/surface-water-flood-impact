@@ -453,7 +453,7 @@ class ImpactDeepLearning(Impact):
         # Options that will be set later
         self.factor_neg_reduction = 1
 
-    def fit(self, tag=None, dir_plots=None, show_plots=False):
+    def fit(self, tag=None, do_plot=True, dir_plots=None, show_plots=False):
         """
         Fit the model.
 
@@ -461,6 +461,8 @@ class ImpactDeepLearning(Impact):
         ----------
         tag: str
             A tag to add to the file name.
+        do_plot: bool
+            Whether to plot the training history or not.
         dir_plots: str
             The directory where to save the plots.
         show_plots: bool
@@ -519,9 +521,10 @@ class ImpactDeepLearning(Impact):
         )
 
         # Plot the training history
-        self._plot_training_history(hist, dir_plots, show_plots, tag)
+        if do_plot:
+            self._plot_training_history(hist, dir_plots, show_plots, tag)
 
-    def optimize_model_with_optuna(self, n_trials=100, n_jobs=4):
+    def optimize_model_with_optuna(self, n_trials=100, n_jobs=4, dir_plots=None):
         """
         Optimize the model with Optuna.
 
@@ -529,6 +532,10 @@ class ImpactDeepLearning(Impact):
         ----------
         n_trials: int
             The number of trials.
+        n_jobs: int
+            The number of jobs to run in parallel.
+        dir_plots: str
+            The directory where to save the plots.
         """
         if not has_optuna:
             raise ValueError("Optuna is not installed")
@@ -543,6 +550,13 @@ class ImpactDeepLearning(Impact):
         print("  Params: ")
         for key, value in trial.params.items():
             print(f"    {key}: {value}")
+
+        # Fit the model with the best parameters
+        self.options.generate_for_optuna(trial)
+        self.compute_balanced_class_weights()
+        self.compute_corrected_class_weights(
+            weight_denominator=self.options.weight_denominator)
+        self.fit(dir_plots=dir_plots, tag='best_optuna_' + str(self.options.run_id))
 
     def _objective(self, trial):
         """
@@ -567,7 +581,7 @@ class ImpactDeepLearning(Impact):
             weight_denominator=self.options.weight_denominator)
 
         # Fit the model
-        self.fit()
+        self.fit(do_plot=False)
 
         # Assess the model
         score = self._compute_f1_score(self.dg_val)
