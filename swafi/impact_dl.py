@@ -27,6 +27,7 @@ try:
 except ImportError:
     pass
 
+DEBUG = False
 epsilon = 1e-7  # a small constant to avoid division by zero
 
 
@@ -795,7 +796,7 @@ class ImpactDeepLearning(Impact):
             transform_2d=self.options.transform_2d,
             precip_transformation_domain=self.options.precip_trans_domain,
             log_transform_precip=True,
-            debug=True
+            debug=DEBUG
         )
 
         if self.factor_neg_reduction != 1:
@@ -830,7 +831,7 @@ class ImpactDeepLearning(Impact):
             min_static=self.dg_train.min_static,
             max_static=self.dg_train.max_static,
             max_precip=self.dg_train.max_precip,
-            debug=True
+            debug=DEBUG
         )
 
         if self.factor_neg_reduction != 1:
@@ -865,7 +866,7 @@ class ImpactDeepLearning(Impact):
             min_static=self.dg_train.min_static,
             max_static=self.dg_train.max_static,
             max_precip=self.dg_train.max_precip,
-            debug=True
+            debug=DEBUG
         )
 
         if self.options.use_precip:
