@@ -60,16 +60,14 @@ def main():
     if options.run_id == 0:  # Manual configuration
         interactive_mode = True
 
-    # Create the impact function
-    dl = ImpactDeepLearning(events, options=options)
-
+    dem = None
+    precip = None
     if options.use_precip:
         if options.use_dem:
             # Load DEM
             with warnings.catch_warnings():
                 warnings.filterwarnings("ignore", category=UserWarning)  # pyproj
                 dem = rxr.open_rasterio(config.get('DEM_PATH'), masked=True).squeeze()
-                dl.set_dem(dem)
 
         # Load CombiPrecip files
         data_path = config.get('DIR_PRECIP')
@@ -79,40 +77,49 @@ def main():
         precip = precip.rename({'REFERENCE_TS': 'time'})
         if options.use_dem:
             precip = precip.sel(x=dem.x, y=dem.y)  # Select the same domain as the DEM
-        dl.set_precipitation(precip)
-
-    # Load static features
-    if options.use_simple_features:
-        dl.select_features(options.simple_features)
-        dl.load_features(options.simple_feature_classes)
-
-    dl.split_sample()
-    dl.reduce_negatives_for_training(options.factor_neg_reduction)
 
     if not options.optimize_with_optuna:
-        dl.compute_balanced_class_weights()
-        dl.compute_corrected_class_weights(
-            weight_denominator=options.weight_denominator)
+        dl = _setup_model(options, events, precip, dem)
         dl.fit(dir_plots=config.get('OUTPUT_DIR'),
                show_plots=interactive_mode,
                tag=options.run_id)
         dl.assess_model_on_all_periods()
 
     else:
-        dl = optimize_model_with_optuna(dl, options, dir_plots=config.get('OUTPUT_DIR'))
+        dl = optimize_model_with_optuna(options, events, precip, dem,
+                                        dir_plots=config.get('OUTPUT_DIR'))
         dl.assess_model_on_all_periods()
 
 
-def optimize_model_with_optuna(dl, options, dir_plots=None):
+def _setup_model(options, events, precip, dem):
+    dl = ImpactDeepLearning(events, options=options)
+    dl.set_dem(dem)
+    dl.set_precipitation(precip)
+    if dl.options.use_simple_features:
+        dl.select_features(dl.options.simple_features)
+        dl.load_features(dl.options.simple_feature_classes)
+    dl.split_sample()
+    dl.reduce_negatives_for_training(dl.options.factor_neg_reduction)
+    dl.compute_balanced_class_weights()
+    dl.compute_corrected_class_weights(
+        weight_denominator=dl.options.weight_denominator)
+    return dl
+
+
+def optimize_model_with_optuna(options, events, precip=None, dem=None, dir_plots=None):
     """
     Optimize the model with Optuna.
 
     Parameters
     ----------
-    dl: ImpactDeepLearning
-        The impact function.
     options: ImpactDeepLearningOptions
         The options.
+    events: pd.DataFrame
+        The events.
+    precip: xr.Dataset|None
+        The precipitation data.
+    dem: xr.Dataset|None
+        The DEM data.
     dir_plots: str
         The directory where to save the plots.
     """
@@ -133,22 +140,15 @@ def optimize_model_with_optuna(dl, options, dir_plots=None):
         float
             The score.
         """
-        # Make a copy of the model
-        dl_t = dl.copy()
-
-        # Generate the options for Optuna
-        dl_t.options.generate_for_optuna(trial)
-
-        # Recompute the class weights
-        dl_t.compute_balanced_class_weights()
-        dl_t.compute_corrected_class_weights(
-            weight_denominator=dl_t.options.weight_denominator)
+        options_c = options.copy()
+        options_c.generate_for_optuna(trial)
+        dl_trial = _setup_model(options_c, events, precip, dem)
 
         # Fit the model
-        dl_t.fit(do_plot=False, silent=True)
+        dl_trial.fit(do_plot=False, silent=True)
 
         # Assess the model
-        score = dl_t.compute_f1_score(dl_t.dg_val)
+        score = dl_trial.compute_f1_score(dl_trial.dg_val)
 
         return score
 
@@ -158,17 +158,16 @@ def optimize_model_with_optuna(dl, options, dir_plots=None):
 
     print("Number of finished trials: ", len(study.trials))
     print("Best trial:")
-    trial = study.best_trial
-    print("  Value: ", trial.value)
+    best_trial = study.best_trial
+    print("  Value: ", best_trial.value)
     print("  Params: ")
-    for key, value in trial.params.items():
+    for key, value in best_trial.params.items():
         print(f"    {key}: {value}")
 
     # Fit the model with the best parameters
-    dl.options.generate_for_optuna(trial)
-    dl.compute_balanced_class_weights()
-    dl.compute_corrected_class_weights(
-        weight_denominator=dl.options.weight_denominator)
+    options_best = options.copy()
+    options_best.generate_for_optuna(best_trial)
+    dl = _setup_model(options_best, events, precip, dem)
     dl.fit(dir_plots=dir_plots, tag='best_optuna_' + str(dl.options.run_id))
 
     return dl

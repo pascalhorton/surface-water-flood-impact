@@ -145,6 +145,16 @@ class ImpactDeepLearningOptions:
         self.nb_dense_units_decreasing = True
         self.inner_activation = ''
 
+    def copy(self):
+        """
+        Make a copy of the object.
+        Returns
+        -------
+        ImpactDeepLearningOptions
+            The copy of the object.
+        """
+        return copy.deepcopy(self)
+
     def parse_args(self):
         """
         Parse the arguments.
@@ -296,7 +306,8 @@ class ImpactDeepLearningOptions:
         assert self.precip_window_size % self.precip_resolution == 0, \
             "precip_window_size must be divisible by precip_resolution"
         pixels_per_side = self.precip_window_size // self.precip_resolution
-        assert pixels_per_side % 2 == 0, "pixels per side must be even"
+        if pixels_per_side != 1:
+            assert pixels_per_side % 2 == 0, "pixels per side must be even"
         assert self.precip_days_before >= 0, "precip_days_before must be >= 0"
         assert self.precip_days_after >= 0, "precip_days_after must be >= 0"
 
@@ -925,9 +936,12 @@ class ImpactDeepLearning(Impact):
 
         Parameters
         ----------
-        precipitation: xarray.Dataset
+        precipitation: xarray.Dataset|None
             The precipitation data.
         """
+        if precipitation is None:
+            return
+
         if not self.options.use_precip:
             print("Precipitation is not used and is therefore not loaded.")
             return
@@ -978,9 +992,12 @@ class ImpactDeepLearning(Impact):
 
         Parameters
         ----------
-        dem: xarray.Dataset
+        dem: xarray.Dataset|None
             The DEM data.
         """
+        if dem is None:
+            return
+
         if not self.options.use_precip:
             print("DEM is not used and is therefore not loaded.")
             return
