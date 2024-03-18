@@ -134,10 +134,16 @@ class DataGenerator(keras.utils.Sequence):
             self._restrict_temporal_selection()
 
         self._compute_predictor_statistics()
+
         if transform_static == 'standardize':
-            self._standardize_inputs()
+            self._standardize_static_inputs()
         elif transform_static == 'normalize':
-            self._normalize_inputs()
+            self._normalize_static_inputs()
+
+        if transform_2d == 'standardize':
+            self._standardize_2d_inputs()
+        elif transform_2d == 'normalize':
+            self._normalize_2d_inputs()
 
         self.n_samples = self.y.shape[0]
         self.idxs = np.arange(self.n_samples)
@@ -265,19 +271,23 @@ class DataGenerator(keras.utils.Sequence):
 
         return batch
 
-    def _standardize_inputs(self):
+    def _standardize_static_inputs(self):
         if self.X_static is not None:
             self.X_static = (self.X_static - self.mean_static) / self.std_static
+
+    def _standardize_2d_inputs(self):
         if self.X_precip is not None:
             self.X_precip['precip'] = ((self.X_precip['precip'] - self.mean_precip) /
                                        self.std_precip)
         if self.X_dem is not None:
             self.X_dem = (self.X_dem - self.mean_dem) / self.std_dem
 
-    def _normalize_inputs(self):
+    def _normalize_static_inputs(self):
         if self.X_static is not None:
             self.X_static = ((self.X_static - self.min_static) /
                              (self.max_static - self.min_static))
+
+    def _normalize_2d_inputs(self):
         if self.X_precip is not None:
             self.X_precip['precip'] = self.X_precip['precip'] / self.max_precip
         if self.X_dem is not None:
