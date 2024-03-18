@@ -75,6 +75,8 @@ class ImpactDeepLearningOptions:
     precip_trans_domain: str
         The precipitation transformation domain.
         Options are: 'domain-average', 'per-pixel'.
+    log_transform_precip: bool
+        Whether to log-transform the precipitation or not.
     batch_size: int
         The batch size.
     epochs: int
@@ -129,6 +131,7 @@ class ImpactDeepLearningOptions:
         self.transform_static = ''
         self.transform_2d = ''
         self.precip_trans_domain = ''
+        self.log_transform_precip = True
 
         # Training options
         self.batch_size = 0
@@ -182,6 +185,7 @@ class ImpactDeepLearningOptions:
         self.transform_static = args.transform_static
         self.transform_2d = args.transform_2d
         self.precip_trans_domain = args.precip_trans_domain
+        self.log_transform_precip = not args.no_log_transform_precip
         self.batch_size = args.batch_size
         self.epochs = args.epochs
         self.learning_rate = args.learning_rate
@@ -219,13 +223,14 @@ class ImpactDeepLearningOptions:
 
         self.weight_denominator = trial.suggest_int('weight_denominator', 1, 100)
         self.precip_window_size = trial.suggest_categorical('precip_window_size', [2, 4, 6, 8, 12])
-        self.precip_resolution = trial.suggest_categorical('precip_resolution', [1, 2])
+        self.precip_resolution = trial.suggest_categorical('precip_resolution', [1])
         self.precip_time_step = trial.suggest_categorical('precip_time_step', [1, 2, 3, 4, 6, 12])
         self.precip_days_before = trial.suggest_int('precip_days_before', 1, 10)
         self.precip_days_after = trial.suggest_int('precip_days_after', 1, 5)
         self.transform_static = trial.suggest_categorical('transform_static', ['standardize', 'normalize'])
         self.transform_2d = trial.suggest_categorical('transform_2d', ['standardize', 'normalize'])
         self.precip_trans_domain = trial.suggest_categorical('precip_trans_domain', ['domain-average', 'per-pixel'])
+        self.log_transform_precip = trial.suggest_categorical('log_transform_precip', [True, False])
         self.batch_size = trial.suggest_categorical('batch_size', [16, 32, 64, 128])
         self.learning_rate = trial.suggest_float('learning_rate', 1e-5, 1e-1, log=True)
         self.dropout_rate = trial.suggest_float('dropout_rate', 0.0, 0.5)
@@ -274,6 +279,7 @@ class ImpactDeepLearningOptions:
         if self.use_precip:
             print("- transform_2d: ", self.transform_2d)
             print("- precip_trans_domain: ", self.precip_trans_domain)
+            print("- log_transform_precip: ", self.log_transform_precip)
 
         print("- batch_size: ", self.batch_size)
         print("- epochs: ", self.epochs)
@@ -304,13 +310,14 @@ class ImpactDeepLearningOptions:
             Whether the options are ok or not.
         """
         # Check the precipitation parameters
-        assert self.precip_window_size % self.precip_resolution == 0, \
-            "precip_window_size must be divisible by precip_resolution"
-        pixels_per_side = self.precip_window_size // self.precip_resolution
-        if pixels_per_side != 1:
-            assert pixels_per_side % 2 == 0, "pixels per side must be even"
-        assert self.precip_days_before >= 0, "precip_days_before must be >= 0"
-        assert self.precip_days_after >= 0, "precip_days_after must be >= 0"
+        if self.use_precip:
+            assert self.precip_window_size % self.precip_resolution == 0, \
+                "precip_window_size must be divisible by precip_resolution"
+            pixels_per_side = self.precip_window_size // self.precip_resolution
+            if pixels_per_side != 1:
+                assert pixels_per_side % 2 == 0, "pixels per side must be even"
+            assert self.precip_days_before >= 0, "precip_days_before must be >= 0"
+            assert self.precip_days_after >= 0, "precip_days_after must be >= 0"
 
         if not self.use_precip:
             if self.use_dem:
@@ -392,6 +399,9 @@ class ImpactDeepLearningOptions:
             '--precip-trans-domain', type=str, default='per-pixel',
             help='The precipitation transformation domain. '
                  'Options are: domain-average, per-pixel')
+        self.parser.add_argument(
+            '--no-log-transform-precip', action='store_true',
+            help='Do not log-transform the precipitation')
         self.parser.add_argument(
             '--batch-size', type=int, default=32,
             help='The batch size')
@@ -795,7 +805,7 @@ class ImpactDeepLearning(Impact):
             transform_static=self.options.transform_static,
             transform_2d=self.options.transform_2d,
             precip_transformation_domain=self.options.precip_trans_domain,
-            log_transform_precip=True,
+            log_transform_precip=self.options.log_transform_precip,
             debug=DEBUG
         )
 
@@ -823,7 +833,7 @@ class ImpactDeepLearning(Impact):
             transform_static=self.options.transform_static,
             transform_2d=self.options.transform_2d,
             precip_transformation_domain=self.options.precip_trans_domain,
-            log_transform_precip=True,
+            log_transform_precip=self.options.log_transform_precip,
             mean_static=self.dg_train.mean_static,
             std_static=self.dg_train.std_static,
             mean_precip=self.dg_train.mean_precip,
@@ -858,7 +868,7 @@ class ImpactDeepLearning(Impact):
             transform_static=self.options.transform_static,
             transform_2d=self.options.transform_2d,
             precip_transformation_domain=self.options.precip_trans_domain,
-            log_transform_precip=True,
+            log_transform_precip=self.options.log_transform_precip,
             mean_static=self.dg_train.mean_static,
             std_static=self.dg_train.std_static,
             mean_precip=self.dg_train.mean_precip,
