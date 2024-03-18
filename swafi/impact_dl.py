@@ -222,22 +222,27 @@ class ImpactDeepLearningOptions:
         assert self.optimize_with_optuna, "Optimize with Optuna is not set to True"
 
         self.weight_denominator = trial.suggest_int('weight_denominator', 1, 100)
-        self.precip_window_size = trial.suggest_categorical('precip_window_size', [2, 4, 6, 8, 12])
-        self.precip_resolution = trial.suggest_categorical('precip_resolution', [1])
-        self.precip_time_step = trial.suggest_categorical('precip_time_step', [1, 2, 3, 4, 6, 12])
-        self.precip_days_before = trial.suggest_int('precip_days_before', 1, 10)
-        self.precip_days_after = trial.suggest_int('precip_days_after', 1, 5)
-        self.transform_static = trial.suggest_categorical('transform_static', ['standardize', 'normalize'])
-        self.transform_2d = trial.suggest_categorical('transform_2d', ['standardize', 'normalize'])
-        self.precip_trans_domain = trial.suggest_categorical('precip_trans_domain', ['domain-average', 'per-pixel'])
-        self.log_transform_precip = trial.suggest_categorical('log_transform_precip', [True, False])
+        if self.use_precip:
+            self.precip_window_size = trial.suggest_categorical('precip_window_size', [2, 4, 6, 8, 12])
+            self.precip_resolution = trial.suggest_categorical('precip_resolution', [1])
+            self.precip_time_step = trial.suggest_categorical('precip_time_step', [1, 2, 3, 4, 6, 12])
+            self.precip_days_before = trial.suggest_int('precip_days_before', 1, 10)
+            self.precip_days_after = trial.suggest_int('precip_days_after', 1, 5)
+        if self.use_simple_features:
+            self.transform_static = trial.suggest_categorical('transform_static', ['standardize', 'normalize'])
+        if self.use_precip:
+            self.transform_2d = trial.suggest_categorical('transform_2d', ['standardize', 'normalize'])
+            self.precip_trans_domain = trial.suggest_categorical('precip_trans_domain', ['domain-average', 'per-pixel'])
+            self.log_transform_precip = trial.suggest_categorical('log_transform_precip', [True, False])
         self.batch_size = trial.suggest_categorical('batch_size', [16, 32, 64, 128])
         self.learning_rate = trial.suggest_float('learning_rate', 1e-5, 1e-1, log=True)
         self.dropout_rate = trial.suggest_float('dropout_rate', 0.0, 0.5)
-        self.with_spatial_dropout = trial.suggest_categorical('with_spatial_dropout', [True, False])
+        if self.use_precip:
+            self.with_spatial_dropout = trial.suggest_categorical('with_spatial_dropout', [True, False])
         self.with_batchnorm = trial.suggest_categorical('with_batchnorm', [True, False])
-        self.nb_filters = trial.suggest_categorical('nb_filters', [16, 32, 64, 128, 256])
-        self.nb_conv_blocks = trial.suggest_int('nb_conv_blocks', 1, 5)
+        if self.use_precip:
+            self.nb_filters = trial.suggest_categorical('nb_filters', [16, 32, 64, 128, 256])
+            self.nb_conv_blocks = trial.suggest_int('nb_conv_blocks', 1, 5)
         self.nb_dense_layers = trial.suggest_int('nb_dense_layers', 1, 5)
         self.nb_dense_units = trial.suggest_int('nb_dense_units', 16, 512)
         self.nb_dense_units_decreasing = trial.suggest_categorical('nb_dense_units_decreasing', [True, False])
