@@ -169,7 +169,9 @@ class DeepImpact(models.Model):
             # Batch normalization should be before any dropout
             # https://stackoverflow.com/questions/59634780/correct-order-for-
             # spatialdropout2d-batchnormalization-and-activation-function
-            x = layers.BatchNormalization()(x)
+            x = layers.BatchNormalization(
+                name=f'batchnorm_{i}'
+            )(x)
 
         x = layers.MaxPooling2D(
             pool_size=(2, 2),
@@ -180,10 +182,12 @@ class DeepImpact(models.Model):
             if self.options.with_spatial_dropout and x.shape[1] > 1 and x.shape[2] > 1:
                 x = layers.SpatialDropout2D(
                     rate=self.options.dropout_rate,
+                    name=f'spatial_dropout_{i}',
                 )(x)
             else:
                 x = layers.Dropout(
                     rate=self.options.dropout_rate,
+                    name=f'dropout_{i}',
                 )(x)
 
         return x
