@@ -102,10 +102,11 @@ class DeepImpact(models.Model):
                              name=f'dense_{i}')(x)
 
             if self.options.with_batchnorm:
-                x = layers.BatchNormalization()(x)
+                x = layers.BatchNormalization(name=f'batchnorm_dense_{i}')(x)
 
             if self.options.dropout_rate > 0:
-                x = layers.Dropout(rate=self.options.dropout_rate)(x)
+                x = layers.Dropout(rate=self.options.dropout_rate,
+                                   name=f'dropout_dense_{i}')(x)
 
         # Last activation
         output = layers.Dense(1, activation=self.last_activation,
@@ -170,24 +171,24 @@ class DeepImpact(models.Model):
             # https://stackoverflow.com/questions/59634780/correct-order-for-
             # spatialdropout2d-batchnormalization-and-activation-function
             x = layers.BatchNormalization(
-                name=f'batchnorm_{i}'
+                name=f'batchnorm_cnn_{i}'
             )(x)
 
         x = layers.MaxPooling2D(
             pool_size=(2, 2),
-            name=f'maxpool2d_{i}',
+            name=f'maxpool2d_cnn_{i}',
         )(x)
 
         if self.options.dropout_rate > 0:
             if self.options.with_spatial_dropout and x.shape[1] > 1 and x.shape[2] > 1:
                 x = layers.SpatialDropout2D(
                     rate=self.options.dropout_rate,
-                    name=f'spatial_dropout_{i}',
+                    name=f'spatial_dropout_cnn_{i}',
                 )(x)
             else:
                 x = layers.Dropout(
                     rate=self.options.dropout_rate,
-                    name=f'dropout_{i}',
+                    name=f'dropout_cnn_{i}',
                 )(x)
 
         return x
