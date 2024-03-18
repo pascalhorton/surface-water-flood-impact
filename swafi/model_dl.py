@@ -78,7 +78,7 @@ class DeepImpact(models.Model):
             x = input_2d
             for i in range(self.options.nb_conv_blocks):
                 nb_filters = self.options.nb_filters * (2 ** i)
-                x = self.conv2d_block(x, filters=nb_filters, kernel_size=3)
+                x = self.conv2d_block(x, i, filters=nb_filters, kernel_size=3)
 
             # Flatten
             x = layers.Flatten()(x)
@@ -98,7 +98,8 @@ class DeepImpact(models.Model):
                 nb_units = self.options.nb_dense_units // (2 ** i)
             else:
                 nb_units = self.options.nb_dense_units
-            x = layers.Dense(nb_units, activation=self.options.inner_activation)(x)
+            x = layers.Dense(nb_units, activation=self.options.inner_activation,
+                             name=f'dense_{i}')(x)
 
             if self.options.with_batchnorm:
                 x = layers.BatchNormalization()(x)
@@ -107,7 +108,8 @@ class DeepImpact(models.Model):
                 x = layers.Dropout(rate=self.options.dropout_rate)(x)
 
         # Last activation
-        output = layers.Dense(1, activation=self.last_activation)(x)
+        output = layers.Dense(1, activation=self.last_activation,
+                              name=f'dense_last')(x)
 
         # Build model
         if self.input_2d_size is not None and self.input_1d_size is not None:
@@ -119,7 +121,7 @@ class DeepImpact(models.Model):
         else:
             raise ValueError("At least one input size must be provided")
 
-    def conv2d_block(self, x, filters, kernel_size=3, initializer='he_normal',
+    def conv2d_block(self, x, i, filters, kernel_size=3, initializer='he_normal',
                      activation='default'):
         """
         Convolution block.
@@ -128,6 +130,8 @@ class DeepImpact(models.Model):
         ----------
         x: layers.Layer
             The input layer.
+        i: int
+            The index of the block.
         filters: int
             The number of filters.
         kernel_size: int
@@ -150,12 +154,15 @@ class DeepImpact(models.Model):
             padding='same',
             activation=activation,
             kernel_initializer=initializer,
+            name=f'conv2d_{i}a',
         )(x)
         x = layers.Conv2D(
             filters=filters,
             kernel_size=(kernel_size, kernel_size),
             padding='same',
             activation=activation,
+            kernel_initializer=initializer,
+            name=f'conv2d_{i}b',
         )(x)
 
         if self.options.with_batchnorm:
@@ -166,6 +173,7 @@ class DeepImpact(models.Model):
 
         x = layers.MaxPooling2D(
             pool_size=(2, 2),
+            name=f'maxpool2d_{i}',
         )(x)
 
         if self.options.dropout_rate > 0:
