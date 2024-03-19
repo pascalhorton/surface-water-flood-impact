@@ -680,7 +680,7 @@ class ImpactDeepLearning(Impact):
         all_pred = []
         all_obs = []
         for i in range(n_batches):
-            x, y = dg.get_ordered_batch_from_full_dataset(i)
+            x, y = dg.__getitem__(i)
             all_obs.append(y)
             y_pred_batch = self.model.predict(x, verbose=0)
 
