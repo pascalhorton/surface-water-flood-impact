@@ -677,7 +677,7 @@ class ImpactDeepLearning(Impact):
         float
             The F1 score.
         """
-        n_batches = dg.get_number_of_batches_for_full_dataset()
+        n_batches = dg.__len__()
 
         # Predict
         all_pred = []
