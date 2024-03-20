@@ -338,8 +338,9 @@ class ImpactDeepLearningOptions:
         Set the parser arguments.
         """
         self.parser.add_argument(
-            '--run-id', type=int, default=0,
-            help='The run ID')
+            '--run-name', type=str,
+            default=datetime.datetime.now().strftime("%Y%m%d_%H%M%S"),
+            help='The run name')
         self.parser.add_argument(
             '--optimize-with-optuna', action='store_true',
             help='Optimize the hyperparameters with Optuna')

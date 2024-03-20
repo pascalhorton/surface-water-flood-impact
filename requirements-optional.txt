@@ -4,3 +4,4 @@ gdal
 geopandas
 optuna
 asyncpg
+psycopg2
