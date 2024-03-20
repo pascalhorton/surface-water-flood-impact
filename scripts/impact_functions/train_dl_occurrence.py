@@ -152,7 +152,7 @@ def optimize_model_with_optuna(options, events, precip=None, dem=None, dir_plots
         return score
 
     study = optuna.load_study(
-        study_name=options.optuna_study_name, storage=storage, direction='maximize'
+        study_name=options.optuna_study_name, storage=storage
     )
     study.optimize(optuna_objective, n_trials=options.optuna_trials_nb)
 
