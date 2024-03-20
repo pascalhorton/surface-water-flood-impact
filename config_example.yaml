@@ -48,3 +48,6 @@ CSV_FILE_LAND_COVER: 'path/to/static_land_cover.csv'
 # Path to the buildings layer
 BUILDINGS_GPKG: 'path/to/Buildings_TLM.gpkg'
 BUILDINGS_LAYER: 'tlm_bauten_gebaeude_footprint'
+
+# Optuna DB connection
+OPTUNA_DB_STORAGE: 'postgresql://username:postgresql@localhost:5432/optuna'

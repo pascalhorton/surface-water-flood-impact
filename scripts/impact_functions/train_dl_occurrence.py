@@ -17,6 +17,7 @@ has_optuna = False
 try:
     import optuna
     has_optuna = True
+    from optuna.storages import RDBStorage
 except ImportError:
     pass
 
@@ -55,11 +56,6 @@ def main():
                       + pd.Timedelta(days=options.precip_days_after + 1))
         events.remove_period(remove_start, remove_end)
 
-    # Interactive mode (show plots)
-    interactive_mode = False
-    if options.run_id == 0:  # Manual configuration
-        interactive_mode = True
-
     dem = None
     precip = None
     if options.use_precip:
@@ -81,8 +77,7 @@ def main():
     if not options.optimize_with_optuna:
         dl = _setup_model(options, events, precip, dem)
         dl.fit(dir_plots=config.get('OUTPUT_DIR'),
-               show_plots=interactive_mode,
-               tag=options.run_id)
+               tag=options.run_name)
         dl.assess_model_on_all_periods()
 
     else:
@@ -126,6 +121,10 @@ def optimize_model_with_optuna(options, events, precip=None, dem=None, dir_plots
     if not has_optuna:
         raise ValueError("Optuna is not installed")
 
+    storage = RDBStorage(
+        url=config.get('OPTUNA_DB_STORAGE')
+    )
+
     def optuna_objective(trial):
         """
         The objective function for Optuna.
@@ -152,9 +151,10 @@ def optimize_model_with_optuna(options, events, precip=None, dem=None, dir_plots
 
         return score
 
-    study = optuna.create_study(direction='maximize')
-    study.optimize(optuna_objective, n_trials=options.optuna_trials_nb,
-                   n_jobs=options.optuna_jobs_nb)
+    study = optuna.load_study(
+        study_name=options.optuna_study_name, storage=storage, direction='maximize'
+    )
+    study.optimize(optuna_objective, n_trials=options.optuna_trials_nb)
 
     print("Number of finished trials: ", len(study.trials))
     print("Best trial:")
@@ -168,7 +168,7 @@ def optimize_model_with_optuna(options, events, precip=None, dem=None, dir_plots
     options_best = options.copy()
     options_best.generate_for_optuna(best_trial)
     dl = _setup_model(options_best, events, precip, dem)
-    dl.fit(dir_plots=dir_plots, tag='best_optuna_' + str(dl.options.run_id))
+    dl.fit(dir_plots=dir_plots, tag='best_optuna_' + dl.options.run_name)
 
     return dl
 

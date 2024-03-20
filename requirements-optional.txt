@@ -3,3 +3,4 @@ richdem
 gdal
 geopandas
 optuna
+asyncpg

@@ -37,8 +37,8 @@ class ImpactDeepLearningOptions:
 
     Attributes
     ----------
-    run_id: int
-        The run ID.
+    run_name: str
+        The run name.
     target_type: str
         The target type. Options are: 'occurrence', 'damage_ratio'
     factor_neg_reduction: int
@@ -108,10 +108,10 @@ class ImpactDeepLearningOptions:
         self._set_parser_arguments()
 
         # General options
-        self.run_id = 0
+        self.run_name = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         self.optimize_with_optuna = False
-        self.optuna_jobs_nb = 4
         self.optuna_trials_nb = 100
+        self.optuna_study_name = ''
         self.target_type = ''
         self.factor_neg_reduction = 10
         self.weight_denominator = 5
@@ -164,11 +164,11 @@ class ImpactDeepLearningOptions:
         Parse the arguments.
         """
         args = self.parser.parse_args()
-        self.run_id = args.run_id
+        self.run_name = args.run_name
         self.target_type = args.target_type
         self.optimize_with_optuna = args.optimize_with_optuna
-        self.optuna_jobs_nb = args.optuna_jobs_nb
         self.optuna_trials_nb = args.optuna_trials_nb
+        self.optuna_study_name = args.optuna_study_name
         self.factor_neg_reduction = args.factor_neg_reduction
         self.weight_denominator = args.weight_denominator
         self.random_state = args.random_state
@@ -252,7 +252,7 @@ class ImpactDeepLearningOptions:
         """
         Print the options.
         """
-        print(f"Options (run {self.run_id}):")
+        print(f"Options (run {self.run_name}):")
         print("- target_type: ", self.target_type)
         print("- random_state: ", self.random_state)
         print("- factor_neg_reduction: ", self.factor_neg_reduction)
@@ -266,6 +266,8 @@ class ImpactDeepLearningOptions:
 
         if self.optimize_with_optuna:
             print("- optimize_with_optuna: ", self.optimize_with_optuna)
+            print("- optuna_study_name: ", self.optuna_study_name)
+            print("- optuna_trials_nb: ", self.optuna_trials_nb)
             print("- epochs: ", self.epochs)
             return  # Do not print the other options
 
@@ -342,8 +344,8 @@ class ImpactDeepLearningOptions:
             '--optimize-with-optuna', action='store_true',
             help='Optimize the hyperparameters with Optuna')
         self.parser.add_argument(
-            '--optuna-jobs-nb', type=int, default=4,
-            help='The number of jobs to run in parallel for Optuna')
+            '--optuna-study-name', type=str, default='',
+            help='The Optuna study name')
         self.parser.add_argument(
             '--optuna-trials-nb', type=int, default=100,
             help='The number of trials for Optuna')
@@ -599,7 +601,7 @@ class ImpactDeepLearning(Impact):
         self.compute_balanced_class_weights()
         self.compute_corrected_class_weights(
             weight_denominator=self.options.weight_denominator)
-        self.fit(dir_plots=dir_plots, tag='best_optuna_' + str(self.options.run_id))
+        self.fit(dir_plots=dir_plots, tag='best_optuna_' + self.options.run_name)
 
     def reduce_negatives_for_training(self, factor):
         """
