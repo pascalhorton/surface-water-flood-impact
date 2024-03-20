@@ -122,7 +122,7 @@ def optimize_model_with_optuna(options, events, precip=None, dem=None, dir_plots
         raise ValueError("Optuna is not installed")
 
     storage = RDBStorage(
-        url=config.get('OPTUNA_DB_STORAGE')
+        url=f'sqlite:///{options.optuna_study_name}.db'
     )
 
     def optuna_objective(trial):
