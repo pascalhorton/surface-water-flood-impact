@@ -98,14 +98,14 @@ class DeepImpact(models.Model):
                 nb_units = self.options.nb_dense_units // (2 ** i)
             else:
                 nb_units = self.options.nb_dense_units
-            x = layers.Dense(nb_units, activation=self.options.inner_activation,
+            x = layers.Dense(nb_units, activation=self.options.inner_activation_dense,
                              name=f'dense_{i}')(x)
 
-            if self.options.with_batchnorm:
+            if self.options.with_batchnorm_dense:
                 x = layers.BatchNormalization(name=f'batchnorm_dense_{i}')(x)
 
-            if self.options.dropout_rate > 0:
-                x = layers.Dropout(rate=self.options.dropout_rate,
+            if self.options.dropout_rate_dense > 0:
+                x = layers.Dropout(rate=self.options.dropout_rate_dense,
                                    name=f'dropout_dense_{i}')(x)
 
         # Last activation
@@ -147,7 +147,7 @@ class DeepImpact(models.Model):
         The output layer.
         """
         if activation == 'default':
-            activation = self.options.inner_activation
+            activation = self.options.inner_activation_cnn
 
         x = layers.Conv2D(
             filters=filters,
@@ -166,7 +166,7 @@ class DeepImpact(models.Model):
             name=f'conv2d_{i}b',
         )(x)
 
-        if self.options.with_batchnorm:
+        if self.options.with_batchnorm_cnn:
             # Batch normalization should be before any dropout
             # https://stackoverflow.com/questions/59634780/correct-order-for-
             # spatialdropout2d-batchnormalization-and-activation-function
@@ -179,15 +179,15 @@ class DeepImpact(models.Model):
             name=f'maxpool2d_cnn_{i}',
         )(x)
 
-        if self.options.dropout_rate > 0:
+        if self.options.dropout_rate_cnn > 0:
             if self.options.with_spatial_dropout and x.shape[1] > 1 and x.shape[2] > 1:
                 x = layers.SpatialDropout2D(
-                    rate=self.options.dropout_rate,
+                    rate=self.options.dropout_rate_cnn,
                     name=f'spatial_dropout_cnn_{i}',
                 )(x)
             else:
                 x = layers.Dropout(
-                    rate=self.options.dropout_rate,
+                    rate=self.options.dropout_rate_cnn,
                     name=f'dropout_cnn_{i}',
                 )(x)
 

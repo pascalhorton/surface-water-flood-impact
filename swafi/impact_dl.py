@@ -19,6 +19,7 @@ import matplotlib.pyplot as plt
 import tensorflow as tf
 import datetime
 import dask
+import math
 
 has_optuna = False
 try:
@@ -83,12 +84,16 @@ class ImpactDeepLearningOptions:
         The number of epochs.
     learning_rate: float
         The learning rate.
-    dropout_rate: float
-        The dropout rate.
+    dropout_rate_cnn: float
+        The dropout rate for the CNN.
+    dropout_rate_dense: float
+        The dropout rate for the dense layers.
     with_spatial_dropout: bool
         Whether to use spatial dropout or not.
-    with_batchnorm: bool
-        Whether to use batch normalization or not.
+    with_batchnorm_cnn: bool
+        Whether to use batch normalization or not for the CNN.
+    with_batchnorm_dense: bool
+        Whether to use batch normalization or not for the dense layers.
     nb_filters: int
         The number of filters.
     nb_conv_blocks: int
@@ -99,8 +104,10 @@ class ImpactDeepLearningOptions:
         The number of dense units.
     nb_dense_units_decreasing: bool
         Whether the number of dense units should decrease or not.
-    inner_activation: str
-        The inner activation function.
+    inner_activation_cnn: str
+        The inner activation function for the CNN.
+    inner_activation_dense: str
+        The inner activation function for the dense layers.
     """
 
     def __init__(self):
@@ -128,9 +135,9 @@ class ImpactDeepLearningOptions:
         self.precip_time_step = 0
         self.precip_days_before = 0
         self.precip_days_after = 0
-        self.transform_static = ''
-        self.transform_2d = ''
-        self.precip_trans_domain = ''
+        self.transform_static = 'standardize'
+        self.transform_2d = 'standardize'
+        self.precip_trans_domain = 'per-pixel'
         self.log_transform_precip = True
 
         # Training options
@@ -139,15 +146,18 @@ class ImpactDeepLearningOptions:
         self.learning_rate = 0
 
         # Model options
-        self.dropout_rate = 0
+        self.dropout_rate_cnn = 0
+        self.dropout_rate_dense = 0
         self.with_spatial_dropout = True
-        self.with_batchnorm = True
+        self.with_batchnorm_cnn = True
+        self.with_batchnorm_dense = True
         self.nb_filters = 0
         self.nb_conv_blocks = 0
         self.nb_dense_layers = 0
         self.nb_dense_units = 0
-        self.nb_dense_units_decreasing = True
-        self.inner_activation = ''
+        self.nb_dense_units_decreasing = False
+        self.inner_activation_cnn = ''
+        self.inner_activation_dense = ''
 
     def copy(self):
         """
@@ -189,15 +199,18 @@ class ImpactDeepLearningOptions:
         self.batch_size = args.batch_size
         self.epochs = args.epochs
         self.learning_rate = args.learning_rate
-        self.dropout_rate = args.dropout_rate
+        self.dropout_rate_cnn = args.dropout_rate_cnn
+        self.dropout_rate_dense = args.dropout_rate_dense
         self.with_spatial_dropout = not args.no_spatial_dropout
-        self.with_batchnorm = not args.no_batchnorm
+        self.with_batchnorm_cnn = not args.no_batchnorm_cnn
+        self.with_batchnorm_dense = not args.no_batchnorm_dense
         self.nb_filters = args.nb_filters
         self.nb_conv_blocks = args.nb_conv_blocks
         self.nb_dense_layers = args.nb_dense_layers
         self.nb_dense_units = args.nb_dense_units
-        self.nb_dense_units_decreasing = not args.no_dense_units_decreasing
-        self.inner_activation = args.inner_activation
+        self.nb_dense_units_decreasing = args.dense_units_decreasing
+        self.inner_activation_cnn = args.inner_activation_cnn
+        self.inner_activation_dense = args.inner_activation_dense
 
         if self.optimize_with_optuna:
             print("Optimizing with Optuna; some options will be ignored.")
@@ -221,32 +234,49 @@ class ImpactDeepLearningOptions:
 
         assert self.optimize_with_optuna, "Optimize with Optuna is not set to True"
 
+        force_optim_all = False
+
         self.weight_denominator = trial.suggest_int('weight_denominator', 1, 100)
         if self.use_precip:
             self.precip_window_size = trial.suggest_categorical('precip_window_size', [2, 4, 6, 8, 12])
             self.precip_resolution = trial.suggest_categorical('precip_resolution', [1])
-            self.precip_time_step = trial.suggest_categorical('precip_time_step', [1, 2, 3, 4, 6, 12])
-            self.precip_days_before = trial.suggest_int('precip_days_before', 1, 10)
-            self.precip_days_after = trial.suggest_int('precip_days_after', 1, 5)
+            self.precip_time_step = trial.suggest_categorical('precip_time_step', [1, 2, 3, 4, 6, 12, 24])
+            self.precip_days_before = trial.suggest_int('precip_days_before', 1, 5)
+            self.precip_days_after = trial.suggest_int('precip_days_after', 1, 3)
         if self.use_simple_features:
-            self.transform_static = trial.suggest_categorical('transform_static', ['standardize', 'normalize'])
+            if force_optim_all:
+                self.transform_static = trial.suggest_categorical('transform_static', ['standardize', 'normalize'])
         if self.use_precip:
-            self.transform_2d = trial.suggest_categorical('transform_2d', ['standardize', 'normalize'])
-            self.precip_trans_domain = trial.suggest_categorical('precip_trans_domain', ['domain-average', 'per-pixel'])
+            if force_optim_all:
+                self.transform_2d = trial.suggest_categorical('transform_2d', ['standardize', 'normalize'])
+                self.precip_trans_domain = trial.suggest_categorical('precip_trans_domain', ['domain-average', 'per-pixel'])
             self.log_transform_precip = trial.suggest_categorical('log_transform_precip', [True, False])
         self.batch_size = trial.suggest_categorical('batch_size', [16, 32, 64, 128])
         self.learning_rate = trial.suggest_float('learning_rate', 1e-5, 1e-1, log=True)
-        self.dropout_rate = trial.suggest_float('dropout_rate', 0.0, 0.5)
+        self.dropout_rate_dense = trial.suggest_float('dropout_rate_dense', 0.0, 0.5)
         if self.use_precip:
+            self.dropout_rate_cnn = trial.suggest_float('dropout_rate_cnn', 0.0, 0.5)
             self.with_spatial_dropout = trial.suggest_categorical('with_spatial_dropout', [True, False])
-        self.with_batchnorm = trial.suggest_categorical('with_batchnorm', [True, False])
+            self.with_batchnorm_cnn = trial.suggest_categorical('with_batchnorm_cnn', [True, False])
+        self.with_batchnorm_dense = trial.suggest_categorical('with_batchnorm_dense', [True, False])
         if self.use_precip:
             self.nb_filters = trial.suggest_categorical('nb_filters', [16, 32, 64, 128, 256])
             self.nb_conv_blocks = trial.suggest_int('nb_conv_blocks', 1, 5)
-        self.nb_dense_layers = trial.suggest_int('nb_dense_layers', 1, 5)
+        self.nb_dense_layers = trial.suggest_int('nb_dense_layers', 1, 10)
         self.nb_dense_units = trial.suggest_int('nb_dense_units', 16, 512)
-        self.nb_dense_units_decreasing = trial.suggest_categorical('nb_dense_units_decreasing', [True, False])
-        self.inner_activation = trial.suggest_categorical('inner_activation', ['relu', 'tanh', 'sigmoid'])
+        if force_optim_all:
+            self.nb_dense_units_decreasing = trial.suggest_categorical('nb_dense_units_decreasing', [True, False])
+        if self.use_precip:
+            self.inner_activation_cnn = trial.suggest_categorical('inner_activation_cnn', ['relu', 'tanh', 'sigmoid'])
+        self.inner_activation_dense = trial.suggest_categorical('inner_activation_dense', ['relu', 'tanh', 'sigmoid'])
+
+        # Check the input 2D size vs nb_conv_blocks
+        pixels_nb = int(self.precip_window_size / self.precip_resolution)
+        nb_conv_blocks_max = math.floor(math.log(pixels_nb, 2))
+        if self.nb_conv_blocks > nb_conv_blocks_max:
+            return False  # Not valid
+
+        return True
 
     def print(self):
         """
@@ -291,10 +321,11 @@ class ImpactDeepLearningOptions:
         print("- batch_size: ", self.batch_size)
         print("- epochs: ", self.epochs)
         print("- learning_rate: ", self.learning_rate)
-        print("- dropout_rate: ", self.dropout_rate)
+        print("- dropout_rate_dense: ", self.dropout_rate_dense)
 
         if self.use_precip:
             print("- with_spatial_dropout: ", self.with_spatial_dropout)
+            print("- dropout_rate_cnn: ", self.dropout_rate_cnn)
 
         print("- with_batchnorm: ", self.with_batchnorm)
 
@@ -420,14 +451,20 @@ class ImpactDeepLearningOptions:
             '--learning-rate', type=float, default=0.001,
             help='The learning rate')
         self.parser.add_argument(
-            '--dropout-rate', type=float, default=0.2,
-            help='The dropout rate')
+            '--dropout-rate-cnn', type=float, default=0.2,
+            help='The dropout rate for the CNN')
+        self.parser.add_argument(
+            '--dropout-rate-dense', type=float, default=0.5,
+            help='The dropout rate for the dense layers')
         self.parser.add_argument(
             '--no-spatial-dropout', action='store_true',
             help='Do not use spatial dropout')
         self.parser.add_argument(
-            '--no-batchnorm', action='store_true',
-            help='Do not use batch normalization')
+            '--no-batchnorm-cnn', action='store_true',
+            help='Do not use batch normalization for the CNN')
+        self.parser.add_argument(
+            '--no-batchnorm-dense', action='store_true',
+            help='Do not use batch normalization for the dense layers')
         self.parser.add_argument(
             '--nb-filters', type=int, default=64,
             help='The number of filters')
@@ -441,11 +478,14 @@ class ImpactDeepLearningOptions:
             '--nb-dense-units', type=int, default=256,
             help='The number of dense units')
         self.parser.add_argument(
-            '--no-dense-units-decreasing', action='store_true',
-            help='The number of dense units should not decrease')
+            '--dense-units-decreasing', action='store_true',
+            help='The number of dense units should decrease')
         self.parser.add_argument(
-            '--inner-activation', type=str, default='relu',
-            help='The inner activation function')
+            '--inner-activation-cnn', type=str, default='relu',
+            help='The inner activation function for the CNN')
+        self.parser.add_argument(
+            '--inner-activation-dense', type=str, default='relu',
+            help='The inner activation function for the dense layers')
 
 
 class ImpactDeepLearning(Impact):
@@ -598,7 +638,10 @@ class ImpactDeepLearning(Impact):
             print(f"    {key}: {value}")
 
         # Fit the model with the best parameters
-        self.options.generate_for_optuna(trial)
+        if not self.options.generate_for_optuna(trial):
+            print("The parameters are not valid.")
+            return float('-inf')
+
         self.compute_balanced_class_weights()
         self.compute_corrected_class_weights(
             weight_denominator=self.options.weight_denominator)

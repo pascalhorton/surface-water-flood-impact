@@ -21,6 +21,7 @@ try:
 except ImportError:
     pass
 
+USE_SQLITE = True
 DATASET = 'gvz'  # 'mobiliar' or 'gvz'
 LABEL_EVENT_FILE = 'original_w_prior_pluvial_occurrence'
 
@@ -121,9 +122,10 @@ def optimize_model_with_optuna(options, events, precip=None, dem=None, dir_plots
     if not has_optuna:
         raise ValueError("Optuna is not installed")
 
-    storage = RDBStorage(
-        url=f'sqlite:///{options.optuna_study_name}.db'
-    )
+    if USE_SQLITE:
+        storage = RDBStorage(
+            url=f'sqlite:///{options.optuna_study_name}.db'
+        )
 
     def optuna_objective(trial):
         """
@@ -151,9 +153,15 @@ def optimize_model_with_optuna(options, events, precip=None, dem=None, dir_plots
 
         return score
 
-    study = optuna.load_study(
-        study_name=options.optuna_study_name, storage=storage
-    )
+    if USE_SQLITE:
+        study = optuna.load_study(
+            study_name=options.optuna_study_name, storage=storage
+        )
+    else:
+        study = optuna.create_study(
+            study_name=options.optuna_study_name,
+            direction='maximize'
+        )
     study.optimize(optuna_objective, n_trials=options.optuna_trials_nb)
 
     print("Number of finished trials: ", len(study.trials))
