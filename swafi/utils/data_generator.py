@@ -511,11 +511,11 @@ class DataGenerator(keras.utils.Sequence):
                 self.max_precip = self.X_precip['precip'].max(
                     'time').compute().values
             elif self.transform_2d == 'iqr':
-                self.q25_precip = self.X_precip['precip'].quantile(
+                self.q25_precip = self.X_precip['precip'].chunk(dict(time=-1)).quantile(
                     0.25, dim='time').compute().values
-                self.q50_precip = self.X_precip['precip'].quantile(
+                self.q50_precip = self.X_precip['precip'].chunk(dict(time=-1)).quantile(
                     0.50, dim='time').compute().values
-                self.q75_precip = self.X_precip['precip'].quantile(
+                self.q75_precip = self.X_precip['precip'].chunk(dict(time=-1)).quantile(
                     0.75, dim='time').compute().values
         else:
             raise ValueError(
