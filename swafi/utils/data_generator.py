@@ -16,11 +16,12 @@ class DataGenerator(keras.utils.Sequence):
                  use_pickle_full_precip_data=True, precip_window_size=12,
                  precip_resolution=1, precip_time_step=1, precip_days_before=8,
                  precip_days_after=3, tmp_dir=None, transform_static='standardize',
-                 transform_2d='standardize',
-                 precip_transformation_domain='per-pixel',
+                 transform_2d='iqr', precip_transformation_domain='per-pixel',
                  log_transform_precip=True, mean_static=None, std_static=None,
                  mean_precip=None, std_precip=None, min_static=None,
-                 max_static=None, max_precip=None, debug=False):
+                 max_static=None, max_precip=None, q25_static=None, q50_static=None,
+                 q75_static=None, q25_precip=None, q50_precip=None, q75_precip=None,
+                 debug=False):
         """
         Data generator class.
         Template from:
@@ -64,11 +65,11 @@ class DataGenerator(keras.utils.Sequence):
         tmp_dir: Path
             The temporary directory to use.
         transform_static: str
-            The transformation to apply to the static data: 'standardize' or
-            'normalize'.
+            The transformation to apply to the static data: 'standardize',
+            'normalize' or 'iqr'.
         transform_2d: str
-            The transformation to apply to the 2D data: 'standardize' or
-            'normalize'.
+            The transformation to apply to the 2D data: 'standardize',
+            'normalize' or 'iqr'.
         precip_transformation_domain: str
             How to apply the transformation of the precipitation data:
             'domain-average', or 'per-pixel'.
@@ -88,6 +89,18 @@ class DataGenerator(keras.utils.Sequence):
             The max of the static data.
         max_precip: np.array
             The max of the precipitation data.
+        q25_static: np.array
+            The 25th percentile of the static data.
+        q50_static: np.array
+            The 50th percentile of the static data.
+        q75_static: np.array
+            The 75th percentile of the static data.
+        q25_precip: np.array
+            The 25th percentile of the precipitation data.
+        q50_precip: np.array
+            The 50th percentile of the precipitation data.
+        q75_precip: np.array
+            The 75th percentile of the precipitation data.
         debug: bool
             Whether to run in debug mode or not (print more messages).
         """
@@ -120,10 +133,20 @@ class DataGenerator(keras.utils.Sequence):
         self.min_static = min_static
         self.max_static = max_static
         self.max_precip = max_precip
+        self.q25_static = q25_static
+        self.q50_static = q50_static
+        self.q75_static = q75_static
+        self.q25_precip = q25_precip
+        self.q50_precip = q50_precip
+        self.q75_precip = q75_precip
+
         self.mean_dem = None
         self.std_dem = None
         self.min_dem = None
         self.max_dem = None
+        self.q25_dem = None
+        self.q50_dem = None
+        self.q75_dem = None
 
         self.X_static = x_static
         self.X_precip = x_precip
@@ -139,11 +162,15 @@ class DataGenerator(keras.utils.Sequence):
             self._standardize_static_inputs()
         elif transform_static == 'normalize':
             self._normalize_static_inputs()
+        elif transform_static == 'iqr':
+            self._iqr_static_inputs()
 
         if transform_2d == 'standardize':
             self._standardize_2d_inputs()
         elif transform_2d == 'normalize':
             self._normalize_2d_inputs()
+        elif transform_2d == 'iqr':
+            self._iqr_2d_inputs()
 
         self.n_samples = self.y.shape[0]
         self.idxs = np.arange(self.n_samples)
@@ -282,6 +309,19 @@ class DataGenerator(keras.utils.Sequence):
         if self.X_dem is not None:
             self.X_dem = (self.X_dem - self.mean_dem) / self.std_dem
 
+    def _iqr_static_inputs(self):
+        if self.X_static is not None:
+            iqr = self.q75_static - self.q25_static
+            self.X_static = (self.X_static - self.q50_static) / iqr
+
+    def _iqr_2d_inputs(self):
+        if self.X_precip is not None:
+            iqr = self.q75_precip - self.q25_precip
+            self.X_precip['precip'] = (self.X_precip['precip'] - self.q50_precip) / iqr
+        if self.X_dem is not None:
+            iqr = self.q75_dem - self.q25_dem
+            self.X_dem = (self.X_dem - self.q50_dem) / iqr
+
     def _normalize_static_inputs(self):
         if self.X_static is not None:
             self.X_static = ((self.X_static - self.min_static) /
@@ -365,6 +405,14 @@ class DataGenerator(keras.utils.Sequence):
                     self.min_static = np.min(self.X_static, axis=0)
                 if self.max_static is None:
                     self.max_static = np.max(self.X_static, axis=0)
+            elif self.transform_static == 'iqr':
+                # Compute the 25th, 50th and 75th percentiles of the static data
+                if self.q25_static is None:
+                    self.q25_static = np.percentile(self.X_static, 25, axis=0)
+                if self.q50_static is None:
+                    self.q50_static = np.percentile(self.X_static, 50, axis=0)
+                if self.q75_static is None:
+                    self.q75_static = np.percentile(self.X_static, 75, axis=0)
 
         if self.X_dem is not None:
             print('Computing DEM predictor statistics')
@@ -376,14 +424,19 @@ class DataGenerator(keras.utils.Sequence):
                 # Compute the min and max of the DEM (non-temporal)
                 self.min_dem = self.X_dem.min(('x', 'y')).compute().values
                 self.max_dem = self.X_dem.max(('x', 'y')).compute().values
+            elif self.transform_2d == 'iqr':
+                # Compute the 25th, 50th and 75th percentiles of the DEM (non-temporal)
+                self.q25_dem = self.X_dem.quantile(0.25, dim=('x', 'y')).compute().values
+                self.q50_dem = self.X_dem.quantile(0.50, dim=('x', 'y')).compute().values
+                self.q75_dem = self.X_dem.quantile(0.75, dim=('x', 'y')).compute().values
 
         if self.X_precip is None:
             return
 
-        # Log transform the precipitation (log(1 + x))
+        # Log transform the precipitation
         if self.log_transform_precip:
             print('Log-transforming precipitation')
-            self.X_precip['precip'] = np.log1p(self.X_precip['precip'])
+            self.X_precip['precip'] = np.log(self.X_precip['precip'] + 1e-10)
 
         # Compute the mean and standard deviation of the precipitation
         if (self.transform_2d == 'standardize' and self.mean_precip is not None
@@ -393,11 +446,17 @@ class DataGenerator(keras.utils.Sequence):
         if self.transform_2d == 'normalize' and self.max_precip is not None:
             return
 
+        if self.transform_2d == 'iqr' and self.q25_precip is not None:
+            return
+
         # If pickle file exists, load it
         file_hash = self._compute_hash_precip_full()
         file_mean_precip = self.tmp_dir / f'mean_precip_{file_hash}.pickle'
         file_std_precip = self.tmp_dir / f'std_precip_{file_hash}.pickle'
         file_max_precip = self.tmp_dir / f'max_precip_{file_hash}.pickle'
+        file_q25_precip = self.tmp_dir / f'q25_precip_{file_hash}.pickle'
+        file_q50_precip = self.tmp_dir / f'q50_precip_{file_hash}.pickle'
+        file_q75_precip = self.tmp_dir / f'q75_precip_{file_hash}.pickle'
 
         if (self.transform_2d == 'standardize' and file_mean_precip.exists()
                 and file_std_precip.exists()):
@@ -414,6 +473,16 @@ class DataGenerator(keras.utils.Sequence):
                 self.max_precip = pickle.load(f)
             return
 
+        if self.transform_2d == 'iqr' and file_q25_precip.exists():
+            print('Loading precipitation statistics from pickle files')
+            with open(file_q25_precip, 'rb') as f:
+                self.q25_precip = pickle.load(f)
+            with open(file_q50_precip, 'rb') as f:
+                self.q50_precip = pickle.load(f)
+            with open(file_q75_precip, 'rb') as f:
+                self.q75_precip = pickle.load(f)
+            return
+
         # Otherwise, compute the statistics and save them to a pickle file
         print('Computing precipitation statistics')
         if self.precip_transformation_domain == 'domain-average':
@@ -425,6 +494,13 @@ class DataGenerator(keras.utils.Sequence):
             elif self.transform_2d == 'normalize':
                 self.max_precip = self.X_precip['precip'].max(
                     ('time', 'x', 'y')).compute().values
+            elif self.transform_2d == 'iqr':
+                self.q25_precip = self.X_precip['precip'].quantile(
+                    0.25, dim=('time', 'x', 'y')).compute().values
+                self.q50_precip = self.X_precip['precip'].quantile(
+                    0.50, dim=('time', 'x', 'y')).compute().values
+                self.q75_precip = self.X_precip['precip'].quantile(
+                    0.75, dim=('time', 'x', 'y')).compute().values
         elif self.precip_transformation_domain == 'per-pixel':
             if self.transform_2d == 'standardize':
                 self.mean_precip = self.X_precip['precip'].mean(
@@ -434,6 +510,13 @@ class DataGenerator(keras.utils.Sequence):
             elif self.transform_2d == 'normalize':
                 self.max_precip = self.X_precip['precip'].max(
                     'time').compute().values
+            elif self.transform_2d == 'iqr':
+                self.q25_precip = self.X_precip['precip'].quantile(
+                    0.25, dim='time').compute().values
+                self.q50_precip = self.X_precip['precip'].quantile(
+                    0.50, dim='time').compute().values
+                self.q75_precip = self.X_precip['precip'].quantile(
+                    0.75, dim='time').compute().values
         else:
             raise ValueError(
                 f'Unknown option: {self.precip_transformation_domain}')
@@ -447,6 +530,13 @@ class DataGenerator(keras.utils.Sequence):
         elif self.transform_2d == 'normalize':
             with open(file_max_precip, 'wb') as f:
                 pickle.dump(self.max_precip, f)
+        elif self.transform_2d == 'iqr':
+            with open(file_q25_precip, 'wb') as f:
+                pickle.dump(self.q25_precip, f)
+            with open(file_q50_precip, 'wb') as f:
+                pickle.dump(self.q50_precip, f)
+            with open(file_q75_precip, 'wb') as f:
+                pickle.dump(self.q75_precip, f)
 
     def _compute_hash_precip_full(self):
         tag_data = (

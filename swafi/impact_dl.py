@@ -135,8 +135,8 @@ class ImpactDeepLearningOptions:
         self.precip_time_step = 0
         self.precip_days_before = 0
         self.precip_days_after = 0
-        self.transform_static = 'standardize'
-        self.transform_2d = 'standardize'
+        self.transform_static = 'iqr'
+        self.transform_2d = 'iqr'
         self.precip_trans_domain = 'per-pixel'
         self.log_transform_precip = True
 
@@ -245,10 +245,10 @@ class ImpactDeepLearningOptions:
             self.precip_days_after = trial.suggest_int('precip_days_after', 1, 3)
         if self.use_simple_features:
             if force_optim_all:
-                self.transform_static = trial.suggest_categorical('transform_static', ['standardize', 'normalize'])
+                self.transform_static = trial.suggest_categorical('transform_static', ['standardize', 'normalize', 'iqr'])
         if self.use_precip:
             if force_optim_all:
-                self.transform_2d = trial.suggest_categorical('transform_2d', ['standardize', 'normalize'])
+                self.transform_2d = trial.suggest_categorical('transform_2d', ['standardize', 'normalize', 'iqr'])
                 self.precip_trans_domain = trial.suggest_categorical('precip_trans_domain', ['domain-average', 'per-pixel'])
             self.log_transform_precip = trial.suggest_categorical('log_transform_precip', [True, False])
         self.batch_size = trial.suggest_categorical('batch_size', [16, 32, 64, 128])
@@ -429,10 +429,10 @@ class ImpactDeepLearningOptions:
             '--precip-days-after', type=int, default=2,
             help='The number of days after the event to use for the precipitation')
         self.parser.add_argument(
-            '--transform-static', type=str, default='standardize',
+            '--transform-static', type=str, default='iqr',
             help='The transformation to apply to the static data')
         self.parser.add_argument(
-            '--transform-2d', type=str, default='standardize',
+            '--transform-2d', type=str, default='iqr',
             help='The transformation to apply to the 2D data')
         self.parser.add_argument(
             '--precip-trans-domain', type=str, default='per-pixel',
@@ -892,6 +892,12 @@ class ImpactDeepLearning(Impact):
             min_static=self.dg_train.min_static,
             max_static=self.dg_train.max_static,
             max_precip=self.dg_train.max_precip,
+            q25_static=self.dg_train.q25_static,
+            q50_static=self.dg_train.q50_static,
+            q75_static=self.dg_train.q75_static,
+            q25_precip=self.dg_train.q25_precip,
+            q50_precip=self.dg_train.q50_precip,
+            q75_precip=self.dg_train.q75_precip,
             debug=DEBUG
         )
 
@@ -927,6 +933,12 @@ class ImpactDeepLearning(Impact):
             min_static=self.dg_train.min_static,
             max_static=self.dg_train.max_static,
             max_precip=self.dg_train.max_precip,
+            q25_static=self.dg_train.q25_static,
+            q50_static=self.dg_train.q50_static,
+            q75_static=self.dg_train.q75_static,
+            q25_precip=self.dg_train.q25_precip,
+            q50_precip=self.dg_train.q50_precip,
+            q75_precip=self.dg_train.q75_precip,
             debug=DEBUG
         )
 
