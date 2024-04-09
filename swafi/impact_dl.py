@@ -377,8 +377,9 @@ class ImpactDeepLearningOptions:
             '--optimize-with-optuna', action='store_true',
             help='Optimize the hyperparameters with Optuna')
         self.parser.add_argument(
-            '--optuna-study-name', type=str, default='',
-            help='The Optuna study name')
+            '--optuna-study-name', type=str,
+            default=datetime.datetime.now().strftime("%Y%m%d_%H%M%S"),
+            help='The Optuna study name (default: using the date and time'),
         self.parser.add_argument(
             '--optuna-trials-nb', type=int, default=100,
             help='The number of trials for Optuna')
