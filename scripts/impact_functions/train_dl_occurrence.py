@@ -17,11 +17,12 @@ has_optuna = False
 try:
     import optuna
     has_optuna = True
-    from optuna.storages import RDBStorage
+    from optuna.storages import RDBStorage, JournalStorage, JournalFileStorage
 except ImportError:
     pass
 
-USE_SQLITE = True
+USE_SQLITE = False
+USE_TXTFILE = True
 DATASET = 'gvz'  # 'mobiliar' or 'gvz'
 LABEL_EVENT_FILE = 'original_w_prior_pluvial_occurrence'
 
@@ -124,7 +125,13 @@ def optimize_model_with_optuna(options, events, precip=None, dem=None, dir_plots
 
     if USE_SQLITE:
         storage = RDBStorage(
-            url=f'sqlite:///{options.optuna_study_name}.db'
+            url=f'sqlite:///{options.optuna_study_name}.db',
+            engine_kwargs={"connect_args": {"timeout": 60.0}}
+        )
+    elif USE_TXTFILE:
+        storage = JournalStorage(
+            JournalFileStorage(f"{options.optuna_study_name}.log"),
+            engine_kwargs={"connect_args": {"timeout": 60.0}}
         )
 
     def optuna_objective(trial):
@@ -153,7 +160,7 @@ def optimize_model_with_optuna(options, events, precip=None, dem=None, dir_plots
 
         return score
 
-    if USE_SQLITE:
+    if USE_SQLITE or USE_TXTFILE:
         study = optuna.load_study(
             study_name=options.optuna_study_name, storage=storage
         )
