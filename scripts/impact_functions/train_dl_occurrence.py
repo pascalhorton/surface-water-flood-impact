@@ -130,8 +130,7 @@ def optimize_model_with_optuna(options, events, precip=None, dem=None, dir_plots
         )
     elif USE_TXTFILE:
         storage = JournalStorage(
-            JournalFileStorage(f"{options.optuna_study_name}.log"),
-            engine_kwargs={"connect_args": {"timeout": 60.0}}
+            JournalFileStorage(f"{options.optuna_study_name}.log")
         )
 
     def optuna_objective(trial):
