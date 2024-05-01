@@ -245,11 +245,10 @@ class ImpactDeepLearningOptions:
             self.precip_days_before = trial.suggest_int('precip_days_before', 1, 5)
             self.precip_days_after = trial.suggest_int('precip_days_after', 1, 3)
         if self.use_simple_features:
-            if force_optim_all:
-                self.transform_static = trial.suggest_categorical('transform_static', ['standardize', 'normalize', 'iqr'])
+            self.transform_static = trial.suggest_categorical('transform_static', ['standardize', 'normalize', 'iqr'])
         if self.use_precip:
+            self.transform_2d = trial.suggest_categorical('transform_2d', ['standardize', 'normalize', 'iqr'])
             if force_optim_all:
-                self.transform_2d = trial.suggest_categorical('transform_2d', ['standardize', 'normalize', 'iqr'])
                 self.precip_trans_domain = trial.suggest_categorical('precip_trans_domain', ['domain-average', 'per-pixel'])
                 self.log_transform_precip = trial.suggest_categorical('log_transform_precip', [True, False])
         self.batch_size = trial.suggest_categorical('batch_size', [16, 32, 64, 128])
@@ -265,11 +264,12 @@ class ImpactDeepLearningOptions:
             self.nb_conv_blocks = trial.suggest_int('nb_conv_blocks', 1, 5)
         self.nb_dense_layers = trial.suggest_int('nb_dense_layers', 1, 10)
         self.nb_dense_units = trial.suggest_int('nb_dense_units', 16, 512)
+        self.nb_dense_units_decreasing = trial.suggest_categorical('nb_dense_units_decreasing', [True, False])
+        self.inner_activation_dense = trial.suggest_categorical('inner_activation_dense', ['relu', 'tanh', 'sigmoid'])
+        self.inner_activation_cnn = trial.suggest_categorical('inner_activation_cnn', ['relu', 'tanh', 'sigmoid'])
         if force_optim_all:
-            self.nb_dense_units_decreasing = trial.suggest_categorical('nb_dense_units_decreasing', [True, False])
-            self.inner_activation_dense = trial.suggest_categorical('inner_activation_dense', ['relu', 'tanh', 'sigmoid'])
             if self.use_precip:
-                self.inner_activation_cnn = trial.suggest_categorical('inner_activation_cnn', ['relu', 'tanh', 'sigmoid'])
+                pass
 
         # Check the input 2D size vs nb_conv_blocks
         pixels_nb = int(self.precip_window_size / self.precip_resolution)
