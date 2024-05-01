@@ -23,6 +23,7 @@ except ImportError:
 
 USE_SQLITE = False
 USE_TXTFILE = True
+OPTUNA_RANDOM = True
 DATASET = 'gvz'  # 'mobiliar' or 'gvz'
 LABEL_EVENT_FILE = 'original_w_prior_pluvial_occurrence'
 
@@ -132,6 +133,8 @@ def optimize_model_with_optuna(options, events, precip=None, dem=None, dir_plots
         storage = JournalStorage(
             JournalFileStorage(f"{options.optuna_study_name}.log")
         )
+    else:
+        raise ValueError("No storage specified")
 
     def optuna_objective(trial):
         """
@@ -159,14 +162,21 @@ def optimize_model_with_optuna(options, events, precip=None, dem=None, dir_plots
 
         return score
 
+    sampler = None
+    if OPTUNA_RANDOM:
+        sampler = optuna.samplers.RandomSampler()
+
     if USE_SQLITE or USE_TXTFILE:
         study = optuna.load_study(
-            study_name=options.optuna_study_name, storage=storage
+            study_name=options.optuna_study_name,
+            storage=storage,
+            sampler=sampler
         )
     else:
         study = optuna.create_study(
             study_name=options.optuna_study_name,
-            direction='maximize'
+            direction='maximize',
+            sampler=sampler
         )
     study.optimize(optuna_objective, n_trials=options.optuna_trials_nb)
 
