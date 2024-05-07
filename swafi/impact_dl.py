@@ -134,7 +134,7 @@ class ImpactDeepLearningOptions:
         self.precip_resolution = 0
         self.precip_time_step = 0
         self.precip_days_before = 0
-        self.precip_days_after = 0
+        self.precip_days_after = 1
         self.transform_static = 'iqr'
         self.transform_2d = 'iqr'
         self.precip_trans_domain = 'per-pixel'
@@ -242,8 +242,9 @@ class ImpactDeepLearningOptions:
             self.precip_window_size = trial.suggest_categorical('precip_window_size', [2, 4, 6, 8, 12])
             self.precip_resolution = trial.suggest_categorical('precip_resolution', [1])
             self.precip_time_step = trial.suggest_categorical('precip_time_step', [1, 2, 3, 4, 6, 12, 24])
-            self.precip_days_before = trial.suggest_int('precip_days_before', 1, 5)
-            self.precip_days_after = trial.suggest_int('precip_days_after', 1, 3)
+            self.precip_days_before = trial.suggest_int('precip_days_before', 1, 4)
+            if force_optim_all:
+                self.precip_days_after = trial.suggest_int('precip_days_after', 1, 3)
         if self.use_simple_features:
             self.transform_static = trial.suggest_categorical('transform_static', ['standardize', 'normalize', 'iqr'])
         if self.use_precip:
@@ -251,8 +252,8 @@ class ImpactDeepLearningOptions:
             if force_optim_all:
                 self.precip_trans_domain = trial.suggest_categorical('precip_trans_domain', ['domain-average', 'per-pixel'])
                 self.log_transform_precip = trial.suggest_categorical('log_transform_precip', [True, False])
-        self.batch_size = trial.suggest_categorical('batch_size', [16, 32, 64, 128])
-        self.learning_rate = trial.suggest_float('learning_rate', 1e-5, 1e-1, log=True)
+        self.batch_size = trial.suggest_categorical('batch_size', [16, 32, 64, 128, 256, 512])
+        self.learning_rate = trial.suggest_float('learning_rate', 1e-4, 1e-2, log=True)
         self.dropout_rate_dense = trial.suggest_float('dropout_rate_dense', 0.0, 0.5)
         if self.use_precip:
             self.dropout_rate_cnn = trial.suggest_float('dropout_rate_cnn', 0.0, 0.5)
@@ -425,10 +426,10 @@ class ImpactDeepLearningOptions:
             '--precip-time-step', type=int, default=1,
             help='The precipitation time step [h]')
         self.parser.add_argument(
-            '--precip-days-before', type=int, default=4,
+            '--precip-days-before', type=int, default=2,
             help='The number of days before the event to use for the precipitation')
         self.parser.add_argument(
-            '--precip-days-after', type=int, default=2,
+            '--precip-days-after', type=int, default=1,
             help='The number of days after the event to use for the precipitation')
         self.parser.add_argument(
             '--transform-static', type=str, default='iqr',
