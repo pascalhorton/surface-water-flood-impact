@@ -355,16 +355,18 @@ class ImpactDeepLearningOptions:
             print("- with_spatial_dropout: ", self.with_spatial_dropout)
             print("- dropout_rate_cnn: ", self.dropout_rate_cnn)
 
-        print("- with_batchnorm: ", self.with_batchnorm)
+        print("- with_batchnorm_dense: ", self.with_batchnorm_dense)
 
         if self.use_precip:
+            print("- with_batchnorm_cnn: ", self.with_batchnorm_cnn)
             print("- nb_filters: ", self.nb_filters)
             print("- nb_conv_blocks: ", self.nb_conv_blocks)
+            print("- inner_activation_cnn: ", self.inner_activation_cnn)
 
         print("- nb_dense_layers: ", self.nb_dense_layers)
         print("- nb_dense_units: ", self.nb_dense_units)
         print("- nb_dense_units_decreasing: ", self.nb_dense_units_decreasing)
-        print("- inner_activation: ", self.inner_activation)
+        print("- inner_activation_dense: ", self.inner_activation_dense)
 
     def is_ok(self):
         """
@@ -1061,8 +1063,21 @@ class ImpactDeepLearning(Impact):
                 precipitation = pickle.load(f)
 
         else:
-            # Adapt the spatial resolution
+            # Create a complete time series index with hourly frequency
+            data_start = precipitation.time.values[0]
+            data_end = precipitation.time.values[-1]
+            complete_time_index = pd.date_range(
+                start=data_start, end=data_end, freq='h')
+
+            # Reindex the data to the complete time series index
+            precipitation = precipitation.reindex(time=complete_time_index)
+
+            # Interpolate missing values
+            precipitation = precipitation.chunk({'time': -1})
+            precipitation = precipitation.interpolate_na(dim='time', method='linear')
+
             with dask.config.set(**{'array.slicing.split_large_chunks': False}):
+                # Adapt the spatial resolution
                 if self.options.precip_resolution != 1:
                     precipitation = precipitation.coarsen(
                         x=self.options.precip_resolution,
@@ -1070,8 +1085,7 @@ class ImpactDeepLearning(Impact):
                         boundary='trim'
                     ).mean()
 
-            # Aggregate the precipitation at the desired time step
-            with dask.config.set(**{'array.slicing.split_large_chunks': False}):
+                # Aggregate the precipitation at the desired time step
                 if self.options.precip_time_step != 1:
                     precipitation = precipitation.resample(
                         time=f'{self.options.precip_time_step}h',
