@@ -419,7 +419,7 @@ class ImpactDeepLearningOptions:
             '--factor-neg-reduction', type=int, default=10,
             help='The factor to reduce the number of negatives only for training')
         self.parser.add_argument(
-            '--weight-denominator', type=int, default=5,
+            '--weight-denominator', type=int, default=40,
             help='The weight denominator to reduce the negative class weights')
         self.parser.add_argument(
             '--random-state', type=int, default=42,
@@ -445,22 +445,22 @@ class ImpactDeepLearningOptions:
                  'If specified, the default class features will be overridden for'
                  'this class only (e.g. event).')
         self.parser.add_argument(
-            '--precip-window-size', type=int, default=8,
+            '--precip-window-size', type=int, default=2,
             help='The precipitation window size [km]')
         self.parser.add_argument(
             '--precip-resolution', type=int, default=1,
             help='The precipitation resolution [km]')
         self.parser.add_argument(
-            '--precip-time-step', type=int, default=1,
+            '--precip-time-step', type=int, default=12,
             help='The precipitation time step [h]')
         self.parser.add_argument(
-            '--precip-days-before', type=int, default=2,
+            '--precip-days-before', type=int, default=1,
             help='The number of days before the event to use for the precipitation')
         self.parser.add_argument(
             '--precip-days-after', type=int, default=1,
             help='The number of days after the event to use for the precipitation')
         self.parser.add_argument(
-            '--transform-static', type=str, default='iqr',
+            '--transform-static', type=str, default='normalize',
             help='The transformation to apply to the static data')
         self.parser.add_argument(
             '--transform-2d', type=str, default='iqr',
@@ -473,7 +473,7 @@ class ImpactDeepLearningOptions:
             '--no-log-transform-precip', action='store_true',
             help='Do not log-transform the precipitation')
         self.parser.add_argument(
-            '--batch-size', type=int, default=32,
+            '--batch-size', type=int, default=64,
             help='The batch size')
         self.parser.add_argument(
             '--epochs', type=int, default=100,
@@ -482,10 +482,10 @@ class ImpactDeepLearningOptions:
             '--learning-rate', type=float, default=0.001,
             help='The learning rate')
         self.parser.add_argument(
-            '--dropout-rate-cnn', type=float, default=0.2,
+            '--dropout-rate-cnn', type=float, default=0.5,
             help='The dropout rate for the CNN')
         self.parser.add_argument(
-            '--dropout-rate-dense', type=float, default=0.5,
+            '--dropout-rate-dense', type=float, default=0.2,
             help='The dropout rate for the dense layers')
         self.parser.add_argument(
             '--no-spatial-dropout', action='store_true',
@@ -500,10 +500,10 @@ class ImpactDeepLearningOptions:
             '--nb-filters', type=int, default=64,
             help='The number of filters')
         self.parser.add_argument(
-            '--nb-conv-blocks', type=int, default=3,
+            '--nb-conv-blocks', type=int, default=5,
             help='The number of convolutional blocks')
         self.parser.add_argument(
-            '--nb-dense-layers', type=int, default=4,
+            '--nb-dense-layers', type=int, default=5,
             help='The number of dense layers')
         self.parser.add_argument(
             '--nb-dense-units', type=int, default=256,
@@ -512,10 +512,10 @@ class ImpactDeepLearningOptions:
             '--dense-units-decreasing', action='store_true',
             help='The number of dense units should decrease')
         self.parser.add_argument(
-            '--inner-activation-cnn', type=str, default='relu',
+            '--inner-activation-cnn', type=str, default='elu',
             help='The inner activation function for the CNN')
         self.parser.add_argument(
-            '--inner-activation-dense', type=str, default='relu',
+            '--inner-activation-dense', type=str, default='leaky_relu',
             help='The inner activation function for the dense layers')
 
 

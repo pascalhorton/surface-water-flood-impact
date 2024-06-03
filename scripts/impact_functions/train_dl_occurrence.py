@@ -66,6 +66,7 @@ def main():
         precip = xr.open_mfdataset(files, parallel=False)
         precip = precip.rename_vars({'CPC': 'precip'})
         precip = precip.rename({'REFERENCE_TS': 'time'})
+
         if options.use_dem:
             precip = precip.sel(x=dem.x, y=dem.y)  # Select the same domain as the DEM
 

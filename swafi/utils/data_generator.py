@@ -13,9 +13,9 @@ from pathlib import Path
 class DataGenerator(keras.utils.Sequence):
     def __init__(self, event_props, x_static, x_precip, x_dem, y, batch_size=32,
                  shuffle=True, use_pickle_events_precip_data=False,
-                 use_pickle_full_precip_data=True, precip_window_size=12,
-                 precip_resolution=1, precip_time_step=1, precip_days_before=8,
-                 precip_days_after=3, tmp_dir=None, transform_static='standardize',
+                 use_pickle_full_precip_data=True, precip_window_size=2,
+                 precip_resolution=1, precip_time_step=12, precip_days_before=1,
+                 precip_days_after=1, tmp_dir=None, transform_static='normalize',
                  transform_2d='iqr', precip_transformation_domain='per-pixel',
                  log_transform_precip=True, mean_static=None, std_static=None,
                  mean_precip=None, std_precip=None, min_static=None,
