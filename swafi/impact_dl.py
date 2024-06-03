@@ -135,7 +135,7 @@ class ImpactDeepLearningOptions:
         self.precip_time_step = 0
         self.precip_days_before = 0
         self.precip_days_after = 1
-        self.transform_static = 'iqr'
+        self.transform_static = 'normalize'
         self.transform_2d = 'iqr'
         self.precip_trans_domain = 'per-pixel'
         self.log_transform_precip = True
@@ -253,7 +253,7 @@ class ImpactDeepLearningOptions:
                     'precip_days_after', 1, 3)
         if self.use_simple_features:
             self.transform_static = trial.suggest_categorical(
-                'transform_static', ['standardize', 'normalize', 'iqr'])
+                'transform_static', ['standardize', 'normalize'])
         if self.use_precip:
             self.transform_2d = trial.suggest_categorical(
                 'transform_2d', ['standardize', 'normalize', 'iqr'])
@@ -923,12 +923,7 @@ class ImpactDeepLearning(Impact):
             min_static=self.dg_train.min_static,
             max_static=self.dg_train.max_static,
             max_precip=self.dg_train.max_precip,
-            q25_static=self.dg_train.q25_static,
-            q50_static=self.dg_train.q50_static,
-            q75_static=self.dg_train.q75_static,
-            q25_precip=self.dg_train.q25_precip,
-            q50_precip=self.dg_train.q50_precip,
-            q75_precip=self.dg_train.q75_precip,
+            q95_precip=self.dg_train.q95_precip,
             debug=DEBUG
         )
 
@@ -964,12 +959,7 @@ class ImpactDeepLearning(Impact):
             min_static=self.dg_train.min_static,
             max_static=self.dg_train.max_static,
             max_precip=self.dg_train.max_precip,
-            q25_static=self.dg_train.q25_static,
-            q50_static=self.dg_train.q50_static,
-            q75_static=self.dg_train.q75_static,
-            q25_precip=self.dg_train.q25_precip,
-            q50_precip=self.dg_train.q50_precip,
-            q75_precip=self.dg_train.q75_precip,
+            q95_precip=self.dg_train.q95_precip,
             debug=DEBUG
         )
 
