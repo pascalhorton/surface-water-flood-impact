@@ -215,7 +215,7 @@ class ImpactDeepLearningOptions:
         if self.optimize_with_optuna:
             print("Optimizing with Optuna; some options will be ignored.")
 
-    def generate_for_optuna(self, trial):
+    def generate_for_optuna(self, trial, hp_to_optimize='default'):
         """
         Generate the options for Optuna.
 
@@ -223,6 +223,15 @@ class ImpactDeepLearningOptions:
         ----------
         trial: optuna.Trial
             The trial.
+        hp_to_optimize: list|str
+            The list of hyperparameters to optimize. Can be the string 'default'
+            Options are: weight_denominator, precip_window_size, precip_time_step,
+            precip_days_before, precip_resolution, precip_days_after, transform_static,
+            transform_2d, precip_trans_domain, log_transform_precip, batch_size,
+            learning_rate, dropout_rate_dense, dropout_rate_cnn, with_spatial_dropout,
+            with_batchnorm_cnn, with_batchnorm_dense, nb_filters, nb_conv_blocks,
+            nb_dense_layers, nb_dense_units, nb_dense_units_decreasing,
+            inner_activation_dense, inner_activation_cnn,
 
         Returns
         -------
@@ -234,69 +243,93 @@ class ImpactDeepLearningOptions:
 
         assert self.optimize_with_optuna, "Optimize with Optuna is not set to True"
 
-        # Force the optimization of all parameters
-        force_optim_all = False
+        if isinstance(hp_to_optimize, str) and hp_to_optimize == 'default':
+            hp_to_optimize = ['precip_window_size', 'precip_time_step',
+                              'transform_static', 'transform_2d', 'precip_days_before']
 
-        self.weight_denominator = trial.suggest_int(
-            'weight_denominator', 1, 100)
+        if 'weight_denominator' in hp_to_optimize:
+            self.weight_denominator = trial.suggest_int(
+                'weight_denominator', 1, 100)
+
         if self.use_precip:
-            self.precip_window_size = trial.suggest_categorical(
-                'precip_window_size', [2, 4, 6, 8, 12])
-            self.precip_resolution = trial.suggest_categorical(
-                'precip_resolution', [1])
-            self.precip_time_step = trial.suggest_categorical(
-                'precip_time_step', [1, 2, 3, 4, 6, 12, 24])
-            self.precip_days_before = trial.suggest_int(
-                'precip_days_before', 1, 4)
-            if force_optim_all:
+            if 'precip_window_size' in hp_to_optimize:
+                self.precip_window_size = trial.suggest_categorical(
+                    'precip_window_size', [2, 4, 6, 8, 12])
+            if 'precip_resolution' in hp_to_optimize:
+                self.precip_resolution = trial.suggest_categorical(
+                    'precip_resolution', [1, 2, 4])
+            if 'precip_time_step' in hp_to_optimize:
+                self.precip_time_step = trial.suggest_categorical(
+                    'precip_time_step', [1, 2, 3, 4, 6, 12, 24])
+            if 'precip_days_before' in hp_to_optimize:
+                self.precip_days_before = trial.suggest_int(
+                    'precip_days_before', 1, 3)
+            if 'precip_days_after' in hp_to_optimize:
                 self.precip_days_after = trial.suggest_int(
-                    'precip_days_after', 1, 3)
+                    'precip_days_after', 1, 2)
         if self.use_simple_features:
-            self.transform_static = trial.suggest_categorical(
-                'transform_static', ['standardize', 'normalize'])
+            if 'transform_static' in hp_to_optimize:
+                self.transform_static = trial.suggest_categorical(
+                    'transform_static', ['standardize', 'normalize'])
         if self.use_precip:
-            self.transform_2d = trial.suggest_categorical(
-                'transform_2d', ['standardize', 'normalize', 'iqr'])
-            if force_optim_all:
+            if 'transform_2d' in hp_to_optimize:
+                self.transform_2d = trial.suggest_categorical(
+                    'transform_2d', ['standardize', 'normalize', 'iqr'])
+            if 'precip_trans_domain' in hp_to_optimize:
                 self.precip_trans_domain = trial.suggest_categorical(
                     'precip_trans_domain', ['domain-average', 'per-pixel'])
+            if 'log_transform_precip' in hp_to_optimize:
                 self.log_transform_precip = trial.suggest_categorical(
                     'log_transform_precip', [True, False])
-        self.batch_size = trial.suggest_categorical(
-            'batch_size', [16, 32, 64, 128, 256, 512])
-        self.learning_rate = trial.suggest_float(
-            'learning_rate', 1e-4, 1e-2, log=True)
-        self.dropout_rate_dense = trial.suggest_float(
-            'dropout_rate_dense', 0.0, 0.5)
+
+        if 'batch_size' in hp_to_optimize:
+            self.batch_size = trial.suggest_categorical(
+                'batch_size', [16, 32, 64, 128, 256, 512])
+        if 'learning_rate' in hp_to_optimize:
+            self.learning_rate = trial.suggest_float(
+                'learning_rate', 1e-4, 1e-2, log=True)
+        if 'dropout_rate_dense' in hp_to_optimize:
+            self.dropout_rate_dense = trial.suggest_float(
+                'dropout_rate_dense', 0.0, 0.5)
         if self.use_precip:
-            self.dropout_rate_cnn = trial.suggest_float(
-                'dropout_rate_cnn', 0.0, 0.5)
-            self.with_spatial_dropout = trial.suggest_categorical(
-                'with_spatial_dropout', [True, False])
-            if force_optim_all:
+            if 'dropout_rate_cnn' in hp_to_optimize:
+                self.dropout_rate_cnn = trial.suggest_float(
+                    'dropout_rate_cnn', 0.0, 0.5)
+            if 'with_spatial_dropout' in hp_to_optimize:
+                self.with_spatial_dropout = trial.suggest_categorical(
+                    'with_spatial_dropout', [True, False])
+            if 'with_batchnorm_cnn' in hp_to_optimize:
                 self.with_batchnorm_cnn = trial.suggest_categorical(
                     'with_batchnorm_cnn', [True, False])
-        if force_optim_all:
+
+        if 'with_batchnorm_dense' in hp_to_optimize:
             self.with_batchnorm_dense = trial.suggest_categorical(
                 'with_batchnorm_dense', [True, False])
         if self.use_precip:
-            self.nb_filters = trial.suggest_categorical(
-                'nb_filters', [16, 32, 64, 128, 256])
-            self.nb_conv_blocks = trial.suggest_int(
-                'nb_conv_blocks', 1, 5)
-        self.nb_dense_layers = trial.suggest_int(
-            'nb_dense_layers', 1, 10)
-        self.nb_dense_units = trial.suggest_int(
-            'nb_dense_units', 16, 512)
-        self.nb_dense_units_decreasing = trial.suggest_categorical(
-            'nb_dense_units_decreasing', [True, False])
-        self.inner_activation_dense = trial.suggest_categorical(
-            'inner_activation_dense', ['relu', 'tanh', 'sigmoid', 'softmax', 'elu', 'selu', 'leaky_relu', 'linear'])
-        self.inner_activation_cnn = trial.suggest_categorical(
-            'inner_activation_cnn', ['relu', 'tanh', 'sigmoid', 'softmax', 'elu', 'selu', 'leaky_relu', 'linear'])
-        if force_optim_all:
-            if self.use_precip:
-                pass
+            if 'nb_filters' in hp_to_optimize:
+                self.nb_filters = trial.suggest_categorical(
+                    'nb_filters', [16, 32, 64, 128, 256])
+            if 'nb_conv_blocks' in hp_to_optimize:
+                self.nb_conv_blocks = trial.suggest_int(
+                    'nb_conv_blocks', 1, 5)
+
+        if 'nb_dense_layers' in hp_to_optimize:
+            self.nb_dense_layers = trial.suggest_int(
+                'nb_dense_layers', 1, 10)
+        if 'nb_dense_units' in hp_to_optimize:
+            self.nb_dense_units = trial.suggest_int(
+                'nb_dense_units', 16, 512)
+        if 'nb_dense_units_decreasing' in hp_to_optimize:
+            self.nb_dense_units_decreasing = trial.suggest_categorical(
+                'nb_dense_units_decreasing', [True, False])
+        if 'inner_activation_dense' in hp_to_optimize:
+            self.inner_activation_dense = trial.suggest_categorical(
+                'inner_activation_dense', ['relu', 'tanh', 'sigmoid', 'softmax',
+                                           'elu', 'selu', 'leaky_relu', 'linear'])
+        if 'inner_activation_cnn' in hp_to_optimize:
+            self.inner_activation_cnn = trial.suggest_categorical(
+                'inner_activation_cnn', ['relu', 'tanh', 'sigmoid', 'softmax',
+                                         'elu', 'selu', 'leaky_relu', 'linear'])
 
         # Check the input 2D size vs nb_conv_blocks
         pixels_nb = int(self.precip_window_size / self.precip_resolution)
