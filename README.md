@@ -273,7 +273,7 @@ All the hyperparameters of the model can be set as options of the script.
 The model can be trained using the following command:
 
 ```bash
-train_dl_occurrence.py [-h] [--run-id RUN_ID] [--optimize-with-optuna]
+train_cnn_occurrence.py [-h] [--run-id RUN_ID] [--optimize-with-optuna]
                        [--target-type TARGET_TYPE]
                        [--factor-neg-reduction FACTOR_NEG_REDUCTION]
                        [--weight-denominator WEIGHT_DENOMINATOR]

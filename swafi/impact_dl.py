@@ -3,7 +3,7 @@ Class to compute the impact function.
 """
 
 from .impact import Impact
-from .model_dl import DeepImpact
+from .model_cnn import ModelCnn
 from .utils.data_generator import DataGenerator
 from .utils.verification import compute_confusion_matrix, print_classic_scores, \
     assess_roc_auc, compute_score_binary
@@ -32,9 +32,9 @@ DEBUG = False
 epsilon = 1e-7  # a small constant to avoid division by zero
 
 
-class ImpactDeepLearningOptions:
+class ImpactCnnOptions:
     """
-    The Deep Learning Impact class options.
+    The CNN Deep Learning Impact class options.
 
     Attributes
     ----------
@@ -111,7 +111,7 @@ class ImpactDeepLearningOptions:
     """
 
     def __init__(self):
-        self.parser = argparse.ArgumentParser(description="SWAFI DL")
+        self.parser = argparse.ArgumentParser(description="SWAFI CNN")
         self._set_parser_arguments()
 
         # General options
@@ -164,7 +164,7 @@ class ImpactDeepLearningOptions:
         Make a copy of the object.
         Returns
         -------
-        ImpactDeepLearningOptions
+        ImpactCnnOptions
             The copy of the object.
         """
         return copy.deepcopy(self)
@@ -235,7 +235,7 @@ class ImpactDeepLearningOptions:
 
         Returns
         -------
-        ImpactDeepLearningOptions
+        ImpactCnnOptions
             The options.
         """
         if not has_optuna:
@@ -552,15 +552,15 @@ class ImpactDeepLearningOptions:
             help='The inner activation function for the dense layers')
 
 
-class ImpactDeepLearning(Impact):
+class ImpactCnn(Impact):
     """
-    The Deep Learning Impact class.
+    The CNN Deep Learning Impact class.
 
     Parameters
     ----------
     events: Events
         The events object.
-    options: ImpactDeepLearningOptions
+    options: ImpactCnnOptions
         The model options.
     reload_trained_models: bool
         Whether to reload the previously trained models or not.
@@ -593,7 +593,7 @@ class ImpactDeepLearning(Impact):
         Make a copy of the object.
         Returns
         -------
-        ImpactDeepLearning
+        ImpactCnn
             The copy of the object.
         """
         return copy.deepcopy(self)
@@ -1003,7 +1003,7 @@ class ImpactDeepLearning(Impact):
         """
         Define the model.
         """
-        self.model = DeepImpact(
+        self.model = ModelCnn(
             task=self.target_type,
             options=self.options,
             input_2d_size=input_2d_size,
@@ -1053,7 +1053,7 @@ class ImpactDeepLearning(Impact):
                 pickle.dumps(self.class_weight) +
                 pickle.dumps(self.options.random_state) +
                 pickle.dumps(self.target_type))
-        model_hashed_name = f'dl_model_{hashlib.md5(tag_model).hexdigest()}.pickle'
+        model_hashed_name = f'cnn_model_{hashlib.md5(tag_model).hexdigest()}.pickle'
         tmp_filename = self.tmp_dir / model_hashed_name
 
         return tmp_filename

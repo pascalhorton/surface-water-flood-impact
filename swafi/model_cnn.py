@@ -6,15 +6,15 @@ import math
 from keras import layers, models
 
 
-class DeepImpact(models.Model):
+class ModelCnn(models.Model):
     """
-    Model factory.
+    CNN model factory.
 
     Parameters
     ----------
     task: str
         The task. Options are: 'regression', 'classification'
-    options: ImpactDeepLearningOptions
+    options: ImpactCnnOptions
         The options.
     input_2d_size: ?list
         The input 2D size.
@@ -23,7 +23,7 @@ class DeepImpact(models.Model):
     """
 
     def __init__(self, task, options, input_2d_size, input_1d_size):
-        super(DeepImpact, self).__init__()
+        super(ModelCnn, self).__init__()
         self.model = None
         self.task = task
         self.options = options
