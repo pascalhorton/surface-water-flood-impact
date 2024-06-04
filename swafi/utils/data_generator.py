@@ -387,7 +387,7 @@ class DataGenerator(keras.utils.Sequence):
                 # Compute the mean and standard deviation of the DEM (non-temporal)
                 self.mean_dem = self.X_dem.mean(('x', 'y')).compute().values
                 self.std_dem = self.X_dem.std(('x', 'y')).compute().values
-            elif self.transform_2d == 'normalize':
+            elif self.transform_2d in ['normalize', 'iqr']:
                 # Compute the min and max of the DEM (non-temporal)
                 self.min_dem = self.X_dem.min(('x', 'y')).compute().values
                 self.max_dem = self.X_dem.max(('x', 'y')).compute().values
