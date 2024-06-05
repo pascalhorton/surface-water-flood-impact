@@ -135,8 +135,8 @@ class ImpactCnnOptions:
         self.precip_time_step = 0
         self.precip_days_before = 0
         self.precip_days_after = 1
-        self.transform_static = 'normalize'
-        self.transform_2d = 'iqr'
+        self.transform_static = 'standardize'
+        self.transform_2d = 'normalize'
         self.precip_trans_domain = 'per-pixel'
         self.log_transform_precip = True
 
@@ -274,7 +274,7 @@ class ImpactCnnOptions:
         if self.use_precip:
             if 'transform_2d' in hp_to_optimize:
                 self.transform_2d = trial.suggest_categorical(
-                    'transform_2d', ['standardize', 'normalize', 'iqr'])
+                    'transform_2d', ['standardize', 'normalize'])
             if 'precip_trans_domain' in hp_to_optimize:
                 self.precip_trans_domain = trial.suggest_categorical(
                     'precip_trans_domain', ['domain-average', 'per-pixel'])
@@ -493,10 +493,10 @@ class ImpactCnnOptions:
             '--precip-days-after', type=int, default=1,
             help='The number of days after the event to use for the precipitation')
         self.parser.add_argument(
-            '--transform-static', type=str, default='normalize',
+            '--transform-static', type=str, default='standardize',
             help='The transformation to apply to the static data')
         self.parser.add_argument(
-            '--transform-2d', type=str, default='iqr',
+            '--transform-2d', type=str, default='normalize',
             help='The transformation to apply to the 2D data')
         self.parser.add_argument(
             '--precip-trans-domain', type=str, default='per-pixel',
@@ -955,7 +955,6 @@ class ImpactCnn(Impact):
             std_precip=self.dg_train.std_precip,
             min_static=self.dg_train.min_static,
             max_static=self.dg_train.max_static,
-            max_precip=self.dg_train.max_precip,
             q95_precip=self.dg_train.q95_precip,
             debug=DEBUG
         )
@@ -991,7 +990,6 @@ class ImpactCnn(Impact):
             std_precip=self.dg_train.std_precip,
             min_static=self.dg_train.min_static,
             max_static=self.dg_train.max_static,
-            max_precip=self.dg_train.max_precip,
             q95_precip=self.dg_train.q95_precip,
             debug=DEBUG
         )
