@@ -16,6 +16,7 @@ from swafi.precip_combiprecip import CombiPrecip
 has_optuna = False
 try:
     import optuna
+
     has_optuna = True
     from optuna.storages import RDBStorage, JournalStorage, JournalFileStorage
 except ImportError:
@@ -73,12 +74,12 @@ def main():
     if not options.optimize_with_optuna:
         cnn = _setup_model(options, events, precip, dem)
         cnn.fit(dir_plots=config.get('OUTPUT_DIR'),
-               tag=options.run_name)
+                tag=options.run_name)
         cnn.assess_model_on_all_periods()
 
     else:
         cnn = optimize_model_with_optuna(options, events, precip, dem,
-                                        dir_plots=config.get('OUTPUT_DIR'))
+                                         dir_plots=config.get('OUTPUT_DIR'))
         cnn.assess_model_on_all_periods()
 
 

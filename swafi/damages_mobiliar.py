@@ -38,7 +38,7 @@ class DamagesMobiliar(Damages):
         dir_claims: str
             The path to the directory containing the claim files.
         pickle_file: str
-            The path to a pickle file to load.
+            The name of a pickle file to load.
         pickle_dir: str
             The path to the working directory for pickle files
         """
@@ -108,7 +108,7 @@ class DamagesMobiliar(Damages):
             'Wasser_Privat_GB']
 
         self._create_exposure_claims_df()
-        self._load_from_dump('damages_mobiliar')
+        self._load_from_dump('damages_mobiliar.pickle')
 
         if dir_exposure is not None:
             self.load_exposure(dir_exposure)
