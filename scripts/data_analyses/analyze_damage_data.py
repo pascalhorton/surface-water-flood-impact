@@ -36,10 +36,13 @@ def main():
     else:
         raise ValueError(f'Dataset {DATASET} not recognized.')
 
-    # Plot the monthly distribution of the number of claims for the different categories
-    df_claims_month = damages.claims
-    df_claims_month['date_claim'] = pd.to_datetime(
-        df_claims_month['date_claim'], errors='coerce')
+    # Format the date of the claims
+    df_claims = damages.claims
+    df_claims['date_claim'] = pd.to_datetime(
+        df_claims['date_claim'], errors='coerce')
+
+    # Compute the monthly sum of claims for each month per category
+    df_claims_month = df_claims.copy()
     df_claims_month['month'] = df_claims_month['date_claim'].dt.month
     df_claims_month = df_claims_month.drop(
         columns=['date_claim', 'mask_index', 'cid', 'x', 'y'])
@@ -59,6 +62,29 @@ def main():
         plt.tight_layout()
         plt.savefig(output_dir / f'monthly_distribution_tot_claims_{category}.png')
         plt.savefig(output_dir / f'monthly_distribution_tot_claims_{category}.pdf')
+
+    # For the whole domain, aggregate by date (sum)
+    df_claims_date = df_claims.copy()
+    df_claims_date = df_claims_date.drop(
+        columns=['mask_index', 'cid', 'x', 'y'])
+    df_claims_date = df_claims_date.groupby('date_claim').sum()
+    df_claims_date['date_claim'] = pd.to_datetime(df_claims_date.index, errors='coerce')
+    df_claims_date['month'] = df_claims_date['date_claim'].dt.month
+
+    # Plot the monthly distribution of the mean # of claims for different categories
+    for category in damages.claim_categories:
+        df_claims_date_cat = df_claims_date.copy()
+        df_claims_date_cat = df_claims_date_cat[df_claims_date_cat[category] > 0]
+        df_claims_date_cat = df_claims_date_cat.groupby('month').mean()
+        plt.figure(figsize=(8, 4))
+        plt.title(f'Monthly distribution of mean claims for category {category}')
+        plt.xlabel('Month')
+        plt.ylabel('Mean number of claims')
+        plt.bar(df_claims_date_cat.index, df_claims_date_cat[category])
+        plt.xticks(range(1, 13))
+        plt.tight_layout()
+        plt.savefig(output_dir / f'monthly_distribution_mean_claims_{category}.png')
+        plt.savefig(output_dir / f'monthly_distribution_mean_claims_{category}.pdf')
 
 
 
