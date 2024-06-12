@@ -22,7 +22,6 @@ elif DATASET == 'gvz':
     CLAIM_CATEGORIES = ['A', 'B']
 
 
-
 def main():
     if DATASET == 'mobiliar':
         damages = DamagesMobiliar(dir_exposure=config.get('DIR_EXPOSURE_MOBILIAR'),
@@ -61,19 +60,6 @@ def main():
         plt.savefig(output_dir / f'monthly_distribution_tot_claims_{category}.png')
         plt.savefig(output_dir / f'monthly_distribution_tot_claims_{category}.pdf')
 
-    # Plot the monthly distribution of the mean # of claims for different categories
-    for category in damages.claim_categories:
-        df_claims_month_mean = df_claims_month[df_claims_month[category] > 0]
-        df_claims_month_mean = df_claims_month_mean.groupby('month').mean()
-        plt.figure(figsize=(8, 4))
-        plt.title(f'Monthly distribution of # of claims for category {category}')
-        plt.xlabel('Month')
-        plt.ylabel('Mean number of claims')
-        plt.bar(df_claims_month_mean.index, df_claims_month_mean[category])
-        plt.xticks(range(1, 13))
-        plt.tight_layout()
-        plt.savefig(output_dir / f'monthly_distribution_nb_claims_{category}.png')
-        plt.savefig(output_dir / f'monthly_distribution_nb_claims_{category}.pdf')
 
 
 
