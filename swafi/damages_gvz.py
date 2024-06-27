@@ -113,6 +113,9 @@ class DamagesGvz(Damages):
             elif cat_type.lower() == 'most_likely_fluvial':
                 columns = [i for i in columns if i in ['E']]
                 continue
+            elif cat_type in ['A', 'B', 'C', 'D', 'E']:
+                columns = [i for i in columns if i in [cat_type]]
+                continue
             else:
                 raise ValueError(f"Unknown claim type: {cat_type}")
 

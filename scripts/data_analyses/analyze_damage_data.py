@@ -19,7 +19,7 @@ if DATASET == 'mobiliar':
     CLAIM_CATEGORIES = ['external', 'pluvial']
 elif DATASET == 'gvz':
     EXPOSURE_CATEGORIES = ['all_buildings']
-    CLAIM_CATEGORIES = ['A', 'B']
+    CLAIM_CATEGORIES = ['likely_pluvial']
 
 
 def main():
@@ -52,7 +52,7 @@ def main():
     for category in damages.claim_categories:
         sum_claims = df_claims_month_sum[category].sum()
         plt.figure(figsize=(8, 4))
-        plt.title(f'Monthly distribution of total claims for category {category} '
+        plt.title(f'Monthly distribution of the claims for category {category} '
                   f'(total: {sum_claims})')
         plt.xlabel('Month')
         plt.ylabel('Percentage of claims [%]')
@@ -62,6 +62,7 @@ def main():
         plt.tight_layout()
         plt.savefig(output_dir / f'monthly_distribution_tot_claims_{category}.png')
         plt.savefig(output_dir / f'monthly_distribution_tot_claims_{category}.pdf')
+        plt.close()
 
     # For the whole domain, aggregate by date (sum)
     df_claims_date = df_claims.copy()
@@ -77,7 +78,7 @@ def main():
         df_claims_date_cat = df_claims_date_cat[df_claims_date_cat[category] > 0]
         df_claims_date_cat = df_claims_date_cat.groupby('month').mean()
         plt.figure(figsize=(8, 4))
-        plt.title(f'Monthly distribution of mean claims for category {category}')
+        plt.title(f'Monthly distribution of the mean # of claims / event for category {category}')
         plt.xlabel('Month')
         plt.ylabel('Mean number of claims')
         plt.bar(df_claims_date_cat.index, df_claims_date_cat[category])
@@ -85,12 +86,40 @@ def main():
         plt.tight_layout()
         plt.savefig(output_dir / f'monthly_distribution_mean_claims_{category}.png')
         plt.savefig(output_dir / f'monthly_distribution_mean_claims_{category}.pdf')
+        plt.close()
 
-
-
-
+    # Select the categories of interest
     damages.select_categories_type(EXPOSURE_CATEGORIES, CLAIM_CATEGORIES)
 
+    # Analyze the occurrences of damages to the structure and/or content
+    if DATASET == 'mobiliar':
+        df_mobi = damages.claims
+
+        # Sum priv and sme
+        df_mobi['ext_struc_pluv'] = (
+            df_mobi['priv_ext_struc_pluv'] + df_mobi['sme_ext_struc_pluv'])
+        df_mobi['ext_cont_pluv'] = (
+            df_mobi['priv_ext_cont_pluv'] + df_mobi['sme_ext_cont_pluv'])
+        df_mobi['ext_both_pluv'] = (
+            df_mobi[['ext_struc_pluv', 'ext_cont_pluv']].min(axis=1))
+        df_mobi['ext_struc_only_pluv'] = (
+            df_mobi['ext_struc_pluv'] - df_mobi['ext_both_pluv'])
+        df_mobi['ext_cont_only_pluv'] = (
+            df_mobi['ext_cont_pluv'] - df_mobi['ext_both_pluv'])
+
+        nb_both = df_mobi['ext_both_pluv'].sum()
+        nb_struc = df_mobi['ext_struc_only_pluv'].sum()
+        nb_cont = df_mobi['ext_cont_only_pluv'].sum()
+        nb_tot = nb_both + nb_struc + nb_cont
+        pc_both = 100 * nb_both / nb_tot
+        pc_struc = 100 * nb_struc / nb_tot
+        pc_cont = 100 * nb_cont / nb_tot
+
+        print(f"Number of claims with both structure and content: {pc_both:.2f}%")
+        print(f"Number of claims with structure only: {pc_struc:.2f}%")
+        print(f"Number of claims with content only: {pc_cont:.2f}%")
+
+    # Analyze the distribution of the number of contracts and claims per cell
     df_contracts = damages.exposure
     df_contracts = df_contracts[['mask_index', 'selection', 'cid']]
 

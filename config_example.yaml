@@ -19,7 +19,7 @@ DIR_EXPOSURE_GVZ: ''
 DIR_CLAIMS_GVZ: ''
 
 # Path to the events parquet file
-EVENTS_PATH: ''
+EVENTS_PATH: 'path/to/prec_events_2005-2023_no_smoothing.parquet'
 
 # Path to the precipitation directory
 DIR_PRECIP: ''
