@@ -38,7 +38,7 @@ class Precipitation:
         self.resolution = None
         self.time_step = None
         self.data = None
-        self.data_pc = None
+        self.data_q = None
         self.missing = None
         self.domain = Domain(cid_file)
         self.tmp_dir = Path(config.get('TMP_DIR'))
@@ -46,7 +46,7 @@ class Precipitation:
     def load_data(self):
         raise NotImplementedError("This method must be implemented in the child class.")
 
-    def get_time_series(self, cid, start, end, size=3):
+    def get_time_series(self, cid, start, end, size=1):
         """
         Extract the precipitation time series for the given cell ID and the given
         period (between start and end).
@@ -60,7 +60,7 @@ class Precipitation:
         end: datetime.datetime
             The end of the period to extract
         size: int
-            The number of pixels to average on (default: 3x3)
+            The number of pixels to average on (default: 1x1)
 
         Returns
         -------
@@ -76,23 +76,26 @@ class Precipitation:
                              self.y_axis: slice(y + dy * dpx, y - dy * dpx),
                              self.time_axis: slice(start, end)})
 
+        if size == 1:
+            return dat[self.precip_var].to_numpy()
+
         return dat[self.precip_var].mean(dim=[self.x_axis, self.y_axis]).to_numpy()
 
-    def compute_percentiles(self):
+    def compute_quantiles(self):
         """
-        Compute the percentiles of the precipitation data.
+        Compute the quantiles of the precipitation data.
         """
         hash_tag = self._compute_hash_precip_full_data()
-        filename = f"precip_full_percentiles_{hash_tag}.pickle"
+        filename = f"precip_full_quantiles_{hash_tag}.pickle"
         tmp_filename = self.tmp_dir / filename
 
         if tmp_filename.exists():
-            print("Percentiles already computed. Loading from pickle file.")
+            print("Quantiles already computed. Loading from pickle file.")
             with open(tmp_filename, 'rb') as f:
-                self.data_pc = pickle.load(f)
+                self.data_q = pickle.load(f)
         else:
-            print("Computing percentiles.")
-            self.data_pc = np.zeros_like(self.data.as_numpy())
+            print("Computing quantiles.")
+            self.data_q = np.zeros_like(self.data.as_numpy())
 
             # Iterate over each (x, y) position
             for i in range(self.data.shape[0]):
@@ -103,15 +106,12 @@ class Precipitation:
                     # Compute the ranks
                     ranks = np.argsort(np.argsort(time_series))
 
-                    # Normalize the ranks to get percentile ranks
-                    percentile_ranks = ranks / len(time_series) * 100
-
-                    # Store the percentile ranks
-                    self.data_pc[i, j, :] = percentile_ranks
+                    # Normalize the ranks to get quantiles
+                    self.data_q[i, j, :] = ranks / len(time_series)
 
             # Save the precipitation
             with open(tmp_filename, 'wb') as f:
-                pickle.dump(self.data_pc, f)
+                pickle.dump(self.data_q, f)
 
     def _compute_hash_precip_full_data(self):
         tag_data = (

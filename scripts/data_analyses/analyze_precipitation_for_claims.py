@@ -1,6 +1,8 @@
 """
 This script analyzes the precipitation data characteristics for each claim.
 """
+import pandas as pd
+
 from swafi.config import Config
 from swafi.precip_combiprecip import CombiPrecip
 from swafi.damages_mobiliar import DamagesMobiliar
@@ -21,6 +23,12 @@ elif DATASET == 'gvz':
 
 
 def main():
+    # Load CombiPrecip files
+    precip = CombiPrecip()
+    precip.load_data(config.get('DIR_PRECIP'))
+    precip.compute_quantiles()
+
+    # Load the damage data
     if DATASET == 'mobiliar':
         damages = DamagesMobiliar(dir_exposure=config.get('DIR_EXPOSURE_MOBILIAR'),
                                   dir_claims=config.get('DIR_CLAIMS_MOBILIAR'),
@@ -34,10 +42,32 @@ def main():
     else:
         raise ValueError(f'Dataset {DATASET} not recognized.')
 
-    # Load CombiPrecip files
-    precip = CombiPrecip()
-    precip.load_data(config.get('DIR_PRECIP'))
-    precip.compute_percentiles()
+    # Select the categories of interest
+    damages.select_categories_type(EXPOSURE_CATEGORIES, CLAIM_CATEGORIES)
+
+    # Compute the precipitation time series for each claim
+    claims = damages.claims
+
+    # Add columns to the claims dataframe
+    claims['precip_max'] = None
+    claims['precip_dt'] = None
+
+    for claim in claims:
+        cid = claim['cid']
+        date_claim = claim['date_claim']
+        start = date_claim - pd.Timedelta(days=PRECIP_DAYS_BEFORE)
+        end = date_claim + pd.Timedelta(days=PRECIP_DAYS_AFTER)
+        precip_ts = precip.get_time_series(cid, start, end)
+
+        # Compute the max precipitation
+        claims['precip_max'] = precip_ts.max()
+
+        # Compute centrality of the max precipitation
+        idx_max = precip_ts.argmax()
+        claims['precip_dt'] = idx_max - len(precip_ts) // 2
+
+
+
 
 
 if __name__ == '__main__':
