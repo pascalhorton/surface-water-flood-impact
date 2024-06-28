@@ -92,7 +92,7 @@ class Precipitation:
                 self.data_pc = pickle.load(f)
         else:
             print("Computing percentiles.")
-            self.data_pc = np.zeros_like(self.data)
+            self.data_pc = np.zeros_like(self.data.as_numpy())
 
             # Iterate over each (x, y) position
             for i in range(self.data.shape[0]):
