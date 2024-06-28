@@ -1,11 +1,12 @@
 """
 Class to handle the precipitation data.
 """
-
 import pickle
 import hashlib
-import pandas as pd
 import dask
+import numpy as np
+import pandas as pd
+from pathlib import Path
 
 from .config import Config
 from .domain import Domain
@@ -37,9 +38,10 @@ class Precipitation:
         self.resolution = None
         self.time_step = None
         self.data = None
+        self.data_pc = None
         self.missing = None
         self.domain = Domain(cid_file)
-        self.tmp_dir = config.get('TMP_DIR')
+        self.tmp_dir = Path(config.get('TMP_DIR'))
 
     def load_data(self):
         raise NotImplementedError("This method must be implemented in the child class.")
@@ -75,6 +77,41 @@ class Precipitation:
                              self.time_axis: slice(start, end)})
 
         return dat[self.precip_var].mean(dim=[self.x_axis, self.y_axis]).to_numpy()
+
+    def compute_percentiles(self):
+        """
+        Compute the percentiles of the precipitation data.
+        """
+        hash_tag = self._compute_hash_precip_full_data()
+        filename = f"precip_full_percentiles_{hash_tag}.pickle"
+        tmp_filename = self.tmp_dir / filename
+
+        if tmp_filename.exists():
+            print("Percentiles already computed. Loading from pickle file.")
+            with open(tmp_filename, 'rb') as f:
+                self.data_pc = pickle.load(f)
+        else:
+            print("Computing percentiles.")
+            self.data_pc = np.zeros_like(self.data)
+
+            # Iterate over each (x, y) position
+            for i in range(self.data.shape[0]):
+                for j in range(self.data.shape[1]):
+                    # Extract the time series for the current pixel
+                    time_series = self.data[i, j, :]
+
+                    # Compute the ranks
+                    ranks = np.argsort(np.argsort(time_series))
+
+                    # Normalize the ranks to get percentile ranks
+                    percentile_ranks = ranks / len(time_series) * 100
+
+                    # Store the percentile ranks
+                    self.data_pc[i, j, :] = percentile_ranks
+
+            # Save the precipitation
+            with open(tmp_filename, 'wb') as f:
+                pickle.dump(self.data_pc, f)
 
     def _compute_hash_precip_full_data(self):
         tag_data = (
@@ -115,12 +152,13 @@ class Precipitation:
         complete_time_index = pd.date_range(
             start=data_start, end=data_end, freq='h')
 
-        # Reindex the data to the complete time series index
-        self.data = self.data.reindex(time=complete_time_index)
+        with dask.config.set(**{'array.slicing.split_large_chunks': False}):
+            # Reindex the data to the complete time series index
+            self.data = self.data.reindex(time=complete_time_index)
 
-        # Interpolate missing values
-        self.data = self.data.chunk({'time': -1})
-        self.data = self.data.interpolate_na(dim='time', method='linear')
+            # Interpolate missing values
+            self.data = self.data.chunk({'time': -1})
+            self.data = self.data.interpolate_na(dim='time', method='linear')
 
     def _resample(self):
         with dask.config.set(**{'array.slicing.split_large_chunks': False}):
