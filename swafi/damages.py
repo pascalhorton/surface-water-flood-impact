@@ -497,7 +497,7 @@ class Damages:
             overlap_window_end = min(date_window_end, event['e_end'])
             overlap = overlap_window_end - overlap_window_start
             overlap_hrs = max(0.0, overlap.total_seconds() / 3600)
-            pot_events.at[i, 'overlap_hrs'] = overlap_hrs
+            pot_events.at[i, 'overlap_hrs'] = int(round(overlap_hrs))
 
     @staticmethod
     def _compute_prior_to_claim(date_claim, pot_events):
