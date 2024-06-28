@@ -62,14 +62,11 @@ def main():
                 dem = rxr.open_rasterio(config.get('DEM_PATH'), masked=True).squeeze()
 
         # Load CombiPrecip files
-        data_path = config.get('DIR_PRECIP')
-        files = sorted(glob(f"{data_path}/*.nc"))
-        precip = xr.open_mfdataset(files, parallel=False)
-        precip = precip.rename_vars({'CPC': 'precip'})
-        precip = precip.rename({'REFERENCE_TS': 'time'})
+        precip = CombiPrecip(config.get('DIR_PRECIP'))
 
         if options.use_dem:
-            precip = precip.sel(x=dem.x, y=dem.y)  # Select the same domain as the DEM
+            # Select the same domain as the DEM
+            precip.data = precip.data.sel(x=dem.x, y=dem.y)
 
     if not options.optimize_with_optuna:
         cnn = _setup_model(options, events, precip, dem)
@@ -108,7 +105,7 @@ def optimize_model_with_optuna(options, events, precip=None, dem=None, dir_plots
         The options.
     events: pd.DataFrame
         The events.
-    precip: xr.Dataset|None
+    precip: Precipitation|None
         The precipitation data.
     dem: xr.Dataset|None
         The DEM data.

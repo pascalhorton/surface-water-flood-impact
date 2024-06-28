@@ -1062,7 +1062,7 @@ class ImpactCnn(Impact):
 
         Parameters
         ----------
-        precipitation: xarray.Dataset|None
+        precipitation: Precipitation|None
             The precipitation data.
         """
         if precipitation is None:
@@ -1072,57 +1072,15 @@ class ImpactCnn(Impact):
             print("Precipitation is not used and is therefore not loaded.")
             return
 
-        assert len(precipitation.dims) == 3, "Precipitation must be 3D"
-
-        hash_tag = self._compute_hash_precip_full_data(precipitation)
-        filename = f"precip_full_{hash_tag}.pickle"
-        tmp_filename = self.tmp_dir / filename
-
-        if tmp_filename.exists():
-            print("Precipitation already preloaded. Loading from pickle file.")
-            with open(tmp_filename, 'rb') as f:
-                precipitation = pickle.load(f)
-
-        else:
-            # Create a complete time series index with hourly frequency
-            data_start = precipitation.time.values[0]
-            data_end = precipitation.time.values[-1]
-            complete_time_index = pd.date_range(
-                start=data_start, end=data_end, freq='h')
-
-            # Reindex the data to the complete time series index
-            precipitation = precipitation.reindex(time=complete_time_index)
-
-            # Interpolate missing values
-            precipitation = precipitation.chunk({'time': -1})
-            precipitation = precipitation.interpolate_na(dim='time', method='linear')
-
-            with dask.config.set(**{'array.slicing.split_large_chunks': False}):
-                # Adapt the spatial resolution
-                if self.options.precip_resolution != 1:
-                    precipitation = precipitation.coarsen(
-                        x=self.options.precip_resolution,
-                        y=self.options.precip_resolution,
-                        boundary='trim'
-                    ).mean()
-
-                # Aggregate the precipitation at the desired time step
-                if self.options.precip_time_step != 1:
-                    precipitation = precipitation.resample(
-                        time=f'{self.options.precip_time_step}h',
-                    ).sum(dim='time')
-
-            # Save the precipitation
-            with open(tmp_filename, 'wb') as f:
-                pickle.dump(precipitation, f)
+        precipitation.load_data(resolution=self.options.precip_resolution,
+                                time_step=self.options.precip_time_step)
 
         # Check the shape of the precipitation and the DEM
         if self.dem is not None:
             assert precipitation['precip'].shape[1:] == self.dem.shape, \
                 "DEM and precipitation must have the same shape"
 
-        self.precipitation = precipitation
-        self.precipitation['time'] = pd.to_datetime(self.precipitation['time'])
+        self.precipitation = precipitation.data
 
     def set_dem(self, dem):
         """
@@ -1154,18 +1112,6 @@ class ImpactCnn(Impact):
             assert dem.shape == self.precipitation.isel(time=0).shape, \
                 "DEM and precipitation must have the same shape"
         self.dem = dem
-
-    def _compute_hash_precip_full_data(self, precipitation):
-        tag_data = (
-                pickle.dumps(self.options.precip_resolution) +
-                pickle.dumps(self.options.precip_time_step) +
-                pickle.dumps(precipitation['x']) +
-                pickle.dumps(precipitation['y']) +
-                pickle.dumps(precipitation['time'][0]) +
-                pickle.dumps(precipitation['time'][-1]) +
-                pickle.dumps(precipitation['precip'].shape))
-
-        return hashlib.md5(tag_data).hexdigest()
 
     @staticmethod
     def _plot_training_history(hist, dir_plots, show_plots, prefix=None):
