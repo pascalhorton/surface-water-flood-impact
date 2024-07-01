@@ -4,7 +4,6 @@ Class to handle the precipitation data.
 import pickle
 import hashlib
 import dask
-import numpy as np
 import pandas as pd
 from pathlib import Path
 
@@ -38,7 +37,6 @@ class Precipitation:
         self.resolution = None
         self.time_step = None
         self.data = None
-        self.data_q = None
         self.missing = None
         self.domain = Domain(cid_file)
         self.tmp_dir = Path(config.get('TMP_DIR'))
@@ -81,37 +79,28 @@ class Precipitation:
 
         return dat[self.precip_var].mean(dim=[self.x_axis, self.y_axis]).to_numpy()
 
-    def compute_quantiles(self):
+    def compute_quantiles_cid(self, cid):
         """
-        Compute the quantiles of the precipitation data.
+        Compute the quantiles of the precipitation data for each cell ID.
+
+        Parameters
+        ----------
+        cid: int
+            The cell ID for which to compute the quantiles
+
+        Returns
+        -------
+        np.array
+            The quantiles of the precipitation data
         """
-        hash_tag = self._compute_hash_precip_full_data()
-        filename = f"precip_full_quantiles_{hash_tag}.pickle"
-        tmp_filename = self.tmp_dir / filename
+        x, y = self.domain.get_cid_coordinates(cid)
+        time_series = self.data.sel({self.x_axis: x, self.y_axis: y})
+        time_series = time_series.load()
 
-        if tmp_filename.exists():
-            print("Quantiles already computed. Loading from pickle file.")
-            with open(tmp_filename, 'rb') as f:
-                self.data_q = pickle.load(f)
-        else:
-            print("Computing quantiles.")
-            self.data_q = np.zeros_like(self.data.as_numpy())
+        # Compute the ranks
+        quantiles = time_series.rank(dim='time', pct=True)
 
-            # Iterate over each (x, y) position
-            for i in range(self.data.shape[0]):
-                for j in range(self.data.shape[1]):
-                    # Extract the time series for the current pixel
-                    time_series = self.data[i, j, :]
-
-                    # Compute the ranks
-                    ranks = np.argsort(np.argsort(time_series))
-
-                    # Normalize the ranks to get quantiles
-                    self.data_q[i, j, :] = ranks / len(time_series)
-
-            # Save the precipitation
-            with open(tmp_filename, 'wb') as f:
-                pickle.dump(self.data_q, f)
+        return quantiles
 
     def _compute_hash_precip_full_data(self):
         tag_data = (
