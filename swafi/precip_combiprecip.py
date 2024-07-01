@@ -63,7 +63,7 @@ class CombiPrecip(Precipitation):
         self.time_step = time_step
 
         files = sorted(glob(f"{data_path}/*.nc"))
-        self.data = xr.open_mfdataset(files, parallel=False)
+        self.data = xr.open_mfdataset(files, parallel=False, chunks={'time': 1000})
         self.data = self.data.rename_vars({'CPC': 'precip'})
         self.data = self.data.rename({'REFERENCE_TS': 'time'})
 

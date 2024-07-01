@@ -152,7 +152,7 @@ class Precipitation:
         complete_time_index = pd.date_range(
             start=data_start, end=data_end, freq='h')
 
-        with dask.config.set(**{'array.slicing.split_large_chunks': False}):
+        with dask.config.set(**{'array.slicing.split_large_chunks': True}):
             # Reindex the data to the complete time series index
             self.data = self.data.reindex(time=complete_time_index)
 
@@ -161,7 +161,7 @@ class Precipitation:
             self.data = self.data.interpolate_na(dim='time', method='linear')
 
     def _resample(self):
-        with dask.config.set(**{'array.slicing.split_large_chunks': False}):
+        with dask.config.set(**{'array.slicing.split_large_chunks': True}):
             # Adapt the spatial resolution
             if self.resolution != 1:
                 self.data = self.data.coarsen(
