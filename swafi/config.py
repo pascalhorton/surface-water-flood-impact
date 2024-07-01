@@ -36,10 +36,12 @@ class Config:
             self.output_dir = self.output_dir / output_dir
             self.output_dir.mkdir(parents=True, exist_ok=True)
 
-    def get(self, key, default=None):
+    def get(self, key, default=None, do_raise=True):
         if key not in self.config:
             if default:
                 return default
+            if not do_raise:
+                return None
             raise RuntimeError(f"The entry '{key}' was not found in the config file.")
         return self.config[key]
 

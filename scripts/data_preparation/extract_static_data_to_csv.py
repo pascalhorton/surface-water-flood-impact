@@ -26,7 +26,7 @@ data_dir = Path(base_dir + '/' + SRC_DIR)
 
 
 def main():
-    domain = Domain(config.get('CID_PATH'))
+    domain = Domain()
 
     # List all .tif files in the source directory
     tif_files = [f for f in data_dir.glob('*.tif')]

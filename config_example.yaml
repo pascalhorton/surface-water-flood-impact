@@ -9,8 +9,8 @@ YEAR_END_MOBILIAR: 2022
 YEAR_START_GVZ: 2005
 YEAR_END_GVZ: 2022
 
-# CID (cells IDs) raster path
-CID_PATH: '..\files\cids.tif'
+# CID (cells IDs) raster path (not needed for Switzerland)
+CID_PATH: 'path/to/cids.tif'
 
 # Contract and damage data directories
 DIR_EXPOSURE_MOBILIAR: ''

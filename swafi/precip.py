@@ -27,7 +27,7 @@ class Precipitation:
             The path to the data files
         """
         if not cid_file:
-            cid_file = config.get('CID_PATH')
+            cid_file = config.get('CID_PATH', None, False)
 
         self.dataset = None
         self.data_path = data_path

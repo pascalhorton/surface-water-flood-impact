@@ -14,7 +14,7 @@ from swafi.domain import Domain
 config = Config()
 
 
-domain = Domain(config.get('CID_PATH'))
+domain = Domain()
 
 
 # Get quantile data to select the coordinates for the event calculation
