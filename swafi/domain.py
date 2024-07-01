@@ -29,6 +29,13 @@ class Domain:
 
         if not cid_file:
             cid_file = config.get('CID_PATH')
+        if not Path(cid_file).exists():
+            cid_file = cid_file.replace('../', '', 1)
+        if not Path(cid_file).exists():
+            cid_file = cid_file.replace('../', '', 1)
+        if not Path(cid_file).exists():
+            print(f"Working directory: {Path.cwd()}")
+            raise FileNotFoundError(f"The CID file {cid_file} does not exist.")
 
         self._load_from_dump()
         self._load_cid_file(cid_file)
