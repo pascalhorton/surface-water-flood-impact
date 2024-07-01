@@ -5,6 +5,7 @@ import pickle
 import hashlib
 import dask
 import pandas as pd
+import xarray as xr
 from pathlib import Path
 
 from .config import Config
@@ -28,6 +29,7 @@ class Precipitation:
         if not cid_file:
             cid_file = config.get('CID_PATH')
 
+        self.dataset = None
         self.data_path = data_path
         self.x_axis = 'x'
         self.y_axis = 'y'
@@ -79,6 +81,41 @@ class Precipitation:
 
         return dat[self.precip_var].mean(dim=[self.x_axis, self.y_axis]).to_numpy()
 
+    def save_nc_file_per_cid(self, cid, start, end):
+        """
+        Save the precipitation time series for the given cell ID and the given
+        period (between start and end) in a netCDF file.
+
+        Parameters
+        ----------
+        cid: int
+            The cell ID
+        start: datetime.datetime|str
+            The start of the period to extract
+        end: datetime.datetime|str
+            The end of the period to extract
+        """
+        if isinstance(start, str):
+            start = pd.to_datetime(start)
+        if isinstance(end, str):
+            end = pd.to_datetime(end)
+
+        y_start = start.year
+        y_end = end.year
+
+        hash_tag = self._compute_hash_single_cid(y_start, y_end)
+        filename = f"precip_cid_{cid}_{hash_tag}.nc"
+        tmp_filename = self.tmp_dir / filename
+
+        if tmp_filename.exists():
+            return
+
+        x, y = self.domain.get_cid_coordinates(cid)
+        time_series = self.data.sel({self.x_axis: x, self.y_axis: y,
+                                     self.time_axis: slice(start, end)})
+
+        time_series.to_netcdf(tmp_filename)
+
     def compute_quantiles_cid(self, cid):
         """
         Compute the quantiles of the precipitation data for each cell ID.
@@ -93,12 +130,40 @@ class Precipitation:
         np.array
             The quantiles of the precipitation data
         """
-        x, y = self.domain.get_cid_coordinates(cid)
-        time_series = self.data.sel({self.x_axis: x, self.y_axis: y})
-        time_series = time_series.load()
+        # Use pickles to store the data
+        hash_tag_pk = self._compute_hash_precip_full_data()
+        filename_pk = f"precip_quantiles_cid_{cid}_{hash_tag_pk}.pickle"
+        tmp_filename_pk = self.tmp_dir / filename_pk
+
+        if tmp_filename_pk.exists():
+            print(f"Loading quantiles for CID {cid} from pickle file.")
+            with open(tmp_filename_pk, 'rb') as f:
+                quantiles = pickle.load(f)
+                return quantiles
+
+        # Check if netCDF file of the time series exists
+        y_start = pd.to_datetime(self.data['time'][0].to_pandas()).year
+        y_end = pd.to_datetime(self.data['time'][-25].to_pandas()).year  # avoid Y+1
+        hash_tag_nc = self._compute_hash_single_cid(y_start, y_end)
+        filename_nc = f"precip_cid_{cid}_{hash_tag_nc}.nc"
+        tmp_filename_nc = self.tmp_dir / filename_nc
+
+        # Extract the time series
+        if tmp_filename_nc.exists():
+            print(f"Loading time series for CID {cid} from netCDF file.")
+            time_series = xr.open_dataset(tmp_filename_nc)
+        else:
+            x, y = self.domain.get_cid_coordinates(cid)
+            time_series = self.data.sel({self.x_axis: x, self.y_axis: y})
+            time_series = time_series.load()
+            time_series.to_netcdf(tmp_filename_nc)
 
         # Compute the ranks
         quantiles = time_series.rank(dim='time', pct=True)
+
+        # Save as pickle
+        with open(tmp_filename_pk, 'wb') as f:
+            pickle.dump(quantiles, f)
 
         return quantiles
 
@@ -112,6 +177,16 @@ class Precipitation:
                 pickle.dumps(self.data['time'][0]) +
                 pickle.dumps(self.data['time'][-1]) +
                 pickle.dumps(self.data['precip'].shape))
+
+        return hashlib.md5(tag_data).hexdigest()
+
+    def _compute_hash_single_cid(self, y_start, y_end):
+        tag_data = (
+                pickle.dumps(self.dataset) +
+                pickle.dumps(self.resolution) +
+                pickle.dumps(self.time_step) +
+                pickle.dumps(y_start) +
+                pickle.dumps(y_end))
 
         return hashlib.md5(tag_data).hexdigest()
 

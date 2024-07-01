@@ -41,6 +41,7 @@ class CombiPrecip(Precipitation):
             The path to the data files
         """
         super().__init__(cid_file, data_path)
+        self.dataset = "CombiPrecip"
 
     def load_data(self, data_path=None, resolution=1, time_step=1):
         """
