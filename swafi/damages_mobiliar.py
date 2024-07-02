@@ -119,6 +119,8 @@ class DamagesMobiliar(Damages):
         if pickle_file is not None:
             self.load_from_pickle(pickle_file)
 
+        self._remove_data_outside_period()
+
     def get_claim_categories_from_type(self, types):
         """
         Get the claim categories from types.

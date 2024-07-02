@@ -404,6 +404,17 @@ class Damages:
         self.claims = self.claims[self.claims.eid != 0]
         self.claims.reset_index(inplace=True, drop=True)
 
+    def _remove_data_outside_period(self):
+        # Ensure the 'date_claim' column is of datetime type
+        self.claims['date_claim'] = pd.to_datetime(
+            self.claims['date_claim'], errors='coerce')
+        self.claims = self.claims[
+            (self.claims.date_claim.dt.year >= self.year_start) &
+            (self.claims.date_claim.dt.year <= self.year_end)]
+        self.exposure = self.exposure[
+            (self.exposure.year >= self.year_start) &
+            (self.exposure.year <= self.year_end)]
+
     @staticmethod
     def _get_best_candidate(pot_events, window_days, stats):
         best_matches = pot_events.loc[pot_events['match_score'] ==
