@@ -26,6 +26,9 @@ def main(args):
     if args.end:
         cids = cids[cids <= int(args.end)]
 
+    if args.reverse:
+        cids = cids[::-1]
+
     for cid in cids:
         print(f'Processing CID {cid}')
         precip.save_nc_file_per_cid(cid, START_DATE, END_DATE)
@@ -36,6 +39,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("-s", "--start", help="Starting CID")
     parser.add_argument("-e", "--end", help="Ending CID")
+    parser.add_argument('--reverse', action='store_true',
+                        help='Process in reverse order')
 
     # Read arguments from command line
     args = parser.parse_args()
