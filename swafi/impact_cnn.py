@@ -588,6 +588,22 @@ class ImpactCnn(Impact):
         # Options that will be set later
         self.factor_neg_reduction = 1
 
+    def save_model(self, dir_output):
+        """
+        Save the model.
+
+        Parameters
+        ----------
+        dir_output: str
+            The directory where to save the model.
+        """
+        if self.model is None:
+            raise ValueError("Model not defined")
+
+        filename = f'{dir_output}/model_{self.options.run_name}.h5'
+        self.model.save(filename)
+        print(f"Model saved: {filename}")
+
     def copy(self):
         """
         Make a copy of the object.

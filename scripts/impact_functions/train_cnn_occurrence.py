@@ -27,6 +27,7 @@ USE_TXTFILE = True
 OPTUNA_RANDOM = True
 DATASET = 'gvz'  # 'mobiliar' or 'gvz'
 LABEL_EVENT_FILE = 'original_w_prior_pluvial_occurrence'
+SAVE_MODEL = True
 
 config = Config()
 
@@ -73,6 +74,8 @@ def main():
         cnn.fit(dir_plots=config.get('OUTPUT_DIR'),
                 tag=options.run_name)
         cnn.assess_model_on_all_periods()
+        if SAVE_MODEL:
+            cnn.save_model(dir_output=config.get('OUTPUT_DIR'))
 
     else:
         cnn = optimize_model_with_optuna(options, events, precip, dem,
