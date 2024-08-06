@@ -1,5 +1,11 @@
 # SWAFI - Surface Water Flood Impact
 
+## Install the package
+Install the released version of the package using the following command:
+```
+pip install swafi
+```
+
 ## Installing dependencies
 Install the requirements using the following command:
 ```
