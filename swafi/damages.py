@@ -404,6 +404,17 @@ class Damages:
         self.claims = self.claims[self.claims.eid != 0]
         self.claims.reset_index(inplace=True, drop=True)
 
+    def _remove_data_outside_period(self):
+        # Ensure the 'date_claim' column is of datetime type
+        self.claims['date_claim'] = pd.to_datetime(
+            self.claims['date_claim'], errors='coerce')
+        self.claims = self.claims[
+            (self.claims.date_claim.dt.year >= self.year_start) &
+            (self.claims.date_claim.dt.year <= self.year_end)]
+        self.exposure = self.exposure[
+            (self.exposure.year >= self.year_start) &
+            (self.exposure.year <= self.year_end)]
+
     @staticmethod
     def _get_best_candidate(pot_events, window_days, stats):
         best_matches = pot_events.loc[pot_events['match_score'] ==
@@ -497,7 +508,7 @@ class Damages:
             overlap_window_end = min(date_window_end, event['e_end'])
             overlap = overlap_window_end - overlap_window_start
             overlap_hrs = max(0.0, overlap.total_seconds() / 3600)
-            pot_events.at[i, 'overlap_hrs'] = overlap_hrs
+            pot_events.at[i, 'overlap_hrs'] = int(round(overlap_hrs))
 
     @staticmethod
     def _compute_prior_to_claim(date_claim, pot_events):

@@ -5,6 +5,7 @@ Class to define the spatial domain and cell IDs.
 import pickle
 import rasterio
 import numpy as np
+import importlib.resources as pkg_resources
 from pathlib import Path
 
 try:
@@ -12,26 +13,45 @@ try:
 except ImportError:
     nc4 = None
 
+from . import data
 from .config import Config
 
 config = Config()
 
 
 class Domain:
-    def __init__(self, cid_file=None):
+    def __init__(self, cid_file_path=None,
+                 cid_file_name='cids_switzerland_combiprecip.tif',
+                 epsg=2056):
         """
         The Domain class. Defines the cell IDs.
+
+        Parameters
+        ----------
+        cid_file_path: str|Path|None
+            The full path to the CID file (including name).
+        cid_file_name: str
+            The name of the CID file if part of the module data.
+        epsg: int
+            The EPSG code of the projection. Default is 2056 (CH1903+ / LV95).
         """
-        self.crs = config.get('CRS', 'EPSG:2056')
+        self.crs = config.get('CRS', f'EPSG:{epsg}')
         self.resolution = None
         self.cids = dict(extent=None, ids_map=np.array([]),
                          xs=np.array([]), ys=np.array([]))
 
-        if not cid_file:
-            cid_file = config.get('CID_PATH')
+        if not cid_file_path:
+            cid_file_path = config.get('CID_PATH', None, False)
+        if not cid_file_path:
+            with pkg_resources.path(data, cid_file_name) as p:
+                cid_file_path = str(p)
+
+        if not Path(cid_file_path).exists():
+            print(f"Working directory: {Path.cwd()}")
+            raise FileNotFoundError(f"The CID file {cid_file_path} does not exist.")
 
         self._load_from_dump()
-        self._load_cid_file(cid_file)
+        self._load_cid_file(cid_file_path)
 
     def check_projection(self, dataset, file):
         """

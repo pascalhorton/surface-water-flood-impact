@@ -61,34 +61,50 @@ The damages correspond to insurance claims per cell (pixel of the precipitation 
 The damages are managed by the `Damages` class in `swafi/damages.py` and are also handled internally as a Pandas dataframe.
 
 There are two classes of damages:
-- `DamagesMobiliar` from the file `swafi/damages_mobiliar.py`: handles the claims from the Swiss Mobiliar Insurance Company as GeoTIFF.
-  The dataset from the Mobiliar contains the following categories of claims:
 
-  | Name in swafi       | Client  | Ext/Int  | Object    | Flood type | Original file names               |
-  |---------------------|---------|----------|-----------|------------|-----------------------------------|
-  | sme_ext_cont_pluv   | SME     | external | content   | pluvial    | Ueberschwemmung_pluvial_KMU_FH    |
-  | sme_ext_cont_fluv   | SME     | external | content   | fluvial    | Ueberschwemmung_fluvial_KMU_FH    |
-  | sme_ext_struc_pluv  | SME     | external | structure | pluvial    | Ueberschwemmung_pluvial_KMU_GB    |
-  | sme_ext_struc_fluv  | SME     | external | structure | fluvial    | Ueberschwemmung_fluvial_KMU_GB    |
-  | sme_int_cont        | SME     | internal | content   |            | Wasser_KMU_FH                     |
-  | sme_int_struc       | SME     | internal | structure |            | Wasser_KMU_GB                     |
-  | priv_ext_cont_pluv  | Private | external | content   | pluvial    | Ueberschwemmung_pluvial_Privat_FH |
-  | priv_ext_cont_fluv  | Private | external | content   | fluvial    | Ueberschwemmung_fluvial_Privat_FH |
-  | priv_ext_struc_pluv | Private | external | structure | pluvial    | Ueberschwemmung_pluvial_Privat_GB |
-  | priv_ext_struc_fluv | Private | external | structure | fluvial    | Ueberschwemmung_fluvial_Privat_GB |
-  | priv_int_cont       | Private | internal | content   |            | Wasser_Privat_FH                  |
-  | priv_int_struc      | Private | internal | structure |            | Wasser_Privat_GB                  |
+#### DamagesMobiliar
+`DamagesMobiliar` from the file `swafi/damages_mobiliar.py`: handles the claims from the Swiss Mobiliar Insurance Company as GeoTIFF.
+The dataset from the Mobiliar contains the following categories of **exposure** (contracts):
 
-- `DamagesGVZ` from the file `swafi/damages_gvz.py`: handles the claims from the GVZ (Building insurance Canton Zurich) as netCDF.
-  The dataset from the GVZ contains the following categories:
+| Name in swafi       | Client  | Ext/Int  | Object    | Original file names         |
+|---------------------|---------|----------|-----------|-----------------------------|
+| sme_ext_cont        | SME     | external | content   | Vertraege_KMU_ES_FH_YYYY    |
+| sme_ext_struc       | SME     | external | structure | Vertraege_KMU_ES_GB_YYYY    |
+| sme_int_cont        | SME     | internal | content   | Vertraege_KMU_W_FH_YYYY     |
+| sme_int_struc       | SME     | internal | structure | Vertraege_KMU_W_GB_YYYY     |
+| priv_ext_cont       | Private | external | content   | Vertraege_Privat_ES_FH_YYYY |
+| priv_ext_struc      | Private | external | structure | Vertraege_Privat_ES_GB_YYYY |
+| priv_int_cont       | Private | internal | content   | Vertraege_Privat_W_FH_YYYY  |
+| priv_int_struc      | Private | internal | structure | Vertraege_Privat_W_GB_YYYY  |
 
-  | Name in swafi       | Original tag  |
-  |---------------------|---------------|
-  | most_likely_pluvial | A             |
-  | likely_pluvial      | A, B          |
-  | fluvial_or_pluvial  | A, B, C, D, E |
-  | likely_fluvial      | D, E          |
-  | most_likely_fluvial | E             |
+The dataset from the Mobiliar contains the following categories of **claims**:
+
+| Name in swafi       | Client  | Ext/Int  | Object    | Flood type | Original file names               |
+|---------------------|---------|----------|-----------|------------|-----------------------------------|
+| sme_ext_cont_pluv   | SME     | external | content   | pluvial    | Ueberschwemmung_pluvial_KMU_FH    |
+| sme_ext_cont_fluv   | SME     | external | content   | fluvial    | Ueberschwemmung_fluvial_KMU_FH    |
+| sme_ext_struc_pluv  | SME     | external | structure | pluvial    | Ueberschwemmung_pluvial_KMU_GB    |
+| sme_ext_struc_fluv  | SME     | external | structure | fluvial    | Ueberschwemmung_fluvial_KMU_GB    |
+| sme_int_cont        | SME     | internal | content   |            | Wasser_KMU_FH                     |
+| sme_int_struc       | SME     | internal | structure |            | Wasser_KMU_GB                     |
+| priv_ext_cont_pluv  | Private | external | content   | pluvial    | Ueberschwemmung_pluvial_Privat_FH |
+| priv_ext_cont_fluv  | Private | external | content   | fluvial    | Ueberschwemmung_fluvial_Privat_FH |
+| priv_ext_struc_pluv | Private | external | structure | pluvial    | Ueberschwemmung_pluvial_Privat_GB |
+| priv_ext_struc_fluv | Private | external | structure | fluvial    | Ueberschwemmung_fluvial_Privat_GB |
+| priv_int_cont       | Private | internal | content   |            | Wasser_Privat_FH                  |
+| priv_int_struc      | Private | internal | structure |            | Wasser_Privat_GB                  |
+
+#### DamagesGVZ
+`DamagesGVZ` from the file `swafi/damages_gvz.py`: handles the claims from the GVZ (Building insurance Canton Zurich) as netCDF.
+The dataset from the GVZ contains a single category of **exposure** (contracts): `all_buildings`, and the following categories of **claims**:
+
+| Name in swafi       | Original tag  |
+|---------------------|---------------|
+| most_likely_pluvial | A             |
+| likely_pluvial      | A, B          |
+| fluvial_or_pluvial  | A, B, C, D, E |
+| likely_fluvial      | D, E          |
+| most_likely_fluvial | E             |
 
 These classes are subclasses of the `Damages` class and implement the data loading according to the corresponding file format as well as their specific classification.
 
@@ -273,7 +289,7 @@ All the hyperparameters of the model can be set as options of the script.
 The model can be trained using the following command:
 
 ```bash
-train_dl_occurrence.py [-h] [--run-id RUN_ID] [--optimize-with-optuna]
+train_cnn_occurrence.py [-h] [--run-id RUN_ID] [--optimize-with-optuna]
                        [--target-type TARGET_TYPE]
                        [--factor-neg-reduction FACTOR_NEG_REDUCTION]
                        [--weight-denominator WEIGHT_DENOMINATOR]

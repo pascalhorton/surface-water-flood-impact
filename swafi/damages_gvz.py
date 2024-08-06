@@ -39,7 +39,7 @@ class DamagesGvz(Damages):
         dir_claims: str
             The path to the directory containing the claim files.
         pickle_file: str
-            The path to a pickle file to load.
+            The name of a pickle file to load.
         pickle_dir: str
             The path to the working directory for pickle files
         """
@@ -66,7 +66,7 @@ class DamagesGvz(Damages):
             'B']
 
         self._create_exposure_claims_df()
-        self._load_from_dump('damages_gvz')
+        self._load_from_dump('damages_gvz.pickle')
 
         if dir_exposure is not None:
             self.load_exposure(dir_exposure)
@@ -76,6 +76,8 @@ class DamagesGvz(Damages):
 
         if pickle_file is not None:
             self.load_from_pickle(pickle_file)
+
+        self._remove_data_outside_period()
 
     def get_claim_categories_from_type(self, types):
         """
@@ -112,6 +114,9 @@ class DamagesGvz(Damages):
                 continue
             elif cat_type.lower() == 'most_likely_fluvial':
                 columns = [i for i in columns if i in ['E']]
+                continue
+            elif cat_type in ['A', 'B', 'C', 'D', 'E']:
+                columns = [i for i in columns if i in [cat_type]]
                 continue
             else:
                 raise ValueError(f"Unknown claim type: {cat_type}")

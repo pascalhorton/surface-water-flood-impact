@@ -9,36 +9,33 @@ import pandas as pd
 from glob import glob
 
 from swafi.config import Config
-from swafi.impact_dl import ImpactDeepLearning, ImpactDeepLearningOptions
+from swafi.impact_cnn import ImpactCnn, ImpactCnnOptions
 from swafi.events import load_events_from_pickle
 from swafi.precip_combiprecip import CombiPrecip
 
 has_optuna = False
 try:
     import optuna
+
     has_optuna = True
-    from optuna.storages import RDBStorage
+    from optuna.storages import RDBStorage, JournalStorage, JournalFileStorage
 except ImportError:
     pass
 
+USE_SQLITE = False
+USE_TXTFILE = True
+OPTUNA_RANDOM = True
 DATASET = 'gvz'  # 'mobiliar' or 'gvz'
 LABEL_EVENT_FILE = 'original_w_prior_pluvial_occurrence'
+SAVE_MODEL = True
 
 config = Config()
 
 MISSING_DATES = CombiPrecip.missing
-# Additional missing dates for ZH region (specific radar data)
-MISSING_DATES.extend([
-    ('2005-01-06', '2005-01-06'),
-    ('2009-05-02', '2009-05-02'),
-    ('2017-04-16', '2017-04-16'),
-    ('2022-07-04', '2022-07-04'),
-    ('2022-12-30', '2022-12-30')
-])
 
 
 def main():
-    options = ImpactDeepLearningOptions()
+    options = ImpactCnnOptions()
     options.parse_args()
     # options.parser.print_help()
     options.print()
@@ -66,39 +63,36 @@ def main():
                 dem = rxr.open_rasterio(config.get('DEM_PATH'), masked=True).squeeze()
 
         # Load CombiPrecip files
-        data_path = config.get('DIR_PRECIP')
-        files = sorted(glob(f"{data_path}/*.nc"))
-        precip = xr.open_mfdataset(files, parallel=False)
-        precip = precip.rename_vars({'CPC': 'precip'})
-        precip = precip.rename({'REFERENCE_TS': 'time'})
-        if options.use_dem:
-            precip = precip.sel(x=dem.x, y=dem.y)  # Select the same domain as the DEM
+        precip = CombiPrecip()
+        precip.set_data_path(config.get('DIR_PRECIP'))
 
     if not options.optimize_with_optuna:
-        dl = _setup_model(options, events, precip, dem)
-        dl.fit(dir_plots=config.get('OUTPUT_DIR'),
-               tag=options.run_name)
-        dl.assess_model_on_all_periods()
+        cnn = _setup_model(options, events, precip, dem)
+        cnn.fit(dir_plots=config.get('OUTPUT_DIR'),
+                tag=options.run_name)
+        cnn.assess_model_on_all_periods()
+        if SAVE_MODEL:
+            cnn.save_model(dir_output=config.get('OUTPUT_DIR'))
 
     else:
-        dl = optimize_model_with_optuna(options, events, precip, dem,
-                                        dir_plots=config.get('OUTPUT_DIR'))
-        dl.assess_model_on_all_periods()
+        cnn = optimize_model_with_optuna(options, events, precip, dem,
+                                         dir_plots=config.get('OUTPUT_DIR'))
+        cnn.assess_model_on_all_periods()
 
 
 def _setup_model(options, events, precip, dem):
-    dl = ImpactDeepLearning(events, options=options)
-    dl.set_dem(dem)
-    dl.set_precipitation(precip)
-    if dl.options.use_simple_features:
-        dl.select_features(dl.options.simple_features)
-        dl.load_features(dl.options.simple_feature_classes)
-    dl.split_sample()
-    dl.reduce_negatives_for_training(dl.options.factor_neg_reduction)
-    dl.compute_balanced_class_weights()
-    dl.compute_corrected_class_weights(
-        weight_denominator=dl.options.weight_denominator)
-    return dl
+    cnn = ImpactCnn(events, options=options)
+    cnn.set_dem(dem)
+    cnn.set_precipitation(precip)
+    if cnn.options.use_simple_features:
+        cnn.select_features(cnn.options.simple_features)
+        cnn.load_features(cnn.options.simple_feature_classes)
+    cnn.split_sample()
+    cnn.reduce_negatives_for_training(cnn.options.factor_neg_reduction)
+    cnn.compute_balanced_class_weights()
+    cnn.compute_corrected_class_weights(
+        weight_denominator=cnn.options.weight_denominator)
+    return cnn
 
 
 def optimize_model_with_optuna(options, events, precip=None, dem=None, dir_plots=None):
@@ -107,11 +101,11 @@ def optimize_model_with_optuna(options, events, precip=None, dem=None, dir_plots
 
     Parameters
     ----------
-    options: ImpactDeepLearningOptions
+    options: ImpactCnnOptions
         The options.
     events: pd.DataFrame
         The events.
-    precip: xr.Dataset|None
+    precip: Precipitation|None
         The precipitation data.
     dem: xr.Dataset|None
         The DEM data.
@@ -121,9 +115,17 @@ def optimize_model_with_optuna(options, events, precip=None, dem=None, dir_plots
     if not has_optuna:
         raise ValueError("Optuna is not installed")
 
-    storage = RDBStorage(
-        url=f'sqlite:///{options.optuna_study_name}.db'
-    )
+    if USE_SQLITE:
+        storage = RDBStorage(
+            url=f'sqlite:///{options.optuna_study_name}.db',
+            engine_kwargs={"connect_args": {"timeout": 60.0}}
+        )
+    elif USE_TXTFILE:
+        storage = JournalStorage(
+            JournalFileStorage(f"{options.optuna_study_name}.log")
+        )
+    else:
+        raise ValueError("No storage specified")
 
     def optuna_objective(trial):
         """
@@ -141,19 +143,32 @@ def optimize_model_with_optuna(options, events, precip=None, dem=None, dir_plots
         """
         options_c = options.copy()
         options_c.generate_for_optuna(trial)
-        dl_trial = _setup_model(options_c, events, precip, dem)
+        cnn_trial = _setup_model(options_c, events, precip, dem)
 
         # Fit the model
-        dl_trial.fit(do_plot=False, silent=True)
+        cnn_trial.fit(do_plot=False, silent=True)
 
         # Assess the model
-        score = dl_trial.compute_f1_score(dl_trial.dg_val)
+        score = cnn_trial.compute_f1_score(cnn_trial.dg_val)
 
         return score
 
-    study = optuna.load_study(
-        study_name=options.optuna_study_name, storage=storage, direction='maximize'
-    )
+    sampler = None
+    if OPTUNA_RANDOM:
+        sampler = optuna.samplers.RandomSampler()
+
+    if USE_SQLITE or USE_TXTFILE:
+        study = optuna.load_study(
+            study_name=options.optuna_study_name,
+            storage=storage,
+            sampler=sampler
+        )
+    else:
+        study = optuna.create_study(
+            study_name=options.optuna_study_name,
+            direction='maximize',
+            sampler=sampler
+        )
     study.optimize(optuna_objective, n_trials=options.optuna_trials_nb)
 
     print("Number of finished trials: ", len(study.trials))
@@ -167,10 +182,10 @@ def optimize_model_with_optuna(options, events, precip=None, dem=None, dir_plots
     # Fit the model with the best parameters
     options_best = options.copy()
     options_best.generate_for_optuna(best_trial)
-    dl = _setup_model(options_best, events, precip, dem)
-    dl.fit(dir_plots=dir_plots, tag='best_optuna_' + dl.options.run_name)
+    cnn = _setup_model(options_best, events, precip, dem)
+    cnn.fit(dir_plots=dir_plots, tag='best_optuna_' + cnn.options.run_name)
 
-    return dl
+    return cnn
 
 
 if __name__ == '__main__':
