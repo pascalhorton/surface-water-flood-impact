@@ -15,7 +15,7 @@ config = Config()
 
 
 class Precipitation:
-    def __init__(self, cid_file=None, data_path=None):
+    def __init__(self, cid_file=None):
         """
         The generic Precipitation class. Must be netCDF files as relies on xarray.
 
@@ -23,14 +23,12 @@ class Precipitation:
         ----------
         cid_file: str|None
             The path to the CID file
-        data_path: str|None
-            The path to the data files
         """
         if not cid_file:
             cid_file = config.get('CID_PATH', None, False)
 
         self.dataset = None
-        self.data_path = data_path
+        self.data_path = None
         self.x_axis = 'x'
         self.y_axis = 'y'
         self.time_axis = 'time'
@@ -42,6 +40,17 @@ class Precipitation:
         self.missing = None
         self.domain = Domain(cid_file)
         self.tmp_dir = Path(config.get('TMP_DIR'))
+
+    def set_data_path(self, data_path):
+        """
+        Set the path to the precipitation data.
+
+        Parameters
+        ----------
+        data_path: str
+            The path to the precipitation data
+        """
+        self.data_path = data_path
 
     def load_data(self):
         raise NotImplementedError("This method must be implemented in the child class.")
@@ -169,7 +178,7 @@ class Precipitation:
 
     def _compute_hash_precip_full_data(self):
         tag_data = (
-                pickle.dumps(self.data_path) +
+                pickle.dumps(self.dataset) +
                 pickle.dumps(self.resolution) +
                 pickle.dumps(self.time_step) +
                 pickle.dumps(self.data['x']) +

@@ -63,11 +63,8 @@ def main():
                 dem = rxr.open_rasterio(config.get('DEM_PATH'), masked=True).squeeze()
 
         # Load CombiPrecip files
-        precip = CombiPrecip(config.get('DIR_PRECIP'))
-
-        if options.use_dem:
-            # Select the same domain as the DEM
-            precip.data = precip.data.sel(x=dem.x, y=dem.y)
+        precip = CombiPrecip()
+        precip.set_data_path(config.get('DIR_PRECIP'))
 
     if not options.optimize_with_optuna:
         cnn = _setup_model(options, events, precip, dem)

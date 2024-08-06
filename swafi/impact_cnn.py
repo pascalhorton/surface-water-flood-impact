@@ -1093,7 +1093,9 @@ class ImpactCnn(Impact):
 
         # Check the shape of the precipitation and the DEM
         if self.dem is not None:
-            assert precipitation['precip'].shape[1:] == self.dem.shape, \
+            # Select the same domain as the DEM
+            precipitation.data = precipitation.data.sel(x=self.dem.x, y=self.dem.y)
+            assert precipitation.data['precip'].shape[1:] == self.dem.shape, \
                 "DEM and precipitation must have the same shape"
 
         self.precipitation = precipitation.data

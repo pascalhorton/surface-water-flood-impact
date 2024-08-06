@@ -29,7 +29,7 @@ class CombiPrecip(Precipitation):
         ('2022-10-17', '2022-10-23'),
     ]
 
-    def __init__(self, cid_file=None, data_path=None):
+    def __init__(self, cid_file=None):
         """
         The Precipitation class for CombiPrecip data. Must be netCDF files.
 
@@ -37,10 +37,8 @@ class CombiPrecip(Precipitation):
         ----------
         cid_file: str|None
             The path to the CID file
-        data_path: str|None
-            The path to the data files
         """
-        super().__init__(cid_file, data_path)
+        super().__init__(cid_file)
         self.dataset = "CombiPrecip"
 
     def load_data(self, data_path=None, resolution=1, time_step=1):
@@ -60,10 +58,12 @@ class CombiPrecip(Precipitation):
             self.data_path = data_path
         if not self.data_path:
             self.data_path = config.get('DIR_PRECIP')
+        if not self.data_path:
+            raise FileNotFoundError("The data path was not provided.")
         self.resolution = resolution
         self.time_step = time_step
 
-        files = sorted(glob(f"{data_path}/*.nc"))
+        files = sorted(glob(f"{self.data_path}/*.nc"))
         self.data = xr.open_mfdataset(files, parallel=False, chunks={'time': 1000})
         self.data = self.data.rename_vars({'CPC': 'precip'})
         self.data = self.data.rename({'REFERENCE_TS': 'time'})
