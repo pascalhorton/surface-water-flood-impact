@@ -73,6 +73,7 @@ def main():
         cnn.assess_model_on_all_periods()
         if SAVE_MODEL:
             cnn.save_model(dir_output=config.get('OUTPUT_DIR'))
+            print(f"Model saved in {config.get('OUTPUT_DIR')}")
 
     else:
         cnn = optimize_model_with_optuna(options, events, precip, dem,

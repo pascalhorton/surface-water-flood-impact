@@ -68,6 +68,6 @@ class CombiPrecip(Precipitation):
         self.data = self.data.rename_vars({'CPC': 'precip'})
         self.data = self.data.rename({'REFERENCE_TS': 'time'})
 
-        # self._load_from_pickle()
+        self._load_from_pickle()
 
         assert len(self.data.dims) == 3, "Precipitation must be 3D"

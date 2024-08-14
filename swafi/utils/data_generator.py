@@ -547,7 +547,7 @@ class DataGenerator(keras.utils.Sequence):
         y_start = event[2] + precip_window_size_m / 2
         y_end = event[2] - precip_window_size_m / 2
 
-        # Select the corresponding precipitation data (5 days prior the event)
+        # Select the corresponding precipitation data
         x_precip_ev = self.X_precip['precip'].sel(
             time=slice(t_start, t_end),
             x=slice(x_start, x_end),
