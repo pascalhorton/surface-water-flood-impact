@@ -225,7 +225,7 @@ class Precipitation:
             subset = self._resample(subset)
             subset = subset.compute()
 
-            assert len(subset) == 3, "Precipitation must be 3D"
+            assert len(subset.dims) == 3, "Precipitation must be 3D"
 
             with open(tmp_filename, 'wb') as f:
                 pickle.dump(subset, f)
@@ -235,8 +235,7 @@ class Precipitation:
         # Create a complete time series index with hourly frequency
         data_start = data.time.values[0]
         data_start = pd.Timestamp(data_start).replace(day=1, hour=0)
-        data_end = data.time.values[-1]
-        data_end = pd.Timestamp(data_end).replace(day=31, hour=23)
+        data_end = (data_start + pd.offsets.MonthEnd(0)).replace(hour=23)
         complete_time_index = pd.date_range(
             start=data_start, end=data_end, freq='h')
 
