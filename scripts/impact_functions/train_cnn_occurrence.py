@@ -41,6 +41,17 @@ def main():
     options.print()
     assert options.is_ok()
 
+    year_start = None
+    year_end = None
+    if DATASET == 'mobiliar':
+        year_start = config.get('YEAR_START_MOBILIAR')
+        year_end = config.get('YEAR_END_MOBILIAR')
+    elif DATASET == 'gvz':
+        year_start = config.get('YEAR_START_GVZ')
+        year_end = config.get('YEAR_END_GVZ')
+    else:
+        raise ValueError(f'Dataset {DATASET} not recognized.')
+
     # Load events
     events_filename = f'events_{DATASET}_with_target_values_{LABEL_EVENT_FILE}.pickle'
     events = load_events_from_pickle(filename=events_filename)
@@ -63,7 +74,7 @@ def main():
                 dem = rxr.open_rasterio(config.get('DEM_PATH'), masked=True).squeeze()
 
         # Load CombiPrecip files
-        precip = CombiPrecip()
+        precip = CombiPrecip(year_start, year_end)
         precip.set_data_path(config.get('DIR_PRECIP'))
 
     if not options.optimize_with_optuna:

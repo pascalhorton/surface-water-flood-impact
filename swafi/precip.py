@@ -7,6 +7,7 @@ import dask
 import pandas as pd
 import xarray as xr
 from pathlib import Path
+from tqdm import tqdm
 
 from .config import Config
 from .domain import Domain
@@ -15,12 +16,16 @@ config = Config()
 
 
 class Precipitation:
-    def __init__(self, cid_file=None):
+    def __init__(self, year_start, year_end, cid_file=None):
         """
         The generic Precipitation class. Must be netCDF files as relies on xarray.
 
         Parameters
         ----------
+        year_start: int
+            The start year of the data
+        year_end: int
+            The end year of the data
         cid_file: str|None
             The path to the CID file
         """
@@ -34,11 +39,14 @@ class Precipitation:
         self.time_axis = 'time'
         self.precip_var = 'precip'
 
+        self.domain = Domain(cid_file)
         self.resolution = None
         self.time_step = None
-        self.data = None
+        self.year_start = year_start
+        self.year_end = year_end
+        self.time_index = pd.date_range(start=f'{year_start}-01-01',
+                                        end=f'{year_end}-12-31', freq='MS')
         self.missing = None
-        self.domain = Domain(cid_file)
         self.tmp_dir = Path(config.get('TMP_DIR'))
 
     def set_data_path(self, data_path):
@@ -176,16 +184,13 @@ class Precipitation:
 
         return quantiles
 
-    def _compute_hash_precip_full_data(self):
+    def _compute_hash_precip_full_data(self, data):
         tag_data = (
                 pickle.dumps(self.dataset) +
                 pickle.dumps(self.resolution) +
                 pickle.dumps(self.time_step) +
-                pickle.dumps(self.data['x']) +
-                pickle.dumps(self.data['y']) +
-                pickle.dumps(self.data['time'][0]) +
-                pickle.dumps(self.data['time'][-1]) +
-                pickle.dumps(self.data['precip'].shape))
+                pickle.dumps(data['x']) +
+                pickle.dumps(data['y']))
 
         return hashlib.md5(tag_data).hexdigest()
 
@@ -199,45 +204,58 @@ class Precipitation:
 
         return hashlib.md5(tag_data).hexdigest()
 
-    def _load_from_pickle(self):
-        hash_tag = self._compute_hash_precip_full_data()
-        filename = f"precip_full_{hash_tag}.pickle"
-        tmp_filename = self.tmp_dir / filename
+    def _generate_pickle_files(self, data):
+        hash_tag = self._compute_hash_precip_full_data(data)
 
-        if tmp_filename.exists():
-            print("Precipitation already preloaded. Loading from pickle file.")
-            with open(tmp_filename, 'rb') as f:
-                self.data = pickle.load(f)
-        else:
-            print("Loading data from original files.")
-            self._fill_missing_values()
-            self._resample()
-            self.data['time'] = pd.to_datetime(self.data['time'])
+        data['time'] = pd.to_datetime(data['time'])
 
-            # Save the precipitation
+        for idx in tqdm(range(len(self.time_index)),
+                        desc="Generating pickle files for precipitation data"):
+            t = self.time_index[idx]
+            filename = f"precip_full_{t.year}_{t.month}_{hash_tag}.pickle"
+            tmp_filename = self.tmp_dir / filename
+
+            if tmp_filename.exists():
+                continue
+
+            end_time = (t + pd.offsets.MonthEnd(0)).replace(
+                hour=23, minute=59, second=59)
+            subset = data.sel(time=slice(t, end_time)).compute()
+            subset = self._fill_missing_values(subset)
+            subset = self._resample(subset)
+            subset = subset.compute()
+
+            assert len(subset) == 3, "Precipitation must be 3D"
+
             with open(tmp_filename, 'wb') as f:
-                pickle.dump(self.data, f)
+                pickle.dump(subset, f)
 
-    def _fill_missing_values(self):
+    @staticmethod
+    def _fill_missing_values(data):
         # Create a complete time series index with hourly frequency
-        data_start = self.data.time.values[0]
-        data_end = self.data.time.values[-1]
+        data_start = data.time.values[0]
+        data_start = pd.Timestamp(data_start).replace(day=1, hour=0)
+        data_end = data.time.values[-1]
+        data_end = pd.Timestamp(data_end).replace(day=31, hour=23)
         complete_time_index = pd.date_range(
             start=data_start, end=data_end, freq='h')
 
-        with dask.config.set(**{'array.slicing.split_large_chunks': True}):
-            # Reindex the data to the complete time series index
-            self.data = self.data.reindex(time=complete_time_index)
+        if len(complete_time_index) != len(data.time):
+            with dask.config.set(**{'array.slicing.split_large_chunks': True}):
+                # Reindex the data to the complete time series index
+                data = data.reindex(time=complete_time_index)
 
-            # Interpolate missing values
-            self.data = self.data.chunk({'time': -1})
-            self.data = self.data.interpolate_na(dim='time', method='linear')
+                # Interpolate missing values
+                data = data.chunk({'time': -1})
+                data = data.interpolate_na(dim='time', method='linear')
 
-    def _resample(self):
+        return data
+
+    def _resample(self, data):
         with dask.config.set(**{'array.slicing.split_large_chunks': True}):
             # Adapt the spatial resolution
             if self.resolution != 1:
-                self.data = self.data.coarsen(
+                data = data.coarsen(
                     x=self.resolution,
                     y=self.resolution,
                     boundary='trim'
@@ -245,6 +263,8 @@ class Precipitation:
 
             # Aggregate the precipitation at the desired time step
             if self.time_step != 1:
-                self.data = self.data.resample(
+                data = data.resample(
                     time=f'{self.time_step}h',
                 ).sum(dim='time')
+
+        return data

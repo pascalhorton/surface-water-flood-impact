@@ -29,16 +29,20 @@ class CombiPrecip(Precipitation):
         ('2022-10-17', '2022-10-23'),
     ]
 
-    def __init__(self, cid_file=None):
+    def __init__(self, year_start, year_end, cid_file=None):
         """
         The Precipitation class for CombiPrecip data. Must be netCDF files.
 
         Parameters
         ----------
+        year_start: int
+            The start year of the data
+        year_end: int
+            The end year of the data
         cid_file: str|None
             The path to the CID file
         """
-        super().__init__(cid_file)
+        super().__init__(year_start, year_end, cid_file)
         self.dataset = "CombiPrecip"
 
     def load_data(self, data_path=None, resolution=1, time_step=1):
@@ -64,10 +68,8 @@ class CombiPrecip(Precipitation):
         self.time_step = time_step
 
         files = sorted(glob(f"{self.data_path}/*.nc"))
-        self.data = xr.open_mfdataset(files, parallel=False, chunks={'time': 1000})
-        self.data = self.data.rename_vars({'CPC': 'precip'})
-        self.data = self.data.rename({'REFERENCE_TS': 'time'})
+        data = xr.open_mfdataset(files, parallel=False, chunks={'time': 1000})
+        data = data.rename_vars({'CPC': 'precip'})
+        data = data.rename({'REFERENCE_TS': 'time'})
 
-        self._load_from_pickle()
-
-        assert len(self.data.dims) == 3, "Precipitation must be 3D"
+        self._generate_pickle_files(data)
