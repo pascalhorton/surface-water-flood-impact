@@ -16,9 +16,8 @@ class DataGenerator(keras.utils.Sequence):
                  use_pickle_full_precip_data=True, precip_window_size=2,
                  precip_resolution=1, precip_time_step=12, precip_days_before=1,
                  precip_days_after=1, tmp_dir=None, transform_static='standardize',
-                 transform_2d='normalize', precip_transformation_domain='per-pixel',
-                 log_transform_precip=True, mean_static=None, std_static=None,
-                 mean_precip=None, std_precip=None, min_static=None,
+                 transform_2d='normalize', log_transform_precip=True, mean_static=None,
+                 std_static=None, mean_precip=None, std_precip=None, min_static=None,
                  max_static=None, q95_precip=None, debug=False):
         """
         Data generator class.
@@ -68,9 +67,6 @@ class DataGenerator(keras.utils.Sequence):
         transform_2d: str
             The transformation to apply to the 2D data.
             Options: 'normalize' or 'standardize'.
-        precip_transformation_domain: str
-            How to apply the transformation of the precipitation data:
-            'domain-average', or 'per-pixel'.
         log_transform_precip: bool
             Whether to log-transform the precipitation data or not.
         mean_static: np.array
@@ -109,7 +105,6 @@ class DataGenerator(keras.utils.Sequence):
 
         self.transform_static = transform_static
         self.transform_2d = transform_2d
-        self.precip_transformation_domain = precip_transformation_domain
         self.log_transform_precip = log_transform_precip
 
         self.mean_static = mean_static
@@ -419,27 +414,14 @@ class DataGenerator(keras.utils.Sequence):
 
         # Otherwise, compute the statistics and save them to a pickle file
         print('Computing precipitation statistics')
-        if self.precip_transformation_domain == 'domain-average':
-            if self.transform_2d == 'standardize':
-                self.mean_precip = self.X_precip['precip'].mean(
-                    ('time', 'x', 'y')).compute().values
-                self.std_precip = self.X_precip['precip'].std('time').mean(
-                    ('x', 'y')).compute().values
-            elif self.transform_2d == 'normalize':
-                self.q95_precip = self.X_precip['precip'].quantile(
-                    0.95, dim=('time', 'x', 'y')).compute().values
-        elif self.precip_transformation_domain == 'per-pixel':
-            if self.transform_2d == 'standardize':
-                self.mean_precip = self.X_precip['precip'].mean(
-                    'time').compute().values
-                self.std_precip = self.X_precip['precip'].std(
-                    'time').compute().values
-            elif self.transform_2d == 'normalize':
-                self.q95_precip = self.X_precip['precip'].chunk(dict(time=-1)).quantile(
-                    0.95, dim='time').compute().values
-        else:
-            raise ValueError(
-                f'Unknown option: {self.precip_transformation_domain}')
+        if self.transform_2d == 'standardize':
+            self.mean_precip = self.X_precip['precip'].mean(
+                'time').compute().values
+            self.std_precip = self.X_precip['precip'].std(
+                'time').compute().values
+        elif self.transform_2d == 'normalize':
+            self.q95_precip = self.X_precip['precip'].chunk(dict(time=-1)).quantile(
+                0.95, dim='time').compute().values
 
         # Save to pickle file
         if self.transform_2d == 'standardize':
@@ -454,7 +436,6 @@ class DataGenerator(keras.utils.Sequence):
     def _compute_hash_precip_full(self):
         tag_data = (
                 pickle.dumps(self.transform_2d) +
-                pickle.dumps(self.precip_transformation_domain) +
                 pickle.dumps(self.log_transform_precip) +
                 pickle.dumps(self.X_precip['x']) +
                 pickle.dumps(self.X_precip['y']) +
@@ -476,7 +457,6 @@ class DataGenerator(keras.utils.Sequence):
                 pickle.dumps(self.precip_days_after) +
                 pickle.dumps(self.get_channels_nb()) +
                 pickle.dumps(self.transform_2d) +
-                pickle.dumps(self.precip_transformation_domain) +
                 pickle.dumps(self.log_transform_precip) +
                 pickle.dumps(with_dem) +
                 pickle.dumps(self.X_precip['x']) +

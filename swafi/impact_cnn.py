@@ -73,9 +73,6 @@ class ImpactCnnOptions:
     transform_2d: str
         The transformation to apply to the 2D data.
         Options are: 'standardize', 'normalize'.
-    precip_trans_domain: str
-        The precipitation transformation domain.
-        Options are: 'domain-average', 'per-pixel'.
     log_transform_precip: bool
         Whether to log-transform the precipitation or not.
     batch_size: int
@@ -137,7 +134,6 @@ class ImpactCnnOptions:
         self.precip_days_after = 1
         self.transform_static = 'standardize'
         self.transform_2d = 'normalize'
-        self.precip_trans_domain = 'per-pixel'
         self.log_transform_precip = True
 
         # Training options
@@ -194,7 +190,6 @@ class ImpactCnnOptions:
         self.precip_days_after = args.precip_days_after
         self.transform_static = args.transform_static
         self.transform_2d = args.transform_2d
-        self.precip_trans_domain = args.precip_trans_domain
         self.log_transform_precip = not args.no_log_transform_precip
         self.batch_size = args.batch_size
         self.epochs = args.epochs
@@ -227,8 +222,8 @@ class ImpactCnnOptions:
             The list of hyperparameters to optimize. Can be the string 'default'
             Options are: weight_denominator, precip_window_size, precip_time_step,
             precip_days_before, precip_resolution, precip_days_after, transform_static,
-            transform_2d, precip_trans_domain, log_transform_precip, batch_size,
-            learning_rate, dropout_rate_dense, dropout_rate_cnn, with_spatial_dropout,
+            transform_2d, log_transform_precip, batch_size, learning_rate,
+            dropout_rate_dense, dropout_rate_cnn, with_spatial_dropout,
             with_batchnorm_cnn, with_batchnorm_dense, nb_filters, nb_conv_blocks,
             nb_dense_layers, nb_dense_units, nb_dense_units_decreasing,
             inner_activation_dense, inner_activation_cnn,
@@ -275,9 +270,6 @@ class ImpactCnnOptions:
             if 'transform_2d' in hp_to_optimize:
                 self.transform_2d = trial.suggest_categorical(
                     'transform_2d', ['standardize', 'normalize'])
-            if 'precip_trans_domain' in hp_to_optimize:
-                self.precip_trans_domain = trial.suggest_categorical(
-                    'precip_trans_domain', ['domain-average', 'per-pixel'])
             if 'log_transform_precip' in hp_to_optimize:
                 self.log_transform_precip = trial.suggest_categorical(
                     'log_transform_precip', [True, False])
@@ -376,7 +368,6 @@ class ImpactCnnOptions:
 
         if self.use_precip:
             print("- transform_2d: ", self.transform_2d)
-            print("- precip_trans_domain: ", self.precip_trans_domain)
             print("- log_transform_precip: ", self.log_transform_precip)
 
         print("- batch_size: ", self.batch_size)
@@ -498,10 +489,6 @@ class ImpactCnnOptions:
         self.parser.add_argument(
             '--transform-2d', type=str, default='normalize',
             help='The transformation to apply to the 2D data')
-        self.parser.add_argument(
-            '--precip-trans-domain', type=str, default='per-pixel',
-            help='The precipitation transformation domain. '
-                 'Options are: domain-average, per-pixel')
         self.parser.add_argument(
             '--no-log-transform-precip', action='store_true',
             help='Do not log-transform the precipitation')
@@ -935,7 +922,6 @@ class ImpactCnn(Impact):
             tmp_dir=self.tmp_dir,
             transform_static=self.options.transform_static,
             transform_2d=self.options.transform_2d,
-            precip_transformation_domain=self.options.precip_trans_domain,
             log_transform_precip=self.options.log_transform_precip,
             debug=DEBUG
         )
@@ -963,7 +949,6 @@ class ImpactCnn(Impact):
             tmp_dir=self.tmp_dir,
             transform_static=self.options.transform_static,
             transform_2d=self.options.transform_2d,
-            precip_transformation_domain=self.options.precip_trans_domain,
             log_transform_precip=self.options.log_transform_precip,
             mean_static=self.dg_train.mean_static,
             std_static=self.dg_train.std_static,
@@ -998,7 +983,6 @@ class ImpactCnn(Impact):
             tmp_dir=self.tmp_dir,
             transform_static=self.options.transform_static,
             transform_2d=self.options.transform_2d,
-            precip_transformation_domain=self.options.precip_trans_domain,
             log_transform_precip=self.options.log_transform_precip,
             mean_static=self.dg_train.mean_static,
             std_static=self.dg_train.std_static,
