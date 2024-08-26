@@ -16,7 +16,7 @@ year_end = 2022
 def main(args):
     # Load CombiPrecip files
     precip = CombiPrecip(year_start=year_start, year_end=year_end)
-    precip.load_data(config.get('DIR_PRECIP'))
+    precip.prepare_data(config.get('DIR_PRECIP'))
 
     cids = np.unique(precip.domain.cids['ids_map'])
     cids = cids[cids != 0]

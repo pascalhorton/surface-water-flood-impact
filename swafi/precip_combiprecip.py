@@ -43,9 +43,9 @@ class CombiPrecip(Precipitation):
             The path to the CID file
         """
         super().__init__(year_start, year_end, cid_file)
-        self.dataset = "CombiPrecip"
+        self.dataset_name = "CombiPrecip"
 
-    def load_data(self, data_path=None, resolution=1, time_step=1):
+    def prepare_data(self, data_path=None, resolution=1, time_step=1):
         """
         Load the precipitation data from the given path.
 

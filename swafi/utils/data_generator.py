@@ -12,12 +12,11 @@ from pathlib import Path
 
 class DataGenerator(keras.utils.Sequence):
     def __init__(self, event_props, x_static, x_precip, x_dem, y, batch_size=32,
-                 shuffle=True, use_pickle_events_precip_data=False,
-                 use_pickle_full_precip_data=True, precip_window_size=2,
-                 precip_resolution=1, precip_time_step=12, precip_days_before=1,
-                 precip_days_after=1, tmp_dir=None, transform_static='standardize',
-                 transform_2d='normalize', log_transform_precip=True, mean_static=None,
-                 std_static=None, mean_precip=None, std_precip=None, min_static=None,
+                 shuffle=True, precip_window_size=2, precip_resolution=1,
+                 precip_time_step=12, precip_days_before=1, precip_days_after=1,
+                 tmp_dir=None, transform_static='standardize', transform_2d='normalize',
+                 log_transform_precip=True, mean_static=None, std_static=None,
+                 mean_precip=None, std_precip=None, min_static=None,
                  max_static=None, q95_precip=None, debug=False):
         """
         Data generator class.
@@ -32,8 +31,8 @@ class DataGenerator(keras.utils.Sequence):
             The event properties (2D; dates and coordinates).
         x_static: np.array
             The static predictor variables (0D).
-        x_precip: xarray.Dataset
-            The precipitation fields (3D).
+        x_precip: Precipitation
+            The precipitation data.
         x_dem: xarray.DataArray
             The DEM (2D).
         y: np.array
@@ -42,13 +41,6 @@ class DataGenerator(keras.utils.Sequence):
             The batch size.
         shuffle: bool
             Whether to shuffle the data or not.
-        use_pickle_events_precip_data: bool
-            Whether to use pickle files to handle the precipitation data for each event.
-            This option is not recommended as it generates a lot of files and is not
-            significantly faster.
-        use_pickle_full_precip_data: bool
-            Whether to load the full data into memory and dump it to a pickle file.
-            This option is recommended as it speeds up the data loading.
         precip_window_size: int
             The window size for the 2D predictors [km].
         precip_resolution: int
@@ -95,8 +87,6 @@ class DataGenerator(keras.utils.Sequence):
         self.debug = debug
         self.warning_counter = 0
         self.channels_nb = None
-        self.use_pickle_events_precip_data = use_pickle_events_precip_data
-        self.use_pickle_full_precip_data = use_pickle_full_precip_data
         self.precip_window_size = precip_window_size
         self.precip_resolution = precip_resolution
         self.precip_time_step = precip_time_step
@@ -155,30 +145,8 @@ class DataGenerator(keras.utils.Sequence):
             self.X_dem.load()
 
     def prepare_precip_data(self):
-        if self.use_pickle_events_precip_data:
-            print('Pre-loading precipitation events')
-            # Check if all the pickle files exist.
-            full_precip_data_loaded = False
-            for i, event in enumerate(self.event_props):
-                file_precip = self._get_precip_event_filename(event)
-                if not file_precip.exists():
-                    if not full_precip_data_loaded:
-                        print('Loading data into RAM')
-                        if self.use_pickle_full_precip_data:
-                            self._load_dump_precip_data()
-                        full_precip_data_loaded = True
-
-                    # Create directories if it does not exist
-                    dir_name = os.path.dirname(file_precip)
-                    os.makedirs(dir_name, exist_ok=True)
-
-                    x_2d = self._extract_precipitation(event)
-                    with open(file_precip, 'wb') as f:
-                        pickle.dump(x_2d, f)
-
-        elif self.use_pickle_full_precip_data:
-            print('Loading data into RAM')
-            self._load_dump_precip_data()
+        print('Loading data into RAM')
+        self._load_dump_precip_data()
 
     def get_channels_nb(self):
         """ Get the number of channels of the 2D predictors. """
@@ -484,22 +452,15 @@ class DataGenerator(keras.utils.Sequence):
         x_static = None
 
         # Select the 2D data
-        if self.X_precip is not None or self.use_pickle_events_precip_data:
+        if self.X_precip is not None:
             pixels_nb = int(self.precip_window_size / self.precip_resolution)
             x_2d = np.zeros((self.batch_size,
                              pixels_nb,
                              pixels_nb,
                              self.get_channels_nb()))
 
-            if self.use_pickle_events_precip_data:
-                for i_b, event in enumerate(self.event_props[idxs]):
-                    file_precip = self._get_precip_event_filename(event)
-                    with open(file_precip, 'rb') as f:
-                        x_2d[i_b] = pickle.load(f)
-
-            else:
-                for i_b, event in enumerate(self.event_props[idxs]):
-                    x_2d[i_b] = self._extract_precipitation(event)
+            for i_b, event in enumerate(self.event_props[idxs]):
+                x_2d[i_b] = self._extract_precipitation(event)
 
             if self.X_static is None:
                 return x_2d, y

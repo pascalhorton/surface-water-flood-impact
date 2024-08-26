@@ -32,7 +32,7 @@ class Precipitation:
         if not cid_file:
             cid_file = config.get('CID_PATH', None, False)
 
-        self.dataset = None
+        self.dataset_name = None
         self.data_path = None
         self.x_axis = 'x'
         self.y_axis = 'y'
@@ -49,6 +49,9 @@ class Precipitation:
         self.missing = None
         self.tmp_dir = Path(config.get('TMP_DIR'))
 
+        self.pickle_files_full = []
+        self.pickle_files_subdomain = []
+
     def set_data_path(self, data_path):
         """
         Set the path to the precipitation data.
@@ -60,7 +63,7 @@ class Precipitation:
         """
         self.data_path = data_path
 
-    def load_data(self):
+    def prepare_data(self):
         raise NotImplementedError("This method must be implemented in the child class.")
 
     def get_time_series(self, cid, start, end, size=1):
@@ -89,14 +92,24 @@ class Precipitation:
         dy = self.domain.resolution[1]
         dpx = (size - 1) / 2
 
-        dat = self.data.sel({self.x_axis: slice(x - dx * dpx, x + dx * dpx),
-                             self.y_axis: slice(y + dy * dpx, y - dy * dpx),
-                             self.time_axis: slice(start, end)})
+        ts = []
+
+        for f in self.pickle_files_full:
+            with open(f, 'rb') as file:
+                data = pickle.load(file)
+                dat = data.sel(
+                    {self.x_axis: slice(x - dx * dpx, x + dx * dpx),
+                     self.y_axis: slice(y + dy * dpx, y - dy * dpx)
+                     })
+                ts.append(dat)
+
+        ts = xr.concat(ts, dim=self.time_axis)
+        ts = ts.sel({self.time_axis: slice(start, end)})
 
         if size == 1:
-            return dat[self.precip_var].to_numpy()
+            return ts[self.precip_var].to_numpy()
 
-        return dat[self.precip_var].mean(dim=[self.x_axis, self.y_axis]).to_numpy()
+        return ts[self.precip_var].mean(dim=[self.x_axis, self.y_axis]).to_numpy()
 
     def save_nc_file_per_cid(self, cid, start, end):
         """
@@ -127,10 +140,7 @@ class Precipitation:
         if tmp_filename.exists():
             return
 
-        x, y = self.domain.get_cid_coordinates(cid)
-        time_series = self.data.sel({self.x_axis: x, self.y_axis: y,
-                                     self.time_axis: slice(start, end)})
-
+        time_series = self.get_time_series(cid, start, end)
         time_series.to_netcdf(tmp_filename)
 
     def compute_quantiles_cid(self, cid):
@@ -159,9 +169,7 @@ class Precipitation:
                 return quantiles
 
         # Check if netCDF file of the time series exists
-        y_start = pd.to_datetime(self.data['time'][0].to_pandas()).year
-        y_end = pd.to_datetime(self.data['time'][-25].to_pandas()).year  # avoid Y+1
-        hash_tag_nc = self._compute_hash_single_cid(y_start, y_end)
+        hash_tag_nc = self._compute_hash_single_cid(self.year_start, self.year_end)
         filename_nc = f"precip_cid_{cid}_{hash_tag_nc}.nc"
         tmp_filename_nc = self.tmp_dir / filename_nc
 
@@ -170,8 +178,9 @@ class Precipitation:
             print(f"Loading time series for CID {cid} from netCDF file.")
             time_series = xr.open_dataset(tmp_filename_nc)
         else:
-            x, y = self.domain.get_cid_coordinates(cid)
-            time_series = self.data.sel({self.x_axis: x, self.y_axis: y})
+            start = pd.to_datetime(f'{self.year_start}-01-01 00:00:00')
+            end = pd.to_datetime(f'{self.year_end}-12-31 23:59:59')
+            time_series = self.get_time_series(cid, start, end)
             time_series = time_series.load()
             time_series.to_netcdf(tmp_filename_nc)
 
@@ -184,19 +193,19 @@ class Precipitation:
 
         return quantiles
 
-    def _compute_hash_precip_full_data(self, data):
+    def _compute_hash_precip_full_data(self, x_axis=None, y_axis=None):
         tag_data = (
-                pickle.dumps(self.dataset) +
+                pickle.dumps(self.dataset_name) +
                 pickle.dumps(self.resolution) +
                 pickle.dumps(self.time_step) +
-                pickle.dumps(data['x']) +
-                pickle.dumps(data['y']))
+                pickle.dumps(x_axis) +
+                pickle.dumps(y_axis))
 
         return hashlib.md5(tag_data).hexdigest()
 
     def _compute_hash_single_cid(self, y_start, y_end):
         tag_data = (
-                pickle.dumps(self.dataset) +
+                pickle.dumps(self.dataset_name) +
                 pickle.dumps(self.resolution) +
                 pickle.dumps(self.time_step) +
                 pickle.dumps(y_start) +
@@ -205,7 +214,7 @@ class Precipitation:
         return hashlib.md5(tag_data).hexdigest()
 
     def _generate_pickle_files(self, data):
-        hash_tag = self._compute_hash_precip_full_data(data)
+        hash_tag = self._compute_hash_precip_full_data(data['x'], data['y'])
 
         data['time'] = pd.to_datetime(data['time'])
 
@@ -214,6 +223,7 @@ class Precipitation:
             t = self.time_index[idx]
             filename = f"precip_full_{t.year}_{t.month}_{hash_tag}.pickle"
             tmp_filename = self.tmp_dir / filename
+            self.pickle_files_full.append(tmp_filename)
 
             if tmp_filename.exists():
                 continue
@@ -229,6 +239,44 @@ class Precipitation:
 
             with open(tmp_filename, 'wb') as f:
                 pickle.dump(subset, f)
+
+    def generate_pickles_for_subdomain(self, x_axis, y_axis):
+        hash_tag = self._compute_hash_precip_full_data(x_axis, y_axis)
+
+        for idx in tqdm(range(len(self.time_index)),
+                        desc="Generating pickle files for subdomain"):
+            t = self.time_index[idx]
+            filename = f"precip_subdomain_{t.year}_{t.month}_{hash_tag}.pickle"
+            tmp_filename = self.tmp_dir / filename
+            self.pickle_files_subdomain.append(tmp_filename)
+
+            if tmp_filename.exists():
+                continue
+
+            with open(self.pickle_files_full[idx], 'rb') as f:
+                data = pickle.load(f)
+                data = data.sel({self.x_axis: x_axis, self.y_axis: y_axis})
+
+                with open(tmp_filename, 'wb') as f:
+                    pickle.dump(data, f)
+
+    def _resample(self, data):
+        with dask.config.set(**{'array.slicing.split_large_chunks': True}):
+            # Adapt the spatial resolution
+            if self.resolution != 1:
+                data = data.coarsen(
+                    x=self.resolution,
+                    y=self.resolution,
+                    boundary='trim'
+                ).mean()
+
+            # Aggregate the precipitation at the desired time step
+            if self.time_step != 1:
+                data = data.resample(
+                    time=f'{self.time_step}h',
+                ).sum(dim='time')
+
+        return data
 
     @staticmethod
     def _fill_missing_values(data):
@@ -247,23 +295,5 @@ class Precipitation:
                 # Interpolate missing values
                 data = data.chunk({'time': -1})
                 data = data.interpolate_na(dim='time', method='linear')
-
-        return data
-
-    def _resample(self, data):
-        with dask.config.set(**{'array.slicing.split_large_chunks': True}):
-            # Adapt the spatial resolution
-            if self.resolution != 1:
-                data = data.coarsen(
-                    x=self.resolution,
-                    y=self.resolution,
-                    boundary='trim'
-                ).mean()
-
-            # Aggregate the precipitation at the desired time step
-            if self.time_step != 1:
-                data = data.resample(
-                    time=f'{self.time_step}h',
-                ).sum(dim='time')
 
         return data

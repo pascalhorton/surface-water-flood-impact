@@ -61,7 +61,7 @@ def generate_csv():
 
     # Load CombiPrecip files
     precip = CombiPrecip(year_start, year_end)
-    precip.load_data(config.get('DIR_PRECIP'))
+    precip.prepare_data(config.get('DIR_PRECIP'))
 
     # Add columns to the claims dataframe
     claims['precip_max'] = None

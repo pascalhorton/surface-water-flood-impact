@@ -1078,11 +1078,9 @@ class ImpactCnn(Impact):
         # Check the shape of the precipitation and the DEM
         if self.dem is not None:
             # Select the same domain as the DEM
-            precipitation.data = precipitation.data.sel(x=self.dem.x, y=self.dem.y)
-            assert precipitation.data['precip'].shape[1:] == self.dem.shape, \
-                "DEM and precipitation must have the same shape"
+            precipitation.generate_pickles_for_subdomain(self.dem.x, self.dem.y)
 
-        self.precipitation = precipitation.data
+        self.precipitation = precipitation
 
     def set_dem(self, dem):
         """
@@ -1110,9 +1108,6 @@ class ImpactCnn(Impact):
                 boundary='trim'
             ).mean()
 
-        if self.precipitation is not None:
-            assert dem.shape == self.precipitation.isel(time=0).shape, \
-                "DEM and precipitation must have the same shape"
         self.dem = dem
 
     @staticmethod
