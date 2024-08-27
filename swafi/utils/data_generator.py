@@ -243,8 +243,7 @@ class DataGenerator(keras.utils.Sequence):
 
     def _standardize_2d_inputs(self):
         if self.X_precip is not None:
-            self.X_precip['precip'] = ((self.X_precip['precip'] - self.mean_precip) /
-                                       self.std_precip)
+            self.X_precip.standardize(self.mean_precip, self.std_precip)
         if self.X_dem is not None:
             self.X_dem = (self.X_dem - self.mean_dem) / self.std_dem
 
@@ -255,7 +254,7 @@ class DataGenerator(keras.utils.Sequence):
 
     def _normalize_2d_inputs(self):
         if self.X_precip is not None:
-            self.X_precip['precip'] = self.X_precip['precip'] / self.q95_precip
+            self.X_precip.normalize(self.q95_precip)
         if self.X_dem is not None:
             self.X_dem = (self.X_dem - self.min_dem) / (self.max_dem - self.min_dem)
 
