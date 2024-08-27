@@ -305,13 +305,23 @@ class DataGenerator(keras.utils.Sequence):
             print('Log-transforming precipitation')
             self.X_precip.log_transform()
 
-        # Compute the mean and standard deviation of the precipitation
+        # Check if the statistics are already provided
         if (self.transform_2d == 'standardize' and self.mean_precip is not None
                 and self.std_precip is not None):
             return
 
         if self.transform_2d == 'normalize' and self.q95_precip is not None:
             return
+
+        # Load or compute the precipitation statistics
+        if self.transform_2d == 'standardize':
+            self.mean_precip = self.X_precip.compute_mean_per_pixel()
+            self.std_precip = self.X_precip.compute_std_per_pixel()
+        elif self.transform_2d == 'normalize':
+            self.q95_precip = self.X_precip.compute_q95_per_pixel()
+
+            
+
 
         # If pickle file exists, load it
         file_hash = self._compute_hash_precip_full()
