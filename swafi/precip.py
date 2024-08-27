@@ -49,8 +49,8 @@ class Precipitation:
         self.missing = None
         self.tmp_dir = Path(config.get('TMP_DIR'))
 
-        self.pickle_files_full = []
-        self.pickle_files_subdomain = []
+        self.hash_tag = None
+        self.pickle_files = []
 
     def set_data_path(self, data_path):
         """
@@ -94,7 +94,7 @@ class Precipitation:
 
         ts = []
 
-        for f in self.pickle_files_full:
+        for f in self.pickle_files:
             with open(f, 'rb') as file:
                 data = pickle.load(file)
                 dat = data.sel(
@@ -133,8 +133,8 @@ class Precipitation:
         y_start = start.year
         y_end = end.year
 
-        hash_tag = self._compute_hash_single_cid(y_start, y_end)
-        filename = f"precip_cid_{cid}_{hash_tag}.nc"
+        self.hash_tag = self._compute_hash_single_cid(y_start, y_end)
+        filename = f"precip_{self.dataset_name.str.lower}_cid_{self.hash_tag}.nc"
         tmp_filename = self.tmp_dir / filename
 
         if tmp_filename.exists():
@@ -159,7 +159,8 @@ class Precipitation:
         """
         # Use pickles to store the data
         hash_tag_pk = self._compute_hash_precip_full_data()
-        filename_pk = f"precip_quantiles_cid_{cid}_{hash_tag_pk}.pickle"
+        filename_pk = (f"precip_{self.dataset_name.str.lower}_q_"
+                       f"cid__{hash_tag_pk}.pickle")
         tmp_filename_pk = self.tmp_dir / filename_pk
 
         if tmp_filename_pk.exists():
@@ -170,7 +171,7 @@ class Precipitation:
 
         # Check if netCDF file of the time series exists
         hash_tag_nc = self._compute_hash_single_cid(self.year_start, self.year_end)
-        filename_nc = f"precip_cid_{cid}_{hash_tag_nc}.nc"
+        filename_nc = f"precip_{self.dataset_name.str.lower}_cid_{hash_tag_nc}.nc"
         tmp_filename_nc = self.tmp_dir / filename_nc
 
         # Extract the time series
@@ -193,6 +194,38 @@ class Precipitation:
 
         return quantiles
 
+    def generate_pickles_for_subdomain(self, x_axis, y_axis):
+        """
+        Generate pickle files for the subdomain defined by the x and y axes.
+
+        Parameters
+        ----------
+        x_axis: slice
+            The slice for the x axis
+        y_axis: slice
+            The slice for the y axis
+        """
+        self.hash_tag = self._compute_hash_precip_full_data(x_axis, y_axis)
+
+        for idx in tqdm(range(len(self.time_index)),
+                        desc="Generating pickle files for subdomain"):
+            t = self.time_index[idx]
+            filename = (f"precip_{self.dataset_name.str.lower}_subdomain_{t.year}_"
+                        f"{t.month:02}_{self.hash_tag}.pickle")
+            tmp_filename = self.tmp_dir / filename
+
+            if tmp_filename.exists():
+                continue
+
+            with open(self.pickle_files[idx], 'rb') as f:
+                data = pickle.load(f)
+                data = data.sel({self.x_axis: x_axis, self.y_axis: y_axis})
+
+                with open(tmp_filename, 'wb') as f:
+                    pickle.dump(data, f)
+
+            self.pickle_files[idx] = tmp_filename
+
     def _compute_hash_precip_full_data(self, x_axis=None, y_axis=None):
         tag_data = (
                 pickle.dumps(self.dataset_name) +
@@ -214,16 +247,17 @@ class Precipitation:
         return hashlib.md5(tag_data).hexdigest()
 
     def _generate_pickle_files(self, data):
-        hash_tag = self._compute_hash_precip_full_data(data['x'], data['y'])
+        self.hash_tag = self._compute_hash_precip_full_data(data['x'], data['y'])
 
         data['time'] = pd.to_datetime(data['time'])
 
         for idx in tqdm(range(len(self.time_index)),
                         desc="Generating pickle files for precipitation data"):
             t = self.time_index[idx]
-            filename = f"precip_full_{t.year}_{t.month}_{hash_tag}.pickle"
+            filename = (f"precip_{self.dataset_name.str.lower}_full_{t.year}_"
+                        f"{t.month:02}_{self.hash_tag}.pickle")
             tmp_filename = self.tmp_dir / filename
-            self.pickle_files_full.append(tmp_filename)
+            self.pickle_files.append(tmp_filename)
 
             if tmp_filename.exists():
                 continue
@@ -239,26 +273,6 @@ class Precipitation:
 
             with open(tmp_filename, 'wb') as f:
                 pickle.dump(subset, f)
-
-    def generate_pickles_for_subdomain(self, x_axis, y_axis):
-        hash_tag = self._compute_hash_precip_full_data(x_axis, y_axis)
-
-        for idx in tqdm(range(len(self.time_index)),
-                        desc="Generating pickle files for subdomain"):
-            t = self.time_index[idx]
-            filename = f"precip_subdomain_{t.year}_{t.month}_{hash_tag}.pickle"
-            tmp_filename = self.tmp_dir / filename
-            self.pickle_files_subdomain.append(tmp_filename)
-
-            if tmp_filename.exists():
-                continue
-
-            with open(self.pickle_files_full[idx], 'rb') as f:
-                data = pickle.load(f)
-                data = data.sel({self.x_axis: x_axis, self.y_axis: y_axis})
-
-                with open(tmp_filename, 'wb') as f:
-                    pickle.dump(data, f)
 
     def _resample(self, data):
         with dask.config.set(**{'array.slicing.split_large_chunks': True}):
