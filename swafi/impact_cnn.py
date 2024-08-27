@@ -929,9 +929,6 @@ class ImpactCnn(Impact):
         if self.factor_neg_reduction != 1:
             self.dg_train.reduce_negatives(self.factor_neg_reduction)
 
-        if self.options.use_precip:
-            self.dg_train.prepare_precip_data()
-
     def _create_data_generator_valid(self):
         self.dg_val = DataGenerator(
             event_props=self.events_valid,
@@ -963,9 +960,6 @@ class ImpactCnn(Impact):
         if self.factor_neg_reduction != 1:
             self.dg_val.reduce_negatives(self.factor_neg_reduction)
 
-        if self.options.use_precip:
-            self.dg_val.prepare_precip_data()
-
     def _create_data_generator_test(self):
         self.dg_test = DataGenerator(
             event_props=self.events_test,
@@ -993,9 +987,6 @@ class ImpactCnn(Impact):
             q95_precip=self.dg_train.q95_precip,
             debug=DEBUG
         )
-
-        if self.options.use_precip:
-            self.dg_test.prepare_precip_data()
 
     def _define_model(self, input_2d_size, input_1d_size):
         """

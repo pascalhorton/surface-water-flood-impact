@@ -119,7 +119,6 @@ class DataGenerator(keras.utils.Sequence):
 
         if self.X_precip is not None:
             self._restrict_spatial_domain()
-            self._restrict_temporal_selection()
 
         self._compute_predictor_statistics()
 
@@ -143,10 +142,6 @@ class DataGenerator(keras.utils.Sequence):
 
         if self.X_dem is not None:
             self.X_dem.load()
-
-    def prepare_precip_data(self):
-        print('Loading data into RAM')
-        self._load_dump_precip_data()
 
     def get_channels_nb(self):
         """ Get the number of channels of the 2D predictors. """
@@ -258,27 +253,6 @@ class DataGenerator(keras.utils.Sequence):
         if self.X_dem is not None:
             self.X_dem = (self.X_dem - self.min_dem) / (self.max_dem - self.min_dem)
 
-    def _load_dump_precip_data(self):
-        """ Load all the precipitation data into memory. """
-        if self.tmp_dir is None:
-            raise ValueError('tmp_dir must be specified')
-
-        file_hash = self._compute_hash_precip_full()
-        file_precip = self.tmp_dir / f'precip_{file_hash}.pickle'
-
-        # If pickle file exists, load it
-        if file_precip.exists():
-            print('Loading precipitation data from pickle file')
-            with open(file_precip, 'rb') as f:
-                self.X_precip = pickle.load(f)
-            return
-
-        # Otherwise, load the data and save it to a pickle file
-        print('Loading precipitation data from netCDF files')
-        self.X_precip.load()
-        with open(file_precip, 'wb') as f:
-            pickle.dump(self.X_precip, f)
-
     def _restrict_spatial_domain(self):
         """ Restrict the spatial domain of the precipitation and DEM data. """
         precip_window_size_m = self.precip_window_size * 1000
@@ -287,32 +261,13 @@ class DataGenerator(keras.utils.Sequence):
         y_min = self.event_props[:, 2].min() - precip_window_size_m / 2
         y_max = self.event_props[:, 2].max() + precip_window_size_m / 2
         if self.X_precip is not None:
-            self.X_precip = self.X_precip.sel(
-                x=slice(x_min, x_max),
-                y=slice(y_max, y_min)
-            )
+            x_axis = self.X_precip.get_x_axis_for_bounds(x_min, x_max)
+            y_axis = self.X_precip.get_y_axis_for_bounds(y_min, y_max)
+            self.X_precip.generate_pickles_for_subdomain(x_axis, y_axis)
         if self.X_dem is not None:
             self.X_dem = self.X_dem.sel(
                 x=slice(x_min, x_max),
                 y=slice(y_max, y_min)
-            )
-
-    def _restrict_temporal_selection(self):
-        """ Restrict the temporal selection of the precipitation data. """
-        if self.X_precip is not None:
-            # Select the min/max dates
-            t_min = self.event_props[:, 0].min() - np.timedelta64(
-                self.precip_days_before, 'D')
-            t_max = self.event_props[:, 0].max() + np.timedelta64(
-                self.precip_days_after, 'D')
-
-            # Round to the year start/end
-            t_min = np.datetime64(f'{t_min.year}-01-01')
-            t_max = np.datetime64(f'{t_max.year}-12-31')
-
-            # Select the corresponding precipitation data
-            self.X_precip = self.X_precip.sel(
-                time=slice(t_min, t_max)
             )
 
     def _compute_predictor_statistics(self):
@@ -348,7 +303,7 @@ class DataGenerator(keras.utils.Sequence):
         # Log transform the precipitation
         if self.log_transform_precip:
             print('Log-transforming precipitation')
-            self.X_precip['precip'] = np.log(self.X_precip['precip'] + 1e-10)
+            self.X_precip.log_transform()
 
         # Compute the mean and standard deviation of the precipitation
         if (self.transform_2d == 'standardize' and self.mean_precip is not None

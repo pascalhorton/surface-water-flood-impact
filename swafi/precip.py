@@ -4,6 +4,7 @@ Class to handle the precipitation data.
 import pickle
 import hashlib
 import dask
+import numpy as np
 import pandas as pd
 import xarray as xr
 from pathlib import Path
@@ -65,6 +66,46 @@ class Precipitation:
 
     def prepare_data(self):
         raise NotImplementedError("This method must be implemented in the child class.")
+
+    def get_x_axis_for_bounds(self, x_min, x_max):
+        """
+        Get the x axis slice for the given bounds.
+
+        Parameters
+        ----------
+        x_min: float
+            The minimum x coordinate
+        x_max: float
+            The maximum x coordinate
+
+        Returns
+        -------
+        slice
+            The slice for the x axis
+        """
+        x_axis = self.domain.cids['xs'][0, :]
+
+        return x_axis[(x_axis >= x_min) & (x_axis <= x_max)]
+
+    def get_y_axis_for_bounds(self, y_min, y_max):
+        """
+        Get the y axis slice for the given bounds.
+
+        Parameters
+        ----------
+        y_min: float
+            The minimum y coordinate
+        y_max: float
+            The maximum y coordinate
+
+        Returns
+        -------
+        slice
+            The slice for the y axis
+        """
+        y_axis = self.domain.cids['ys'][:, 0]
+
+        return y_axis[(y_axis >= y_min) & (y_axis <= y_max)]
 
     def get_time_series(self, cid, start, end, size=1):
         """
@@ -209,22 +250,22 @@ class Precipitation:
 
         for idx in tqdm(range(len(self.time_index)),
                         desc="Generating pickle files for subdomain"):
+            original_file = self.pickle_files[idx]
             t = self.time_index[idx]
             filename = (f"precip_{self.dataset_name.lower()}_subdomain_{t.year}-"
                         f"{t.month:02}_{self.hash_tag}.pickle")
             tmp_filename = self.tmp_dir / filename
+            self.pickle_files[idx] = tmp_filename
 
             if tmp_filename.exists():
                 continue
 
-            with open(self.pickle_files[idx], 'rb') as f_in:
+            with open(original_file, 'rb') as f_in:
                 data = pickle.load(f_in)
                 data = data.sel({self.x_axis: x_axis, self.y_axis: y_axis})
 
                 with open(tmp_filename, 'wb') as f_out:
                     pickle.dump(data, f_out)
-
-            self.pickle_files[idx] = tmp_filename
 
     def standardize(self, mean, std):
         """
@@ -239,22 +280,22 @@ class Precipitation:
         """
         for idx in tqdm(range(len(self.time_index)),
                         desc="Standardizing precipitation data"):
+            original_file = self.pickle_files[idx]
             t = self.time_index[idx]
             filename = (f"precip_{self.dataset_name.lower()}_standardized_{t.year}-"
                         f"{t.month:02}_{self.hash_tag}.pickle")
             tmp_filename = self.tmp_dir / filename
+            self.pickle_files[idx] = tmp_filename
 
             if tmp_filename.exists():
                 continue
 
-            with open(self.pickle_files[idx], 'rb') as f_in:
+            with open(original_file, 'rb') as f_in:
                 data = pickle.load(f_in)
                 data[self.precip_var] = (data[self.precip_var] - mean) / std
 
                 with open(tmp_filename, 'wb') as f_out:
                     pickle.dump(data, f_out)
-
-            self.pickle_files[idx] = tmp_filename
 
     def normalize(self, q95):
         """
@@ -267,22 +308,45 @@ class Precipitation:
         """
         for idx in tqdm(range(len(self.time_index)),
                         desc="Normalizing precipitation data"):
+            original_file = self.pickle_files[idx]
             t = self.time_index[idx]
             filename = (f"precip_{self.dataset_name.lower()}_normalized_{t.year}-"
                         f"{t.month:02}_{self.hash_tag}.pickle")
             tmp_filename = self.tmp_dir / filename
+            self.pickle_files[idx] = tmp_filename
 
             if tmp_filename.exists():
                 continue
 
-            with open(self.pickle_files[idx], 'rb') as f_in:
+            with open(original_file, 'rb') as f_in:
                 data = pickle.load(f_in)
                 data[self.precip_var] = data[self.precip_var] / q95
 
                 with open(tmp_filename, 'wb') as f_out:
                     pickle.dump(data, f_out)
 
+    def log_transform(self):
+        """
+        Log-transform the precipitation data.
+        """
+        for idx in tqdm(range(len(self.time_index)),
+                        desc="Log-transforming precipitation data"):
+            original_file = self.pickle_files[idx]
+            t = self.time_index[idx]
+            filename = (f"precip_{self.dataset_name.lower()}_log_{t.year}-"
+                        f"{t.month:02}_{self.hash_tag}.pickle")
+            tmp_filename = self.tmp_dir / filename
             self.pickle_files[idx] = tmp_filename
+
+            if tmp_filename.exists():
+                continue
+
+            with open(original_file, 'rb') as f_in:
+                data = pickle.load(f_in)
+                data[self.precip_var] = np.log(data[self.precip_var] + 1e-10)
+
+                with open(tmp_filename, 'wb') as f_out:
+                    pickle.dump(data, f_out)
 
     def _compute_hash_precip_full_data(self, x_axis=None, y_axis=None):
         tag_data = (
