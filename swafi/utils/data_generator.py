@@ -117,9 +117,6 @@ class DataGenerator(keras.utils.Sequence):
         self.X_precip = x_precip
         self.X_dem = x_dem
 
-        if self.X_precip is not None:
-            self._restrict_spatial_domain()
-
         self._compute_predictor_statistics()
 
         if transform_static == 'standardize':
@@ -252,23 +249,6 @@ class DataGenerator(keras.utils.Sequence):
             self.X_precip.normalize(self.q95_precip)
         if self.X_dem is not None:
             self.X_dem = (self.X_dem - self.min_dem) / (self.max_dem - self.min_dem)
-
-    def _restrict_spatial_domain(self):
-        """ Restrict the spatial domain of the precipitation and DEM data. """
-        precip_window_size_m = self.precip_window_size * 1000
-        x_min = self.event_props[:, 1].min() - precip_window_size_m / 2
-        x_max = self.event_props[:, 1].max() + precip_window_size_m / 2
-        y_min = self.event_props[:, 2].min() - precip_window_size_m / 2
-        y_max = self.event_props[:, 2].max() + precip_window_size_m / 2
-        if self.X_precip is not None:
-            x_axis = self.X_precip.get_x_axis_for_bounds(x_min, x_max)
-            y_axis = self.X_precip.get_y_axis_for_bounds(y_min, y_max)
-            self.X_precip.generate_pickles_for_subdomain(x_axis, y_axis)
-        if self.X_dem is not None:
-            self.X_dem = self.X_dem.sel(
-                x=slice(x_min, x_max),
-                y=slice(y_max, y_min)
-            )
 
     def _compute_predictor_statistics(self):
         if self.X_static is not None:

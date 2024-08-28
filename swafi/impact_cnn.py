@@ -1101,6 +1101,30 @@ class ImpactCnn(Impact):
 
         self.dem = dem
 
+    def reduce_spatial_domain(self, precip_window_size):
+        """
+        Restrict the spatial domain of the precipitation and DEM data.
+
+        Parameters
+        ----------
+        precip_window_size: int
+            The precipitation window size [km].
+        """
+        precip_window_size_m = precip_window_size * 1000
+        x_min = self.df['x'].min() - precip_window_size_m / 2
+        x_max = self.df['x'].max() + precip_window_size_m / 2
+        y_min = self.df['y'].min() - precip_window_size_m / 2
+        y_max = self.df['y'].max() + precip_window_size_m / 2
+        if self.precipitation is not None:
+            x_axis = self.precipitation.get_x_axis_for_bounds(x_min, x_max)
+            y_axis = self.precipitation.get_y_axis_for_bounds(y_min, y_max)
+            self.precipitation.generate_pickles_for_subdomain(x_axis, y_axis)
+        if self.dem is not None:
+            self.dem = self.dem.sel(
+                x=slice(x_min, x_max),
+                y=slice(y_max, y_min)
+            )
+
     @staticmethod
     def _plot_training_history(hist, dir_plots, show_plots, prefix=None):
         """
