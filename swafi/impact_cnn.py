@@ -1125,6 +1125,35 @@ class ImpactCnn(Impact):
                 y=slice(y_max, y_min)
             )
 
+    def remove_events_without_precipitation_data(self):
+        """
+        Remove the events at the period limits.
+        """
+        if self.precipitation is None:
+            return
+
+        # Extract events dates
+        events = self.df[['e_end', 'date_claim']].copy()
+        events.rename(columns={'date_claim': 'date'}, inplace=True)
+        events['e_end'] = pd.to_datetime(events['e_end']).dt.date
+        events['date'] = pd.to_datetime(events['date']).dt.date
+
+        # Fill NaN values with the event end date (as date, not datetime)
+        events['date'] = events['date'].fillna(events['e_end'])
+
+        # Precipitation period
+        p_start = pd.to_datetime(f'{self.precipitation.year_start}-01-01').date()
+        p_end = pd.to_datetime(f'{self.precipitation.year_end}-12-31').date()
+
+        if self.options.precip_days_before > 0:
+            self.df = self.df[events['date'] > p_start + pd.Timedelta(
+                days=self.options.precip_days_before)]
+            events = events[events['date'] > p_start + pd.Timedelta(
+                days=self.options.precip_days_before)]
+        if self.options.precip_days_after > 0:
+            self.df = self.df[events['date'] < p_end - pd.Timedelta(
+                days=self.options.precip_days_after)]
+
     @staticmethod
     def _plot_training_history(hist, dir_plots, show_plots, prefix=None):
         """
