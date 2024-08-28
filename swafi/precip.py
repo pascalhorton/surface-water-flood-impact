@@ -52,7 +52,7 @@ class Precipitation:
 
         self.hash_tag = None
         self.pickle_files = []
-        self.mem_nb_pixels = 10  # Number of pixels to process at once (per spatial dimension; e.g. 100x100)
+        self.mem_nb_pixels = 20  # Number of pixels to process at once (per spatial dimension; e.g. 100x100)
 
     def set_data_path(self, data_path):
         """
@@ -379,8 +379,8 @@ class Precipitation:
             n_rows, n_cols = data[self.precip_var].shape[1:]
 
         # Compute mean and standard deviation by spatial chunks (for memory efficiency)
-        mean = np.zeros(n_rows, n_cols)
-        std = np.zeros(n_rows, n_cols)
+        mean = np.zeros((n_rows, n_cols))
+        std = np.zeros((n_rows, n_cols))
         for i in tqdm(np.arange(0, n_rows + 1, self.mem_nb_pixels),
                       desc="Computing mean and standard deviation per pixel"):
             for j in np.arange(0, n_cols + 1, self.mem_nb_pixels):
@@ -429,7 +429,7 @@ class Precipitation:
             n_rows, n_cols = data[self.precip_var].shape[1:]
 
         # Compute quantile by spatial chunks (for memory efficiency)
-        quantiles = np.zeros(n_rows, n_cols)
+        quantiles = np.zeros((n_rows, n_cols))
         for i in tqdm(np.arange(0, n_rows + 1, self.mem_nb_pixels),
                       desc=f"Computing {quantile} quantile per pixel"):
             for j in np.arange(0, n_cols + 1, self.mem_nb_pixels):
@@ -476,7 +476,53 @@ class Precipitation:
                     data_chunk = data_file
                 else:
                     data_chunk = np.concatenate((data_chunk, data_file))
+
         return data_chunk
+
+    def get_data_chunk(self, t_start, t_end, x_start, x_end, y_start, y_end):
+        """
+        Get the precipitation data for a temporal and spatial chunk.
+
+        Parameters
+        ----------
+        t_start:
+            The starting time
+        t_end:
+            The ending time
+        x_start: float
+            The starting x coordinate
+        x_end: float
+            The ending x coordinate
+        y_start: float
+            The starting y coordinate
+        y_end: float
+            The ending y coordinate
+
+        Returns
+        -------
+        np.array
+            The precipitation data for the temporal and spatial chunk
+        """
+        # Get the index/indices in the temporal index
+        idx_start = self.time_index.get_loc(t_start.normalize().replace(day=1))
+        idx_end = self.time_index.get_loc(t_end.normalize().replace(day=1))
+
+        data = None
+        for idx in range(idx_start, idx_end + 1):
+            with open(self.pickle_files[idx], 'rb') as f_in:
+                data_file = pickle.load(f_in)
+                data_file = data_file[self.precip_var].sel(
+                    time=slice(t_start, t_end),
+                    x=slice(x_start, x_end),
+                    y=slice(y_start, y_end)
+                ).to_numpy()
+
+                if data is None:
+                    data = data_file
+                else:
+                    data = np.concatenate((data, data_file))
+
+        return data
 
     def _compute_hash_precip_full_data(self, x_axis=None, y_axis=None):
         tag_data = (

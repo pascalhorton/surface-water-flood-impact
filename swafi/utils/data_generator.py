@@ -307,37 +307,13 @@ class DataGenerator(keras.utils.Sequence):
 
         # Load or compute the precipitation statistics
         if self.transform_2d == 'standardize':
-            if self.mean_precip and self.std_precip:
+            if self.mean_precip is not None and self.std_precip is not None:
                 return
             self.mean_precip, self.std_precip = self.X_precip.compute_mean_and_std_per_pixel()
         elif self.transform_2d == 'normalize':
-            if self.q95_precip:
+            if self.q95_precip is not None:
                 return
             self.q95_precip = self.X_precip.compute_quantile_per_pixel(0.98)
-
-    def _compute_hash_precip_event(self, event):
-        with_dem = self.X_dem is not None
-
-        tag_data = (
-                pickle.dumps(event) +
-                pickle.dumps(self.precip_window_size) +
-                pickle.dumps(self.precip_resolution) +
-                pickle.dumps(self.precip_time_step) +
-                pickle.dumps(self.precip_days_before) +
-                pickle.dumps(self.precip_days_after) +
-                pickle.dumps(self.get_channels_nb()) +
-                pickle.dumps(self.transform_2d) +
-                pickle.dumps(self.log_transform_precip) +
-                pickle.dumps(with_dem) +
-                pickle.dumps(self.X_precip['x']) +
-                pickle.dumps(self.X_precip['y']))
-
-        return hashlib.md5(tag_data).hexdigest()
-
-    def _get_precip_event_filename(self, event):
-        file_hash = self._compute_hash_precip_event(event)
-        return (self.tmp_dir / 'precip_events' / f'{file_hash[0:2]}' /
-                f'{file_hash}.pickle')
 
     def __len__(self):
         """Denotes the number of batches per epoch"""
@@ -391,11 +367,9 @@ class DataGenerator(keras.utils.Sequence):
         y_end = event[2] - precip_window_size_m / 2
 
         # Select the corresponding precipitation data
-        x_precip_ev = self.X_precip['precip'].sel(
-            time=slice(t_start, t_end),
-            x=slice(x_start, x_end),
-            y=slice(y_start, y_end)
-        ).to_numpy()
+        x_precip_ev = self.X_precip.get_data_chunk(
+            t_start, t_end, x_start, x_end, y_start, y_end
+        )
 
         # Move the time axis to the last position
         x_precip_ev = np.moveaxis(x_precip_ev, 0, -1)
