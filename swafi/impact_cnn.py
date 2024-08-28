@@ -130,8 +130,8 @@ class ImpactCnnOptions:
         self.precip_window_size = 0
         self.precip_resolution = 0
         self.precip_time_step = 0
-        self.precip_days_before = 0
-        self.precip_days_after = 1
+        self.precip_days_before = 1
+        self.precip_days_after = 0
         self.transform_static = 'standardize'
         self.transform_2d = 'normalize'
         self.log_transform_precip = True
@@ -469,7 +469,7 @@ class ImpactCnnOptions:
                  'If specified, the default class features will be overridden for'
                  'this class only (e.g. event).')
         self.parser.add_argument(
-            '--precip-window-size', type=int, default=2,
+            '--precip-window-size', type=int, default=4,
             help='The precipitation window size [km]')
         self.parser.add_argument(
             '--precip-resolution', type=int, default=1,
@@ -520,7 +520,7 @@ class ImpactCnnOptions:
             '--nb-filters', type=int, default=64,
             help='The number of filters')
         self.parser.add_argument(
-            '--nb-conv-blocks', type=int, default=5,
+            '--nb-conv-blocks', type=int, default=2,
             help='The number of convolutional blocks')
         self.parser.add_argument(
             '--nb-dense-layers', type=int, default=5,
