@@ -52,6 +52,7 @@ class Precipitation:
 
         self.hash_tag = None
         self.pickle_files = []
+        self.mem_nb_pixels = 10  # Number of pixels to process at once (per spatial dimension; e.g. 100x100)
 
     def set_data_path(self, data_path):
         """
@@ -347,6 +348,135 @@ class Precipitation:
 
                 with open(tmp_filename, 'wb') as f_out:
                     pickle.dump(data, f_out)
+
+    def compute_mean_and_std_per_pixel(self):
+        """
+        Compute the mean and standard deviation of the precipitation data for each pixel.
+
+        Returns
+        -------
+        np.array, np.array
+            The mean and standard deviation of the precipitation data
+        """
+        # Compute hash tag by hashing the pickle files list
+        hash_tag = hashlib.md5(pickle.dumps(self.pickle_files)).hexdigest()
+        filename_mean = f"precip_{self.dataset_name.lower()}_mean_{hash_tag}.pickle"
+        filename_std = f"precip_{self.dataset_name.lower()}_std_{hash_tag}.pickle"
+
+        # If the files already exist, load them
+        mean_file = self.tmp_dir / filename_mean
+        std_file = self.tmp_dir / filename_std
+        if mean_file.exists() and std_file.exists():
+            with open(mean_file, 'rb') as f:
+                mean = pickle.load(f)
+            with open(std_file, 'rb') as f:
+                std = pickle.load(f)
+            return mean, std
+
+        # Open first precipitation file to get the dimensions
+        with open(self.pickle_files[0], 'rb') as f_in:
+            data = pickle.load(f_in)
+            n_rows, n_cols = data[self.precip_var].shape[1:]
+
+        # Compute mean and standard deviation by spatial chunks (for memory efficiency)
+        mean = np.zeros(n_rows, n_cols)
+        std = np.zeros(n_rows, n_cols)
+        for i in tqdm(np.arange(0, n_rows + 1, self.mem_nb_pixels),
+                      desc="Computing mean and standard deviation per pixel"):
+            for j in np.arange(0, n_cols + 1, self.mem_nb_pixels):
+                x_size = min(self.mem_nb_pixels, n_rows - i)
+                y_size = min(self.mem_nb_pixels, n_cols - j)
+                data = self.get_spatial_chunk_data(i, j, x_size, y_size)
+                mean[i:i + x_size, j:j + y_size] = np.mean(data, axis=0)
+                std[i:i + x_size, j:j + y_size] = np.std(data, axis=0)
+
+        # Save mean and standard deviation
+        with open(mean_file, 'wb') as f:
+            pickle.dump(mean, f)
+        with open(std_file, 'wb') as f:
+            pickle.dump(std, f)
+
+        return mean, std
+
+    def compute_quantile_per_pixel(self, quantile):
+        """
+        Compute the quantile of the precipitation data for each pixel.
+
+        Parameters
+        ----------
+        quantile: float
+            The quantile to compute
+
+        Returns
+        -------
+        np.array
+            The quantile of the precipitation data
+        """
+        # Compute hash tag by hashing the pickle files list
+        hash_tag = hashlib.md5(pickle.dumps(self.pickle_files)).hexdigest()
+        filename = f"precip_{self.dataset_name.lower()}_q_{quantile:.3f}_{hash_tag}.pickle"
+
+        # If the file already exists, load it
+        tmp_filename = self.tmp_dir / filename
+        if tmp_filename.exists():
+            with open(tmp_filename, 'rb') as f:
+                quantiles = pickle.load(f)
+            return quantiles
+
+        # Open first precipitation file to get the dimensions
+        with open(self.pickle_files[0], 'rb') as f_in:
+            data = pickle.load(f_in)
+            n_rows, n_cols = data[self.precip_var].shape[1:]
+
+        # Compute quantile by spatial chunks (for memory efficiency)
+        quantiles = np.zeros(n_rows, n_cols)
+        for i in tqdm(np.arange(0, n_rows + 1, self.mem_nb_pixels),
+                      desc=f"Computing {quantile} quantile per pixel"):
+            for j in np.arange(0, n_cols + 1, self.mem_nb_pixels):
+                x_size = min(self.mem_nb_pixels, n_rows - i)
+                y_size = min(self.mem_nb_pixels, n_cols - j)
+                data = self.get_spatial_chunk_data(i, j, x_size, y_size)
+                quantiles[i:i + x_size, j:j + y_size] = np.quantile(data, quantile, axis=0)
+
+        # Save quantile
+        with open(tmp_filename, 'wb') as f:
+            pickle.dump(quantiles, f)
+
+        return quantiles
+
+    def get_spatial_chunk_data(self, i, j, x_size, y_size):
+        """
+        Get the precipitation data for a spatial chunk.
+
+        Parameters
+        ----------
+        i: int
+            The starting row index
+        j: int
+            The starting column index
+        x_size: int
+            The number of rows
+        y_size: int
+            The number of columns
+
+        Returns
+        -------
+        np.array
+            The precipitation data for the spatial chunk
+        """
+        data_chunk = None
+        for idx in range(len(self.time_index)):
+            original_file = self.pickle_files[idx]
+
+            with open(original_file, 'rb') as f_in:
+                data_file = pickle.load(f_in)
+                data_file = data_file[self.precip_var].values
+                data_file = data_file[:, i:i + x_size, j:j + y_size]
+                if data_chunk is None:
+                    data_chunk = data_file
+                else:
+                    data_chunk = np.concatenate((data_chunk, data_file))
+        return data_chunk
 
     def _compute_hash_precip_full_data(self, x_axis=None, y_axis=None):
         tag_data = (

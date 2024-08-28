@@ -305,77 +305,15 @@ class DataGenerator(keras.utils.Sequence):
             print('Log-transforming precipitation')
             self.X_precip.log_transform()
 
-        # Check if the statistics are already provided
-        if (self.transform_2d == 'standardize' and self.mean_precip is not None
-                and self.std_precip is not None):
-            return
-
-        if self.transform_2d == 'normalize' and self.q95_precip is not None:
-            return
-
         # Load or compute the precipitation statistics
         if self.transform_2d == 'standardize':
-            self.mean_precip = self.X_precip.compute_mean_per_pixel()
-            self.std_precip = self.X_precip.compute_std_per_pixel()
+            if self.mean_precip and self.std_precip:
+                return
+            self.mean_precip, self.std_precip = self.X_precip.compute_mean_and_std_per_pixel()
         elif self.transform_2d == 'normalize':
-            self.q95_precip = self.X_precip.compute_q95_per_pixel()
-
-            
-
-
-        # If pickle file exists, load it
-        file_hash = self._compute_hash_precip_full()
-        file_mean_precip = self.tmp_dir / f'mean_precip_{file_hash}.pickle'
-        file_std_precip = self.tmp_dir / f'std_precip_{file_hash}.pickle'
-        file_q95_precip = self.tmp_dir / f'q95_precip_{file_hash}.pickle'
-
-        if (self.transform_2d == 'standardize' and file_mean_precip.exists()
-                and file_std_precip.exists()):
-            print('Loading precipitation statistics from pickle files')
-            with open(file_mean_precip, 'rb') as f:
-                self.mean_precip = pickle.load(f)
-            with open(file_std_precip, 'rb') as f:
-                self.std_precip = pickle.load(f)
-            return
-
-        if self.transform_2d == 'normalize' and file_q95_precip.exists():
-            print('Loading precipitation statistics from pickle files')
-            with open(file_q95_precip, 'rb') as f:
-                self.q95_precip = pickle.load(f)
-            return
-
-        # Otherwise, compute the statistics and save them to a pickle file
-        print('Computing precipitation statistics')
-        if self.transform_2d == 'standardize':
-            self.mean_precip = self.X_precip['precip'].mean(
-                'time').compute().values
-            self.std_precip = self.X_precip['precip'].std(
-                'time').compute().values
-        elif self.transform_2d == 'normalize':
-            self.q95_precip = self.X_precip['precip'].chunk(dict(time=-1)).quantile(
-                0.95, dim='time').compute().values
-
-        # Save to pickle file
-        if self.transform_2d == 'standardize':
-            with open(file_mean_precip, 'wb') as f:
-                pickle.dump(self.mean_precip, f)
-            with open(file_std_precip, 'wb') as f:
-                pickle.dump(self.std_precip, f)
-        elif self.transform_2d == 'normalize':
-            with open(file_q95_precip, 'wb') as f:
-                pickle.dump(self.q95_precip, f)
-
-    def _compute_hash_precip_full(self):
-        tag_data = (
-                pickle.dumps(self.transform_2d) +
-                pickle.dumps(self.log_transform_precip) +
-                pickle.dumps(self.X_precip['x']) +
-                pickle.dumps(self.X_precip['y']) +
-                pickle.dumps(self.X_precip['time'][0]) +
-                pickle.dumps(self.X_precip['time'][-1]) +
-                pickle.dumps(self.X_precip['precip'].shape))
-
-        return hashlib.md5(tag_data).hexdigest()
+            if self.q95_precip:
+                return
+            self.q95_precip = self.X_precip.compute_quantile_per_pixel(0.98)
 
     def _compute_hash_precip_event(self, event):
         with_dem = self.X_dem is not None
