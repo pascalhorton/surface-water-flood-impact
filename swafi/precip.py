@@ -242,13 +242,17 @@ class Precipitation:
 
         Parameters
         ----------
-        x_axis: slice
+        x_axis: slice|np.array
             The slice for the x axis
-        y_axis: slice
+        y_axis: slice|np.array
             The slice for the y axis
         """
-        self.hash_tag = self._compute_hash_precip_full_data(
-            x_axis.to_numpy(), y_axis.to_numpy())
+        if not isinstance(x_axis, np.ndarray):
+            x_axis = x_axis.to_numpy()
+        if not isinstance(y_axis, np.ndarray):
+            y_axis = y_axis.to_numpy()
+
+        self.hash_tag = self._compute_hash_precip_full_data(x_axis, y_axis)
 
         for idx in tqdm(range(len(self.time_index)),
                         desc="Generating pickle files for subdomain"):
