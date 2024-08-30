@@ -123,7 +123,7 @@ class ImpactCnnOptions:
 
         # Data options
         self.use_precip = True
-        self.use_dem = True
+        self.use_dem = False
         self.use_simple_features = True
         self.simple_feature_classes = []
         self.simple_features = []
@@ -179,7 +179,7 @@ class ImpactCnnOptions:
         self.weight_denominator = args.weight_denominator
         self.random_state = args.random_state
         self.use_precip = not args.do_not_use_precip
-        self.use_dem = not args.do_not_use_dem
+        self.use_dem = args.use_dem
         self.use_simple_features = not args.do_not_use_simple_features
         self.simple_feature_classes = args.simple_feature_classes
         self.simple_features = args.simple_features
@@ -452,8 +452,8 @@ class ImpactCnnOptions:
             '--do-not-use-precip', action='store_true',
             help='Do not use precipitation data')
         self.parser.add_argument(
-            '--do-not-use-dem', action='store_true',
-            help='Do not use DEM data')
+            '--use-dem', action='store_true',
+            help='Use DEM data')
         self.parser.add_argument(
             '--do-not-use-simple-features', action='store_true',
             help='Do not use simple features (event properties and static attributes)')
