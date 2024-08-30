@@ -112,48 +112,48 @@ class ImpactCnnOptions:
         self._set_parser_arguments()
 
         # General options
-        self.run_name = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.optimize_with_optuna = False
-        self.optuna_trials_nb = 100
-        self.optuna_study_name = ''
-        self.target_type = ''
-        self.factor_neg_reduction = 10
-        self.weight_denominator = 5
+        self.run_name = None
+        self.optimize_with_optuna = None
+        self.optuna_trials_nb = None
+        self.optuna_study_name = None
+        self.target_type = None
+        self.factor_neg_reduction = None
+        self.weight_denominator = None
         self.random_state = None
 
         # Data options
-        self.use_precip = True
-        self.use_dem = False
-        self.use_simple_features = True
-        self.simple_feature_classes = []
-        self.simple_features = []
-        self.precip_window_size = 0
-        self.precip_resolution = 0
-        self.precip_time_step = 0
-        self.precip_days_before = 1
-        self.precip_days_after = 0
-        self.transform_static = 'standardize'
-        self.transform_2d = 'normalize'
-        self.log_transform_precip = True
+        self.use_precip = None
+        self.use_dem = None
+        self.use_simple_features = None
+        self.simple_feature_classes = None
+        self.simple_features = None
+        self.precip_window_size = None
+        self.precip_resolution = None
+        self.precip_time_step = None
+        self.precip_days_before = None
+        self.precip_days_after = None
+        self.transform_static = None
+        self.transform_2d = None
+        self.log_transform_precip = None
 
         # Training options
-        self.batch_size = 0
-        self.epochs = 0
-        self.learning_rate = 0
+        self.batch_size = None
+        self.epochs = None
+        self.learning_rate = None
 
         # Model options
-        self.dropout_rate_cnn = 0
-        self.dropout_rate_dense = 0
-        self.with_spatial_dropout = True
-        self.with_batchnorm_cnn = True
-        self.with_batchnorm_dense = True
-        self.nb_filters = 0
-        self.nb_conv_blocks = 0
-        self.nb_dense_layers = 0
-        self.nb_dense_units = 0
-        self.nb_dense_units_decreasing = False
-        self.inner_activation_cnn = 'relu'
-        self.inner_activation_dense = 'relu'
+        self.dropout_rate_cnn = None
+        self.dropout_rate_dense = None
+        self.with_spatial_dropout = None
+        self.with_batchnorm_cnn = None
+        self.with_batchnorm_dense = None
+        self.nb_filters = None
+        self.nb_conv_blocks = None
+        self.nb_dense_layers = None
+        self.nb_dense_units = None
+        self.nb_dense_units_decreasing = None
+        self.inner_activation_cnn = None
+        self.inner_activation_dense = None
 
     def copy(self):
         """
