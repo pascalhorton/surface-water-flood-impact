@@ -249,10 +249,10 @@ class ImpactCnnOptions:
         if self.use_precip:
             if 'precip_window_size' in hp_to_optimize:
                 self.precip_window_size = trial.suggest_categorical(
-                    'precip_window_size', [2, 4, 8])
+                    'precip_window_size', [1, 3, 5, 7])
             if 'precip_resolution' in hp_to_optimize:
                 self.precip_resolution = trial.suggest_categorical(
-                    'precip_resolution', [1, 2, 4])
+                    'precip_resolution', [1, 3, 5])
             if 'precip_time_step' in hp_to_optimize:
                 self.precip_time_step = trial.suggest_categorical(
                     'precip_time_step', [1, 2, 4, 6, 12, 24])
@@ -405,9 +405,8 @@ class ImpactCnnOptions:
         if self.use_precip:
             assert self.precip_window_size % self.precip_resolution == 0, \
                 "precip_window_size must be divisible by precip_resolution"
-            pixels_per_side = self.precip_window_size // self.precip_resolution
-            if pixels_per_side != 1:
-                assert pixels_per_side % 2 == 0, "pixels per side must be even"
+            assert self.precip_window_size > self.precip_resolution, \
+                "precip_window_size must be > precip_resolution"
             assert self.precip_days_before >= 0, "precip_days_before must be >= 0"
             assert self.precip_days_after >= 0, "precip_days_after must be >= 0"
 
@@ -469,7 +468,7 @@ class ImpactCnnOptions:
                  'If specified, the default class features will be overridden for'
                  'this class only (e.g. event).')
         self.parser.add_argument(
-            '--precip-window-size', type=int, default=8,
+            '--precip-window-size', type=int, default=5,
             help='The precipitation window size [km]')
         self.parser.add_argument(
             '--precip-resolution', type=int, default=1,
