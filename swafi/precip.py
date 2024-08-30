@@ -247,7 +247,8 @@ class Precipitation:
         y_axis: slice
             The slice for the y axis
         """
-        self.hash_tag = self._compute_hash_precip_full_data(x_axis, y_axis)
+        self.hash_tag = self._compute_hash_precip_full_data(
+            x_axis.to_numpy(), y_axis.to_numpy())
 
         for idx in tqdm(range(len(self.time_index)),
                         desc="Generating pickle files for subdomain"):
@@ -548,7 +549,8 @@ class Precipitation:
         return hashlib.md5(tag_data).hexdigest()
 
     def _generate_pickle_files(self, data):
-        self.hash_tag = self._compute_hash_precip_full_data(data['x'], data['y'])
+        self.hash_tag = self._compute_hash_precip_full_data(
+            data['x'].to_numpy(), data['y'].to_numpy())
 
         data['time'] = pd.to_datetime(data['time'])
 
