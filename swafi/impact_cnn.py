@@ -240,7 +240,7 @@ class ImpactCnnOptions:
 
         if isinstance(hp_to_optimize, str) and hp_to_optimize == 'default':
             hp_to_optimize = ['precip_window_size', 'precip_time_step',
-                              'transform_static', 'transform_2d', 'precip_days_before']
+                              'precip_days_before']
 
         if 'weight_denominator' in hp_to_optimize:
             self.weight_denominator = trial.suggest_int(
@@ -249,13 +249,13 @@ class ImpactCnnOptions:
         if self.use_precip:
             if 'precip_window_size' in hp_to_optimize:
                 self.precip_window_size = trial.suggest_categorical(
-                    'precip_window_size', [2, 4, 6, 8, 12])
+                    'precip_window_size', [2, 4, 8])
             if 'precip_resolution' in hp_to_optimize:
                 self.precip_resolution = trial.suggest_categorical(
                     'precip_resolution', [1, 2, 4])
             if 'precip_time_step' in hp_to_optimize:
                 self.precip_time_step = trial.suggest_categorical(
-                    'precip_time_step', [1, 2, 3, 4, 6, 12, 24])
+                    'precip_time_step', [1, 2, 4, 6, 12, 24])
             if 'precip_days_before' in hp_to_optimize:
                 self.precip_days_before = trial.suggest_int(
                     'precip_days_before', 1, 3)
