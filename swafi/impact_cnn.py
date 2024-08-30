@@ -469,16 +469,16 @@ class ImpactCnnOptions:
                  'If specified, the default class features will be overridden for'
                  'this class only (e.g. event).')
         self.parser.add_argument(
-            '--precip-window-size', type=int, default=4,
+            '--precip-window-size', type=int, default=8,
             help='The precipitation window size [km]')
         self.parser.add_argument(
             '--precip-resolution', type=int, default=1,
             help='The precipitation resolution [km]')
         self.parser.add_argument(
-            '--precip-time-step', type=int, default=12,
+            '--precip-time-step', type=int, default=1,
             help='The precipitation time step [h]')
         self.parser.add_argument(
-            '--precip-days-before', type=int, default=1,
+            '--precip-days-before', type=int, default=2,
             help='The number of days before the event to use for the precipitation')
         self.parser.add_argument(
             '--precip-days-after', type=int, default=1,
@@ -502,7 +502,7 @@ class ImpactCnnOptions:
             '--learning-rate', type=float, default=0.001,
             help='The learning rate')
         self.parser.add_argument(
-            '--dropout-rate-cnn', type=float, default=0.5,
+            '--dropout-rate-cnn', type=float, default=0.4,
             help='The dropout rate for the CNN')
         self.parser.add_argument(
             '--dropout-rate-dense', type=float, default=0.2,
