@@ -293,8 +293,8 @@ class Precipitation:
 
             with open(original_file, 'rb') as f_in:
                 data = pickle.load(f_in)
-                data[self.precip_var] = ((data[self.precip_var] - mean) / std
-                                         ).astype('float32')
+                precip = data[self.precip_var]
+                data[self.precip_var] = ((precip - mean) / std).astype('float32')
 
                 with open(tmp_filename, 'wb') as f_out:
                     pickle.dump(data, f_out)
@@ -322,7 +322,8 @@ class Precipitation:
 
             with open(original_file, 'rb') as f_in:
                 data = pickle.load(f_in)
-                data[self.precip_var] = (data[self.precip_var] / q95).astype('float32')
+                precip = data[self.precip_var]
+                data[self.precip_var] = (precip / q95).astype('float32')
 
                 with open(tmp_filename, 'wb') as f_out:
                     pickle.dump(data, f_out)
@@ -345,7 +346,8 @@ class Precipitation:
 
             with open(original_file, 'rb') as f_in:
                 data = pickle.load(f_in)
-                data[self.precip_var] = np.log(data[self.precip_var] + 1e-10)
+                precip = data[self.precip_var]
+                data[self.precip_var] = (np.log(precip + 1e-10)).astype('float32')
 
                 with open(tmp_filename, 'wb') as f_out:
                     pickle.dump(data, f_out)
