@@ -9,14 +9,14 @@ from swafi.precip_combiprecip import CombiPrecip
 
 config = Config()
 
-START_DATE = '2005-01-01'
-END_DATE = '2022-12-31'
+year_start = 2005
+year_end = 2022
 
 
 def main(args):
     # Load CombiPrecip files
-    precip = CombiPrecip()
-    precip.load_data(config.get('DIR_PRECIP'))
+    precip = CombiPrecip(year_start=year_start, year_end=year_end)
+    precip.prepare_data(config.get('DIR_PRECIP'))
 
     cids = np.unique(precip.domain.cids['ids_map'])
     cids = cids[cids != 0]
@@ -31,7 +31,7 @@ def main(args):
 
     for cid in cids:
         print(f'Processing CID {cid}')
-        precip.save_nc_file_per_cid(cid, START_DATE, END_DATE)
+        precip.save_nc_file_per_cid(cid, f'{year_start}-01-01', f'{year_end}-12-31')
 
 
 if __name__ == '__main__':

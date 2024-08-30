@@ -25,7 +25,7 @@ except ImportError:
 USE_SQLITE = False
 USE_TXTFILE = True
 OPTUNA_RANDOM = True
-DATASET = 'gvz'  # 'mobiliar' or 'gvz'
+DATASET = 'mobiliar'  # 'mobiliar' or 'gvz'
 LABEL_EVENT_FILE = 'original_w_prior_pluvial_occurrence'
 SAVE_MODEL = True
 
@@ -40,6 +40,17 @@ def main():
     # options.parser.print_help()
     options.print()
     assert options.is_ok()
+
+    year_start = None
+    year_end = None
+    if DATASET == 'mobiliar':
+        year_start = config.get('YEAR_START_MOBILIAR')
+        year_end = config.get('YEAR_END_MOBILIAR')
+    elif DATASET == 'gvz':
+        year_start = config.get('YEAR_START_GVZ')
+        year_end = config.get('YEAR_END_GVZ')
+    else:
+        raise ValueError(f'Dataset {DATASET} not recognized.')
 
     # Load events
     events_filename = f'events_{DATASET}_with_target_values_{LABEL_EVENT_FILE}.pickle'
@@ -63,7 +74,7 @@ def main():
                 dem = rxr.open_rasterio(config.get('DEM_PATH'), masked=True).squeeze()
 
         # Load CombiPrecip files
-        precip = CombiPrecip()
+        precip = CombiPrecip(year_start, year_end)
         precip.set_data_path(config.get('DIR_PRECIP'))
 
     if not options.optimize_with_optuna:
@@ -73,6 +84,7 @@ def main():
         cnn.assess_model_on_all_periods()
         if SAVE_MODEL:
             cnn.save_model(dir_output=config.get('OUTPUT_DIR'))
+            print(f"Model saved in {config.get('OUTPUT_DIR')}")
 
     else:
         cnn = optimize_model_with_optuna(options, events, precip, dem,
@@ -84,6 +96,8 @@ def _setup_model(options, events, precip, dem):
     cnn = ImpactCnn(events, options=options)
     cnn.set_dem(dem)
     cnn.set_precipitation(precip)
+    cnn.remove_events_without_precipitation_data()
+    cnn.reduce_spatial_domain(options.precip_window_size)
     if cnn.options.use_simple_features:
         cnn.select_features(cnn.options.simple_features)
         cnn.load_features(cnn.options.simple_feature_classes)

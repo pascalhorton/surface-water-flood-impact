@@ -12,11 +12,9 @@ from pathlib import Path
 
 class DataGenerator(keras.utils.Sequence):
     def __init__(self, event_props, x_static, x_precip, x_dem, y, batch_size=32,
-                 shuffle=True, use_pickle_events_precip_data=False,
-                 use_pickle_full_precip_data=True, precip_window_size=2,
-                 precip_resolution=1, precip_time_step=12, precip_days_before=1,
-                 precip_days_after=1, tmp_dir=None, transform_static='standardize',
-                 transform_2d='normalize', precip_transformation_domain='per-pixel',
+                 shuffle=True, precip_window_size=2, precip_resolution=1,
+                 precip_time_step=12, precip_days_before=1, precip_days_after=1,
+                 tmp_dir=None, transform_static='standardize', transform_2d='normalize',
                  log_transform_precip=True, mean_static=None, std_static=None,
                  mean_precip=None, std_precip=None, min_static=None,
                  max_static=None, q95_precip=None, debug=False):
@@ -33,8 +31,8 @@ class DataGenerator(keras.utils.Sequence):
             The event properties (2D; dates and coordinates).
         x_static: np.array
             The static predictor variables (0D).
-        x_precip: xarray.Dataset
-            The precipitation fields (3D).
+        x_precip: Precipitation
+            The precipitation data.
         x_dem: xarray.DataArray
             The DEM (2D).
         y: np.array
@@ -43,13 +41,6 @@ class DataGenerator(keras.utils.Sequence):
             The batch size.
         shuffle: bool
             Whether to shuffle the data or not.
-        use_pickle_events_precip_data: bool
-            Whether to use pickle files to handle the precipitation data for each event.
-            This option is not recommended as it generates a lot of files and is not
-            significantly faster.
-        use_pickle_full_precip_data: bool
-            Whether to load the full data into memory and dump it to a pickle file.
-            This option is recommended as it speeds up the data loading.
         precip_window_size: int
             The window size for the 2D predictors [km].
         precip_resolution: int
@@ -68,9 +59,6 @@ class DataGenerator(keras.utils.Sequence):
         transform_2d: str
             The transformation to apply to the 2D data.
             Options: 'normalize' or 'standardize'.
-        precip_transformation_domain: str
-            How to apply the transformation of the precipitation data:
-            'domain-average', or 'per-pixel'.
         log_transform_precip: bool
             Whether to log-transform the precipitation data or not.
         mean_static: np.array
@@ -99,8 +87,6 @@ class DataGenerator(keras.utils.Sequence):
         self.debug = debug
         self.warning_counter = 0
         self.channels_nb = None
-        self.use_pickle_events_precip_data = use_pickle_events_precip_data
-        self.use_pickle_full_precip_data = use_pickle_full_precip_data
         self.precip_window_size = precip_window_size
         self.precip_resolution = precip_resolution
         self.precip_time_step = precip_time_step
@@ -109,7 +95,6 @@ class DataGenerator(keras.utils.Sequence):
 
         self.transform_static = transform_static
         self.transform_2d = transform_2d
-        self.precip_transformation_domain = precip_transformation_domain
         self.log_transform_precip = log_transform_precip
 
         self.mean_static = mean_static
@@ -131,10 +116,6 @@ class DataGenerator(keras.utils.Sequence):
         self.X_static = x_static
         self.X_precip = x_precip
         self.X_dem = x_dem
-
-        if self.X_precip is not None:
-            self._restrict_spatial_domain()
-            self._restrict_temporal_selection()
 
         self._compute_predictor_statistics()
 
@@ -158,32 +139,6 @@ class DataGenerator(keras.utils.Sequence):
 
         if self.X_dem is not None:
             self.X_dem.load()
-
-    def prepare_precip_data(self):
-        if self.use_pickle_events_precip_data:
-            print('Pre-loading precipitation events')
-            # Check if all the pickle files exist.
-            full_precip_data_loaded = False
-            for i, event in enumerate(self.event_props):
-                file_precip = self._get_precip_event_filename(event)
-                if not file_precip.exists():
-                    if not full_precip_data_loaded:
-                        print('Loading data into RAM')
-                        if self.use_pickle_full_precip_data:
-                            self._load_dump_precip_data()
-                        full_precip_data_loaded = True
-
-                    # Create directories if it does not exist
-                    dir_name = os.path.dirname(file_precip)
-                    os.makedirs(dir_name, exist_ok=True)
-
-                    x_2d = self._extract_precipitation(event)
-                    with open(file_precip, 'wb') as f:
-                        pickle.dump(x_2d, f)
-
-        elif self.use_pickle_full_precip_data:
-            print('Loading data into RAM')
-            self._load_dump_precip_data()
 
     def get_channels_nb(self):
         """ Get the number of channels of the 2D predictors. """
@@ -280,8 +235,7 @@ class DataGenerator(keras.utils.Sequence):
 
     def _standardize_2d_inputs(self):
         if self.X_precip is not None:
-            self.X_precip['precip'] = ((self.X_precip['precip'] - self.mean_precip) /
-                                       self.std_precip)
+            self.X_precip.standardize(self.mean_precip, self.std_precip)
         if self.X_dem is not None:
             self.X_dem = (self.X_dem - self.mean_dem) / self.std_dem
 
@@ -292,66 +246,9 @@ class DataGenerator(keras.utils.Sequence):
 
     def _normalize_2d_inputs(self):
         if self.X_precip is not None:
-            self.X_precip['precip'] = self.X_precip['precip'] / self.q95_precip
+            self.X_precip.normalize(self.q95_precip)
         if self.X_dem is not None:
             self.X_dem = (self.X_dem - self.min_dem) / (self.max_dem - self.min_dem)
-
-    def _load_dump_precip_data(self):
-        """ Load all the precipitation data into memory. """
-        if self.tmp_dir is None:
-            raise ValueError('tmp_dir must be specified')
-
-        file_hash = self._compute_hash_precip_full()
-        file_precip = self.tmp_dir / f'precip_{file_hash}.pickle'
-
-        # If pickle file exists, load it
-        if file_precip.exists():
-            print('Loading precipitation data from pickle file')
-            with open(file_precip, 'rb') as f:
-                self.X_precip = pickle.load(f)
-            return
-
-        # Otherwise, load the data and save it to a pickle file
-        print('Loading precipitation data from netCDF files')
-        self.X_precip.load()
-        with open(file_precip, 'wb') as f:
-            pickle.dump(self.X_precip, f)
-
-    def _restrict_spatial_domain(self):
-        """ Restrict the spatial domain of the precipitation and DEM data. """
-        precip_window_size_m = self.precip_window_size * 1000
-        x_min = self.event_props[:, 1].min() - precip_window_size_m / 2
-        x_max = self.event_props[:, 1].max() + precip_window_size_m / 2
-        y_min = self.event_props[:, 2].min() - precip_window_size_m / 2
-        y_max = self.event_props[:, 2].max() + precip_window_size_m / 2
-        if self.X_precip is not None:
-            self.X_precip = self.X_precip.sel(
-                x=slice(x_min, x_max),
-                y=slice(y_max, y_min)
-            )
-        if self.X_dem is not None:
-            self.X_dem = self.X_dem.sel(
-                x=slice(x_min, x_max),
-                y=slice(y_max, y_min)
-            )
-
-    def _restrict_temporal_selection(self):
-        """ Restrict the temporal selection of the precipitation data. """
-        if self.X_precip is not None:
-            # Select the min/max dates
-            t_min = self.event_props[:, 0].min() - np.timedelta64(
-                self.precip_days_before, 'D')
-            t_max = self.event_props[:, 0].max() + np.timedelta64(
-                self.precip_days_after, 'D')
-
-            # Round to the year start/end
-            t_min = np.datetime64(f'{t_min.year}-01-01')
-            t_max = np.datetime64(f'{t_max.year}-12-31')
-
-            # Select the corresponding precipitation data
-            self.X_precip = self.X_precip.sel(
-                time=slice(t_min, t_max)
-            )
 
     def _compute_predictor_statistics(self):
         if self.X_static is not None:
@@ -386,108 +283,17 @@ class DataGenerator(keras.utils.Sequence):
         # Log transform the precipitation
         if self.log_transform_precip:
             print('Log-transforming precipitation')
-            self.X_precip['precip'] = np.log(self.X_precip['precip'] + 1e-10)
+            self.X_precip.log_transform()
 
-        # Compute the mean and standard deviation of the precipitation
-        if (self.transform_2d == 'standardize' and self.mean_precip is not None
-                and self.std_precip is not None):
-            return
-
-        if self.transform_2d == 'normalize' and self.q95_precip is not None:
-            return
-
-        # If pickle file exists, load it
-        file_hash = self._compute_hash_precip_full()
-        file_mean_precip = self.tmp_dir / f'mean_precip_{file_hash}.pickle'
-        file_std_precip = self.tmp_dir / f'std_precip_{file_hash}.pickle'
-        file_q95_precip = self.tmp_dir / f'q95_precip_{file_hash}.pickle'
-
-        if (self.transform_2d == 'standardize' and file_mean_precip.exists()
-                and file_std_precip.exists()):
-            print('Loading precipitation statistics from pickle files')
-            with open(file_mean_precip, 'rb') as f:
-                self.mean_precip = pickle.load(f)
-            with open(file_std_precip, 'rb') as f:
-                self.std_precip = pickle.load(f)
-            return
-
-        if self.transform_2d == 'normalize' and file_q95_precip.exists():
-            print('Loading precipitation statistics from pickle files')
-            with open(file_q95_precip, 'rb') as f:
-                self.q95_precip = pickle.load(f)
-            return
-
-        # Otherwise, compute the statistics and save them to a pickle file
-        print('Computing precipitation statistics')
-        if self.precip_transformation_domain == 'domain-average':
-            if self.transform_2d == 'standardize':
-                self.mean_precip = self.X_precip['precip'].mean(
-                    ('time', 'x', 'y')).compute().values
-                self.std_precip = self.X_precip['precip'].std('time').mean(
-                    ('x', 'y')).compute().values
-            elif self.transform_2d == 'normalize':
-                self.q95_precip = self.X_precip['precip'].quantile(
-                    0.95, dim=('time', 'x', 'y')).compute().values
-        elif self.precip_transformation_domain == 'per-pixel':
-            if self.transform_2d == 'standardize':
-                self.mean_precip = self.X_precip['precip'].mean(
-                    'time').compute().values
-                self.std_precip = self.X_precip['precip'].std(
-                    'time').compute().values
-            elif self.transform_2d == 'normalize':
-                self.q95_precip = self.X_precip['precip'].chunk(dict(time=-1)).quantile(
-                    0.95, dim='time').compute().values
-        else:
-            raise ValueError(
-                f'Unknown option: {self.precip_transformation_domain}')
-
-        # Save to pickle file
+        # Load or compute the precipitation statistics
         if self.transform_2d == 'standardize':
-            with open(file_mean_precip, 'wb') as f:
-                pickle.dump(self.mean_precip, f)
-            with open(file_std_precip, 'wb') as f:
-                pickle.dump(self.std_precip, f)
+            if self.mean_precip is not None and self.std_precip is not None:
+                return
+            self.mean_precip, self.std_precip = self.X_precip.compute_mean_and_std_per_pixel()
         elif self.transform_2d == 'normalize':
-            with open(file_q95_precip, 'wb') as f:
-                pickle.dump(self.q95_precip, f)
-
-    def _compute_hash_precip_full(self):
-        tag_data = (
-                pickle.dumps(self.transform_2d) +
-                pickle.dumps(self.precip_transformation_domain) +
-                pickle.dumps(self.log_transform_precip) +
-                pickle.dumps(self.X_precip['x']) +
-                pickle.dumps(self.X_precip['y']) +
-                pickle.dumps(self.X_precip['time'][0]) +
-                pickle.dumps(self.X_precip['time'][-1]) +
-                pickle.dumps(self.X_precip['precip'].shape))
-
-        return hashlib.md5(tag_data).hexdigest()
-
-    def _compute_hash_precip_event(self, event):
-        with_dem = self.X_dem is not None
-
-        tag_data = (
-                pickle.dumps(event) +
-                pickle.dumps(self.precip_window_size) +
-                pickle.dumps(self.precip_resolution) +
-                pickle.dumps(self.precip_time_step) +
-                pickle.dumps(self.precip_days_before) +
-                pickle.dumps(self.precip_days_after) +
-                pickle.dumps(self.get_channels_nb()) +
-                pickle.dumps(self.transform_2d) +
-                pickle.dumps(self.precip_transformation_domain) +
-                pickle.dumps(self.log_transform_precip) +
-                pickle.dumps(with_dem) +
-                pickle.dumps(self.X_precip['x']) +
-                pickle.dumps(self.X_precip['y']))
-
-        return hashlib.md5(tag_data).hexdigest()
-
-    def _get_precip_event_filename(self, event):
-        file_hash = self._compute_hash_precip_event(event)
-        return (self.tmp_dir / 'precip_events' / f'{file_hash[0:2]}' /
-                f'{file_hash}.pickle')
+            if self.q95_precip is not None:
+                return
+            self.q95_precip = self.X_precip.compute_quantile_per_pixel(0.98)
 
     def __len__(self):
         """Denotes the number of batches per epoch"""
@@ -504,22 +310,15 @@ class DataGenerator(keras.utils.Sequence):
         x_static = None
 
         # Select the 2D data
-        if self.X_precip is not None or self.use_pickle_events_precip_data:
+        if self.X_precip is not None:
             pixels_nb = int(self.precip_window_size / self.precip_resolution)
             x_2d = np.zeros((self.batch_size,
                              pixels_nb,
                              pixels_nb,
                              self.get_channels_nb()))
 
-            if self.use_pickle_events_precip_data:
-                for i_b, event in enumerate(self.event_props[idxs]):
-                    file_precip = self._get_precip_event_filename(event)
-                    with open(file_precip, 'rb') as f:
-                        x_2d[i_b] = pickle.load(f)
-
-            else:
-                for i_b, event in enumerate(self.event_props[idxs]):
-                    x_2d[i_b] = self._extract_precipitation(event)
+            for i_b, event in enumerate(self.event_props[idxs]):
+                x_2d[i_b] = self._extract_precipitation(event)
 
             if self.X_static is None:
                 return x_2d, y
@@ -547,12 +346,10 @@ class DataGenerator(keras.utils.Sequence):
         y_start = event[2] + precip_window_size_m / 2
         y_end = event[2] - precip_window_size_m / 2
 
-        # Select the corresponding precipitation data (5 days prior the event)
-        x_precip_ev = self.X_precip['precip'].sel(
-            time=slice(t_start, t_end),
-            x=slice(x_start, x_end),
-            y=slice(y_start, y_end)
-        ).to_numpy()
+        # Select the corresponding precipitation data
+        x_precip_ev = self.X_precip.get_data_chunk(
+            t_start, t_end, x_start, x_end, y_start, y_end
+        )
 
         # Move the time axis to the last position
         x_precip_ev = np.moveaxis(x_precip_ev, 0, -1)

@@ -73,9 +73,6 @@ class ImpactCnnOptions:
     transform_2d: str
         The transformation to apply to the 2D data.
         Options are: 'standardize', 'normalize'.
-    precip_trans_domain: str
-        The precipitation transformation domain.
-        Options are: 'domain-average', 'per-pixel'.
     log_transform_precip: bool
         Whether to log-transform the precipitation or not.
     batch_size: int
@@ -133,11 +130,10 @@ class ImpactCnnOptions:
         self.precip_window_size = 0
         self.precip_resolution = 0
         self.precip_time_step = 0
-        self.precip_days_before = 0
-        self.precip_days_after = 1
+        self.precip_days_before = 1
+        self.precip_days_after = 0
         self.transform_static = 'standardize'
         self.transform_2d = 'normalize'
-        self.precip_trans_domain = 'per-pixel'
         self.log_transform_precip = True
 
         # Training options
@@ -194,7 +190,6 @@ class ImpactCnnOptions:
         self.precip_days_after = args.precip_days_after
         self.transform_static = args.transform_static
         self.transform_2d = args.transform_2d
-        self.precip_trans_domain = args.precip_trans_domain
         self.log_transform_precip = not args.no_log_transform_precip
         self.batch_size = args.batch_size
         self.epochs = args.epochs
@@ -227,8 +222,8 @@ class ImpactCnnOptions:
             The list of hyperparameters to optimize. Can be the string 'default'
             Options are: weight_denominator, precip_window_size, precip_time_step,
             precip_days_before, precip_resolution, precip_days_after, transform_static,
-            transform_2d, precip_trans_domain, log_transform_precip, batch_size,
-            learning_rate, dropout_rate_dense, dropout_rate_cnn, with_spatial_dropout,
+            transform_2d, log_transform_precip, batch_size, learning_rate,
+            dropout_rate_dense, dropout_rate_cnn, with_spatial_dropout,
             with_batchnorm_cnn, with_batchnorm_dense, nb_filters, nb_conv_blocks,
             nb_dense_layers, nb_dense_units, nb_dense_units_decreasing,
             inner_activation_dense, inner_activation_cnn,
@@ -275,9 +270,6 @@ class ImpactCnnOptions:
             if 'transform_2d' in hp_to_optimize:
                 self.transform_2d = trial.suggest_categorical(
                     'transform_2d', ['standardize', 'normalize'])
-            if 'precip_trans_domain' in hp_to_optimize:
-                self.precip_trans_domain = trial.suggest_categorical(
-                    'precip_trans_domain', ['domain-average', 'per-pixel'])
             if 'log_transform_precip' in hp_to_optimize:
                 self.log_transform_precip = trial.suggest_categorical(
                     'log_transform_precip', [True, False])
@@ -376,7 +368,6 @@ class ImpactCnnOptions:
 
         if self.use_precip:
             print("- transform_2d: ", self.transform_2d)
-            print("- precip_trans_domain: ", self.precip_trans_domain)
             print("- log_transform_precip: ", self.log_transform_precip)
 
         print("- batch_size: ", self.batch_size)
@@ -478,16 +469,16 @@ class ImpactCnnOptions:
                  'If specified, the default class features will be overridden for'
                  'this class only (e.g. event).')
         self.parser.add_argument(
-            '--precip-window-size', type=int, default=2,
+            '--precip-window-size', type=int, default=8,
             help='The precipitation window size [km]')
         self.parser.add_argument(
             '--precip-resolution', type=int, default=1,
             help='The precipitation resolution [km]')
         self.parser.add_argument(
-            '--precip-time-step', type=int, default=12,
+            '--precip-time-step', type=int, default=1,
             help='The precipitation time step [h]')
         self.parser.add_argument(
-            '--precip-days-before', type=int, default=1,
+            '--precip-days-before', type=int, default=2,
             help='The number of days before the event to use for the precipitation')
         self.parser.add_argument(
             '--precip-days-after', type=int, default=1,
@@ -498,10 +489,6 @@ class ImpactCnnOptions:
         self.parser.add_argument(
             '--transform-2d', type=str, default='normalize',
             help='The transformation to apply to the 2D data')
-        self.parser.add_argument(
-            '--precip-trans-domain', type=str, default='per-pixel',
-            help='The precipitation transformation domain. '
-                 'Options are: domain-average, per-pixel')
         self.parser.add_argument(
             '--no-log-transform-precip', action='store_true',
             help='Do not log-transform the precipitation')
@@ -515,7 +502,7 @@ class ImpactCnnOptions:
             '--learning-rate', type=float, default=0.001,
             help='The learning rate')
         self.parser.add_argument(
-            '--dropout-rate-cnn', type=float, default=0.5,
+            '--dropout-rate-cnn', type=float, default=0.4,
             help='The dropout rate for the CNN')
         self.parser.add_argument(
             '--dropout-rate-dense', type=float, default=0.2,
@@ -533,7 +520,7 @@ class ImpactCnnOptions:
             '--nb-filters', type=int, default=64,
             help='The number of filters')
         self.parser.add_argument(
-            '--nb-conv-blocks', type=int, default=5,
+            '--nb-conv-blocks', type=int, default=2,
             help='The number of convolutional blocks')
         self.parser.add_argument(
             '--nb-dense-layers', type=int, default=5,
@@ -935,16 +922,12 @@ class ImpactCnn(Impact):
             tmp_dir=self.tmp_dir,
             transform_static=self.options.transform_static,
             transform_2d=self.options.transform_2d,
-            precip_transformation_domain=self.options.precip_trans_domain,
             log_transform_precip=self.options.log_transform_precip,
             debug=DEBUG
         )
 
         if self.factor_neg_reduction != 1:
             self.dg_train.reduce_negatives(self.factor_neg_reduction)
-
-        if self.options.use_precip:
-            self.dg_train.prepare_precip_data()
 
     def _create_data_generator_valid(self):
         self.dg_val = DataGenerator(
@@ -963,7 +946,6 @@ class ImpactCnn(Impact):
             tmp_dir=self.tmp_dir,
             transform_static=self.options.transform_static,
             transform_2d=self.options.transform_2d,
-            precip_transformation_domain=self.options.precip_trans_domain,
             log_transform_precip=self.options.log_transform_precip,
             mean_static=self.dg_train.mean_static,
             std_static=self.dg_train.std_static,
@@ -977,9 +959,6 @@ class ImpactCnn(Impact):
 
         if self.factor_neg_reduction != 1:
             self.dg_val.reduce_negatives(self.factor_neg_reduction)
-
-        if self.options.use_precip:
-            self.dg_val.prepare_precip_data()
 
     def _create_data_generator_test(self):
         self.dg_test = DataGenerator(
@@ -998,7 +977,6 @@ class ImpactCnn(Impact):
             tmp_dir=self.tmp_dir,
             transform_static=self.options.transform_static,
             transform_2d=self.options.transform_2d,
-            precip_transformation_domain=self.options.precip_trans_domain,
             log_transform_precip=self.options.log_transform_precip,
             mean_static=self.dg_train.mean_static,
             std_static=self.dg_train.std_static,
@@ -1009,9 +987,6 @@ class ImpactCnn(Impact):
             q95_precip=self.dg_train.q95_precip,
             debug=DEBUG
         )
-
-        if self.options.use_precip:
-            self.dg_test.prepare_precip_data()
 
     def _define_model(self, input_2d_size, input_1d_size):
         """
@@ -1088,17 +1063,15 @@ class ImpactCnn(Impact):
             print("Precipitation is not used and is therefore not loaded.")
             return
 
-        precipitation.load_data(resolution=self.options.precip_resolution,
-                                time_step=self.options.precip_time_step)
+        precipitation.prepare_data(resolution=self.options.precip_resolution,
+                                   time_step=self.options.precip_time_step)
 
         # Check the shape of the precipitation and the DEM
         if self.dem is not None:
             # Select the same domain as the DEM
-            precipitation.data = precipitation.data.sel(x=self.dem.x, y=self.dem.y)
-            assert precipitation.data['precip'].shape[1:] == self.dem.shape, \
-                "DEM and precipitation must have the same shape"
+            precipitation.generate_pickles_for_subdomain(self.dem.x, self.dem.y)
 
-        self.precipitation = precipitation.data
+        self.precipitation = precipitation
 
     def set_dem(self, dem):
         """
@@ -1126,10 +1099,60 @@ class ImpactCnn(Impact):
                 boundary='trim'
             ).mean()
 
-        if self.precipitation is not None:
-            assert dem.shape == self.precipitation.isel(time=0).shape, \
-                "DEM and precipitation must have the same shape"
         self.dem = dem
+
+    def reduce_spatial_domain(self, precip_window_size):
+        """
+        Restrict the spatial domain of the precipitation and DEM data.
+
+        Parameters
+        ----------
+        precip_window_size: int
+            The precipitation window size [km].
+        """
+        precip_window_size_m = precip_window_size * 1000
+        x_min = self.df['x'].min() - precip_window_size_m / 2
+        x_max = self.df['x'].max() + precip_window_size_m / 2
+        y_min = self.df['y'].min() - precip_window_size_m / 2
+        y_max = self.df['y'].max() + precip_window_size_m / 2
+        if self.precipitation is not None:
+            x_axis = self.precipitation.get_x_axis_for_bounds(x_min, x_max)
+            y_axis = self.precipitation.get_y_axis_for_bounds(y_min, y_max)
+            self.precipitation.generate_pickles_for_subdomain(x_axis, y_axis)
+        if self.dem is not None:
+            self.dem = self.dem.sel(
+                x=slice(x_min, x_max),
+                y=slice(y_max, y_min)
+            )
+
+    def remove_events_without_precipitation_data(self):
+        """
+        Remove the events at the period limits.
+        """
+        if self.precipitation is None:
+            return
+
+        # Extract events dates
+        events = self.df[['e_end', 'date_claim']].copy()
+        events.rename(columns={'date_claim': 'date'}, inplace=True)
+        events['e_end'] = pd.to_datetime(events['e_end']).dt.date
+        events['date'] = pd.to_datetime(events['date']).dt.date
+
+        # Fill NaN values with the event end date (as date, not datetime)
+        events['date'] = events['date'].fillna(events['e_end'])
+
+        # Precipitation period
+        p_start = pd.to_datetime(f'{self.precipitation.year_start}-01-01').date()
+        p_end = pd.to_datetime(f'{self.precipitation.year_end}-12-31').date()
+
+        if self.options.precip_days_before > 0:
+            self.df = self.df[events['date'] > p_start + pd.Timedelta(
+                days=self.options.precip_days_before)]
+            events = events[events['date'] > p_start + pd.Timedelta(
+                days=self.options.precip_days_before)]
+        if self.options.precip_days_after > 0:
+            self.df = self.df[events['date'] < p_end - pd.Timedelta(
+                days=self.options.precip_days_after)]
 
     @staticmethod
     def _plot_training_history(hist, dir_plots, show_plots, prefix=None):

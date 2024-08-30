@@ -1,5 +1,11 @@
 # SWAFI - Surface Water Flood Impact
 
+## Install the package
+Install the released version of the package using the following command:
+```
+pip install swafi
+```
+
 ## Installing dependencies
 Install the requirements using the following command:
 ```
@@ -305,7 +311,6 @@ train_cnn_occurrence.py [-h] [--run-id RUN_ID] [--optimize-with-optuna]
                        [--precip-days-after PRECIP_DAYS_AFTER]
                        [--transform-static TRANSFORM_STATIC]
                        [--transform-2d TRANSFORM_2D]
-                       [--precip-trans-domain PRECIP_TRANS_DOMAIN]
                        [--batch-size BATCH_SIZE] [--epochs EPOCHS]
                        [--learning-rate LEARNING_RATE]
                        [--dropout-rate DROPOUT_RATE]
@@ -338,7 +343,6 @@ Options
 * `--precip-days-after PRECIP_DAYS_AFTER`: The number of days after the event to use for the precipitation
 * `--transform-static TRANSFORM_STATIC`: The transformation to apply to the static data
 * `--transform-2d TRANSFORM_2D`: The transformation to apply to the 2D data
-* `--precip-trans-domain PRECIP_TRANS_DOMAIN`: The precipitation transformation domain. Options are: domain-average, per-pixel
 * `--batch-size BATCH_SIZE`: The batch size
 * `--epochs EPOCHS`: The number of epochs
 * `--learning-rate LEARNING_RATE`: The learning rate

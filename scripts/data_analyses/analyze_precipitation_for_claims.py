@@ -31,12 +31,18 @@ def main():
 
 def generate_csv():
     # Load the damage data
+    year_start = None
+    year_end = None
     if DATASET == 'mobiliar':
+        year_start = config.get('YEAR_START_MOBILIAR')
+        year_end = config.get('YEAR_END_MOBILIAR')
         damages = DamagesMobiliar(dir_exposure=config.get('DIR_EXPOSURE_MOBILIAR'),
                                   dir_claims=config.get('DIR_CLAIMS_MOBILIAR'),
                                   year_start=config.get('YEAR_START_MOBILIAR'),
                                   year_end=config.get('YEAR_END_MOBILIAR'))
     elif DATASET == 'gvz':
+        year_start = config.get('YEAR_START_GVZ')
+        year_end = config.get('YEAR_END_GVZ')
         damages = DamagesGvz(dir_exposure=config.get('DIR_EXPOSURE_GVZ'),
                              dir_claims=config.get('DIR_CLAIMS_GVZ'),
                              year_start=config.get('YEAR_START_GVZ'),
@@ -54,8 +60,8 @@ def generate_csv():
     cids = damages.claims['cid'].unique()
 
     # Load CombiPrecip files
-    precip = CombiPrecip()
-    precip.load_data(config.get('DIR_PRECIP'))
+    precip = CombiPrecip(year_start, year_end)
+    precip.prepare_data(config.get('DIR_PRECIP'))
 
     # Add columns to the claims dataframe
     claims['precip_max'] = None
