@@ -4,6 +4,7 @@ Class to handle the precipitation data.
 import pickle
 import hashlib
 import dask
+import gc
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -52,7 +53,7 @@ class Precipitation:
 
         self.hash_tag = None
         self.pickle_files = []
-        self.mem_nb_pixels = 20  # Number of pixels to process at once (per spatial dimension; e.g. 100x100)
+        self.mem_nb_pixels = 64  # Number of pixels to process at once (per spatial dimension; e.g. 100x100)
 
     def set_data_path(self, data_path):
         """
@@ -485,6 +486,8 @@ class Precipitation:
                 y_size = min(self.mem_nb_pixels, n_cols - j)
                 data = self.get_spatial_chunk_data(i, j, x_size, y_size)
                 quantiles[i:i + x_size, j:j + y_size] = np.nanquantile(data, quantile, axis=0)
+                del data
+                gc.collect()
 
         # Save quantile
         with open(tmp_filename, 'wb') as f:
