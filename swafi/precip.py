@@ -137,13 +137,16 @@ class Precipitation:
         ts = []
 
         for f in self.pickle_files:
-            with open(f, 'rb') as file:
-                data = pickle.load(file)
-                dat = data.sel(
-                    {self.x_axis: slice(x - dx * dpx, x + dx * dpx),
-                     self.y_axis: slice(y + dy * dpx, y - dy * dpx)
-                     })
-                ts.append(dat)
+            try:
+                with open(f, 'rb') as file:
+                    data = pickle.load(file)
+                    dat = data.sel(
+                        {self.x_axis: slice(x - dx * dpx, x + dx * dpx),
+                         self.y_axis: slice(y + dy * dpx, y - dy * dpx)
+                         })
+                    ts.append(dat)
+            except EOFError:
+                raise EOFError(f"Error: {f} is empty or corrupted.")
 
         ts = xr.concat(ts, dim=self.time_axis)
         ts = ts.sel({self.time_axis: slice(start, end)})
@@ -207,9 +210,12 @@ class Precipitation:
 
         if tmp_filename_pk.exists():
             print(f"Loading quantiles for CID {cid} from pickle file.")
-            with open(tmp_filename_pk, 'rb') as f:
-                quantiles = pickle.load(f)
-                return quantiles
+            try:
+                with open(tmp_filename_pk, 'rb') as f:
+                    quantiles = pickle.load(f)
+                    return quantiles
+            except EOFError:
+                raise EOFError(f"Error: {tmp_filename_pk} is empty or corrupted.")
 
         # Check if netCDF file of the time series exists
         hash_tag_nc = self._compute_hash_single_cid(self.year_start, self.year_end)
@@ -266,12 +272,16 @@ class Precipitation:
             if tmp_filename.exists():
                 continue
 
-            with open(original_file, 'rb') as f_in:
-                data = pickle.load(f_in)
-                data = data.sel({self.x_axis: x_axis, self.y_axis: y_axis})
+            try:
+                with open(original_file, 'rb') as f_in:
+                    data = pickle.load(f_in)
+                    data = data.sel({self.x_axis: x_axis, self.y_axis: y_axis})
 
-                with open(tmp_filename, 'wb') as f_out:
-                    pickle.dump(data, f_out)
+                    with open(tmp_filename, 'wb') as f_out:
+                        pickle.dump(data, f_out)
+
+            except EOFError:
+                raise EOFError(f"Error: {original_file} is empty or corrupted.")
 
     def standardize(self, mean, std):
         """
@@ -296,13 +306,17 @@ class Precipitation:
             if tmp_filename.exists():
                 continue
 
-            with open(original_file, 'rb') as f_in:
-                data = pickle.load(f_in)
-                precip = data[self.precip_var]
-                data[self.precip_var] = ((precip - mean) / std).astype('float32')
+            try:
+                with open(original_file, 'rb') as f_in:
+                    data = pickle.load(f_in)
+                    precip = data[self.precip_var]
+                    data[self.precip_var] = ((precip - mean) / std).astype('float32')
 
-                with open(tmp_filename, 'wb') as f_out:
-                    pickle.dump(data, f_out)
+                    with open(tmp_filename, 'wb') as f_out:
+                        pickle.dump(data, f_out)
+
+            except EOFError:
+                raise EOFError(f"Error: {original_file} is empty or corrupted.")
 
     def normalize(self, q98):
         """
@@ -325,13 +339,17 @@ class Precipitation:
             if tmp_filename.exists():
                 continue
 
-            with open(original_file, 'rb') as f_in:
-                data = pickle.load(f_in)
-                precip = data[self.precip_var]
-                data[self.precip_var] = (precip / q98).astype('float32')
+            try:
+                with open(original_file, 'rb') as f_in:
+                    data = pickle.load(f_in)
+                    precip = data[self.precip_var]
+                    data[self.precip_var] = (precip / q98).astype('float32')
 
-                with open(tmp_filename, 'wb') as f_out:
-                    pickle.dump(data, f_out)
+                    with open(tmp_filename, 'wb') as f_out:
+                        pickle.dump(data, f_out)
+
+            except EOFError:
+                raise EOFError(f"Error: {original_file} is empty or corrupted.")
 
     def log_transform(self):
         """
@@ -349,13 +367,17 @@ class Precipitation:
             if tmp_filename.exists():
                 continue
 
-            with open(original_file, 'rb') as f_in:
-                data = pickle.load(f_in)
-                precip = data[self.precip_var]
-                data[self.precip_var] = (np.log(precip + 1e-10)).astype('float32')
+            try:
+                with open(original_file, 'rb') as f_in:
+                    data = pickle.load(f_in)
+                    precip = data[self.precip_var]
+                    data[self.precip_var] = (np.log(precip + 1e-10)).astype('float32')
 
-                with open(tmp_filename, 'wb') as f_out:
-                    pickle.dump(data, f_out)
+                    with open(tmp_filename, 'wb') as f_out:
+                        pickle.dump(data, f_out)
+
+            except EOFError:
+                raise EOFError(f"Error: {original_file} is empty or corrupted.")
 
     def compute_mean_and_std_per_pixel(self):
         """
@@ -375,16 +397,27 @@ class Precipitation:
         mean_file = self.tmp_dir / filename_mean
         std_file = self.tmp_dir / filename_std
         if mean_file.exists() and std_file.exists():
-            with open(mean_file, 'rb') as f:
-                mean = pickle.load(f)
-            with open(std_file, 'rb') as f:
-                std = pickle.load(f)
+            try:
+                with open(mean_file, 'rb') as f:
+                    mean = pickle.load(f)
+            except EOFError:
+                raise EOFError(f"Error: {mean_file} is empty or corrupted.")
+
+            try:
+                with open(std_file, 'rb') as f:
+                    std = pickle.load(f)
+            except EOFError:
+                raise EOFError(f"Error: {std_file} is empty or corrupted.")
+
             return mean, std
 
         # Open first precipitation file to get the dimensions
-        with open(self.pickle_files[0], 'rb') as f_in:
-            data = pickle.load(f_in)
-            n_rows, n_cols = data[self.precip_var].shape[1:]
+        try:
+            with open(self.pickle_files[0], 'rb') as f_in:
+                data = pickle.load(f_in)
+                n_rows, n_cols = data[self.precip_var].shape[1:]
+        except EOFError:
+            raise EOFError(f"Error: {self.pickle_files[0]} is empty or corrupted.")
 
         # Compute mean and standard deviation by spatial chunks (for memory efficiency)
         mean = np.zeros((n_rows, n_cols))
@@ -427,14 +460,21 @@ class Precipitation:
         # If the file already exists, load it
         tmp_filename = self.tmp_dir / filename
         if tmp_filename.exists():
-            with open(tmp_filename, 'rb') as f:
-                quantiles = pickle.load(f)
+            try:
+                with open(tmp_filename, 'rb') as f:
+                    quantiles = pickle.load(f)
+            except EOFError:
+                raise EOFError(f"Error: {tmp_filename} is empty or corrupted.")
+
             return quantiles
 
         # Open first precipitation file to get the dimensions
-        with open(self.pickle_files[0], 'rb') as f_in:
-            data = pickle.load(f_in)
-            n_rows, n_cols = data[self.precip_var].shape[1:]
+        try:
+            with open(self.pickle_files[0], 'rb') as f_in:
+                data = pickle.load(f_in)
+                n_rows, n_cols = data[self.precip_var].shape[1:]
+        except EOFError:
+            raise EOFError(f"Error: {self.pickle_files[0]} is empty or corrupted.")
 
         # Compute quantile by spatial chunks (for memory efficiency)
         quantiles = np.zeros((n_rows, n_cols))
@@ -476,14 +516,17 @@ class Precipitation:
         for idx in range(len(self.time_index)):
             original_file = self.pickle_files[idx]
 
-            with open(original_file, 'rb') as f_in:
-                data_file = pickle.load(f_in)
-                data_file = data_file[self.precip_var].values
-                data_file = data_file[:, i:i + x_size, j:j + y_size]
-                if data_chunk is None:
-                    data_chunk = data_file
-                else:
-                    data_chunk = np.concatenate((data_chunk, data_file))
+            try:
+                with open(original_file, 'rb') as f_in:
+                    data_file = pickle.load(f_in)
+                    data_file = data_file[self.precip_var].values
+                    data_file = data_file[:, i:i + x_size, j:j + y_size]
+                    if data_chunk is None:
+                        data_chunk = data_file
+                    else:
+                        data_chunk = np.concatenate((data_chunk, data_file))
+            except EOFError:
+                raise EOFError(f"Error: {original_file} is empty or corrupted.")
 
         return data_chunk
 
@@ -517,18 +560,22 @@ class Precipitation:
 
         data = None
         for idx in range(idx_start, idx_end + 1):
-            with open(self.pickle_files[idx], 'rb') as f_in:
-                data_file = pickle.load(f_in)
-                data_file = data_file[self.precip_var].sel(
-                    time=slice(t_start, t_end),
-                    x=slice(x_start, x_end),
-                    y=slice(y_start, y_end)
-                ).to_numpy()
+            pk_file = self.pickle_files[idx]
+            try:
+                with open(pk_file, 'rb') as f_in:
+                    data_file = pickle.load(f_in)
+                    data_file = data_file[self.precip_var].sel(
+                        time=slice(t_start, t_end),
+                        x=slice(x_start, x_end),
+                        y=slice(y_start, y_end)
+                    ).to_numpy()
 
-                if data is None:
-                    data = data_file
-                else:
-                    data = np.concatenate((data, data_file))
+                    if data is None:
+                        data = data_file
+                    else:
+                        data = np.concatenate((data, data_file))
+            except EOFError:
+                raise EOFError(f"Error: {pk_file} is empty or corrupted.")
 
         return data
 
