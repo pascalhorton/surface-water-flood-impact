@@ -405,8 +405,8 @@ class ImpactCnnOptions:
         if self.use_precip:
             assert self.precip_window_size % self.precip_resolution == 0, \
                 "precip_window_size must be divisible by precip_resolution"
-            assert self.precip_window_size > self.precip_resolution, \
-                "precip_window_size must be > precip_resolution"
+            assert self.precip_window_size >= self.precip_resolution, \
+                "precip_window_size must be >= precip_resolution"
             assert self.precip_days_before >= 0, "precip_days_before must be >= 0"
             assert self.precip_days_after >= 0, "precip_days_after must be >= 0"
 
