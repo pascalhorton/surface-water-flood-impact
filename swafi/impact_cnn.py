@@ -669,7 +669,8 @@ class ImpactCnn(Impact):
             epochs=self.options.epochs,
             validation_data=self.dg_val,
             callbacks=[callback],
-            verbose=verbose
+            verbose=verbose,
+            shuffle=False
         )
 
         # Plot the training history
