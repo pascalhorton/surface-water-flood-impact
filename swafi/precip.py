@@ -428,8 +428,8 @@ class Precipitation:
                 x_size = min(self.mem_nb_pixels, n_rows - i)
                 y_size = min(self.mem_nb_pixels, n_cols - j)
                 data = self.get_spatial_chunk_data(i, j, x_size, y_size)
-                mean[i:i + x_size, j:j + y_size] = np.mean(data, axis=0)
-                std[i:i + x_size, j:j + y_size] = np.std(data, axis=0)
+                mean[i:i + x_size, j:j + y_size] = np.nanmean(data, axis=0)
+                std[i:i + x_size, j:j + y_size] = np.nanstd(data, axis=0)
 
         # Save mean and standard deviation
         with open(mean_file, 'wb') as f:
@@ -484,7 +484,7 @@ class Precipitation:
                 x_size = min(self.mem_nb_pixels, n_rows - i)
                 y_size = min(self.mem_nb_pixels, n_cols - j)
                 data = self.get_spatial_chunk_data(i, j, x_size, y_size)
-                quantiles[i:i + x_size, j:j + y_size] = np.quantile(data, quantile, axis=0)
+                quantiles[i:i + x_size, j:j + y_size] = np.nanquantile(data, quantile, axis=0)
 
         # Save quantile
         with open(tmp_filename, 'wb') as f:
