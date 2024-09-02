@@ -17,7 +17,7 @@ class DataGenerator(keras.utils.Sequence):
                  tmp_dir=None, transform_static='standardize', transform_2d='normalize',
                  log_transform_precip=True, mean_static=None, std_static=None,
                  mean_precip=None, std_precip=None, min_static=None,
-                 max_static=None, q95_precip=None, debug=False):
+                 max_static=None, q98_precip=None, debug=False):
         """
         Data generator class.
         Template from:
@@ -73,8 +73,8 @@ class DataGenerator(keras.utils.Sequence):
             The min of the static data.
         max_static: np.array
             The max of the static data.
-        q95_precip: np.array
-            The 95th percentile of the precipitation data.
+        q98_precip: np.array
+            The 98th percentile of the precipitation data.
         debug: bool
             Whether to run in debug mode or not (print more messages).
         """
@@ -103,7 +103,7 @@ class DataGenerator(keras.utils.Sequence):
         self.std_precip = std_precip
         self.min_static = min_static
         self.max_static = max_static
-        self.q95_precip = q95_precip
+        self.q98_precip = q98_precip
 
         self.mean_dem = None
         self.std_dem = None
@@ -246,7 +246,7 @@ class DataGenerator(keras.utils.Sequence):
 
     def _normalize_2d_inputs(self):
         if self.X_precip is not None:
-            self.X_precip.normalize(self.q95_precip)
+            self.X_precip.normalize(self.q98_precip)
         if self.X_dem is not None:
             self.X_dem = (self.X_dem - self.min_dem) / (self.max_dem - self.min_dem)
 
@@ -291,9 +291,9 @@ class DataGenerator(keras.utils.Sequence):
                 return
             self.mean_precip, self.std_precip = self.X_precip.compute_mean_and_std_per_pixel()
         elif self.transform_2d == 'normalize':
-            if self.q95_precip is not None:
+            if self.q98_precip is not None:
                 return
-            self.q95_precip = self.X_precip.compute_quantile_per_pixel(0.98)
+            self.q98_precip = self.X_precip.compute_quantile_per_pixel(0.98)
 
     def __len__(self):
         """Denotes the number of batches per epoch"""

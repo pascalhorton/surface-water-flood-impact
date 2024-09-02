@@ -304,14 +304,14 @@ class Precipitation:
                 with open(tmp_filename, 'wb') as f_out:
                     pickle.dump(data, f_out)
 
-    def normalize(self, q95):
+    def normalize(self, q98):
         """
         Normalize the precipitation data.
 
         Parameters
         ----------
-        q95: float
-            The 95th quantile
+        q98: float
+            The 98th quantile
         """
         for idx in tqdm(range(len(self.time_index)),
                         desc="Normalizing precipitation data"):
@@ -328,7 +328,7 @@ class Precipitation:
             with open(original_file, 'rb') as f_in:
                 data = pickle.load(f_in)
                 precip = data[self.precip_var]
-                data[self.precip_var] = (precip / q95).astype('float32')
+                data[self.precip_var] = (precip / q98).astype('float32')
 
                 with open(tmp_filename, 'wb') as f_out:
                     pickle.dump(data, f_out)

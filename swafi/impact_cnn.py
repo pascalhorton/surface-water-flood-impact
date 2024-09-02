@@ -952,7 +952,7 @@ class ImpactCnn(Impact):
             std_precip=self.dg_train.std_precip,
             min_static=self.dg_train.min_static,
             max_static=self.dg_train.max_static,
-            q95_precip=self.dg_train.q95_precip,
+            q98_precip=self.dg_train.q98_precip,
             debug=DEBUG
         )
 
@@ -983,7 +983,7 @@ class ImpactCnn(Impact):
             std_precip=self.dg_train.std_precip,
             min_static=self.dg_train.min_static,
             max_static=self.dg_train.max_static,
-            q95_precip=self.dg_train.q95_precip,
+            q98_precip=self.dg_train.q98_precip,
             debug=DEBUG
         )
 
