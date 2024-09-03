@@ -132,7 +132,7 @@ class DataGenerator(keras.utils.Sequence):
         self.n_samples = self.y.shape[0]
         self.idxs = np.arange(self.n_samples)
 
-        self.on_epoch_end()
+        self.on_epoch_end()  # Shuffle the data
 
         if self.X_precip is None:
             return

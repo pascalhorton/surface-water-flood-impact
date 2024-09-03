@@ -1110,7 +1110,9 @@ class ImpactCnn(Impact):
         precip_window_size: int
             The precipitation window size [km].
         """
-        precip_window_size_m = precip_window_size * 1000
+        precip_window_size_m = 15 * 1000
+        if precip_window_size > 15:
+            precip_window_size_m = precip_window_size * 1000
         x_min = self.df['x'].min() - precip_window_size_m / 2
         x_max = self.df['x'].max() + precip_window_size_m / 2
         y_min = self.df['y'].min() - precip_window_size_m / 2
