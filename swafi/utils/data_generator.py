@@ -347,8 +347,9 @@ class DataGenerator(keras.utils.Sequence):
         y_end = event[2] - precip_window_size_m / 2
 
         # Select the corresponding precipitation data
+        cid = event[3]
         x_precip_ev = self.X_precip.get_data_chunk(
-            t_start, t_end, x_start, x_end, y_start, y_end
+            t_start, t_end, x_start, x_end, y_start, y_end, cid
         )
 
         # Move the time axis to the last position

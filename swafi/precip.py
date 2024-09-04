@@ -588,7 +588,7 @@ class Precipitation:
 
         return data_chunk
 
-    def get_data_chunk(self, t_start, t_end, x_start, x_end, y_start, y_end):
+    def get_data_chunk(self, t_start, t_end, x_start, x_end, y_start, y_end, cid=None):
         """
         Get the precipitation data for a temporal and spatial chunk.
 
@@ -606,16 +606,18 @@ class Precipitation:
             The starting y coordinate
         y_end: float
             The ending y coordinate
+        cid: int|None
+            The cell ID (default: None)
 
         Returns
         -------
         np.array
             The precipitation data for the temporal and spatial chunk
         """
-        if self.cid_time_series is not None:
+        if self.cid_time_series is not None and cid is not None:
             return self.cid_time_series.sel(
                 time=slice(t_start, t_end),
-                cid=slice(x_start, x_end)
+                cid=cid
             ).to_numpy()
 
         # Get the index/indices in the temporal index
