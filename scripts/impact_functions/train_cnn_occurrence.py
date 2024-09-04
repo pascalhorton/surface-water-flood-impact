@@ -80,7 +80,7 @@ def main():
     if not options.optimize_with_optuna:
         cnn = _setup_model(options, events, precip, dem)
         cnn.fit(dir_plots=config.get('OUTPUT_DIR'),
-                tag=options.run_name)
+                tag=options.run_name, show_plots=True)
         cnn.assess_model_on_all_periods()
         if SAVE_MODEL:
             cnn.save_model(dir_output=config.get('OUTPUT_DIR'))
