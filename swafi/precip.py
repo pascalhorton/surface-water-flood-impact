@@ -399,7 +399,9 @@ class Precipitation:
                 with open(original_file, 'rb') as f_in:
                     data = pickle.load(f_in)
                     precip = data[self.precip_var]
-                    data[self.precip_var] = (precip / q98).astype('float32')
+                    min_precip = float(precip.min())  # Might not be 0 when log-transformed
+                    data[self.precip_var] = ((precip - min_precip) /
+                                             (q98 - min_precip)).astype('float32')
 
                     with open(tmp_filename, 'wb') as f_out:
                         pickle.dump(data, f_out)
