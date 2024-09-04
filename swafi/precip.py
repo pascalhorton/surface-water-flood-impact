@@ -617,10 +617,16 @@ class Precipitation:
             The precipitation data for the temporal and spatial chunk
         """
         if self.cid_time_series is not None and cid is not None:
-            return self.cid_time_series.sel(
+            ts = self.cid_time_series.sel(
                 time=slice(t_start, t_end),
                 cid=cid
             ).to_numpy()
+
+            # If the time series is 1D, add 2 dimensions
+            if len(ts.shape) == 1:
+                ts = np.expand_dims(ts, axis=(1, 2))
+
+            return ts
 
         # Get the index/indices in the temporal index
         idx_start = self.time_index.get_loc(t_start.normalize().replace(day=1))
