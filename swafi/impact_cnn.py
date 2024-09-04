@@ -468,7 +468,7 @@ class ImpactCnnOptions:
                  'If specified, the default class features will be overridden for'
                  'this class only (e.g. event).')
         self.parser.add_argument(
-            '--precip-window-size', type=int, default=5,
+            '--precip-window-size', type=int, default=1,
             help='The precipitation window size [km]')
         self.parser.add_argument(
             '--precip-resolution', type=int, default=1,
@@ -925,6 +925,12 @@ class ImpactCnn(Impact):
             log_transform_precip=self.options.log_transform_precip,
             debug=DEBUG
         )
+
+        if (self.options.use_precip and self.precipitation is not None and
+                self.options.precip_window_size / self.options.precip_resolution == 1):
+            print("Preloading all precipitation data.")
+            all_cids = self.df['cid'].unique()
+            self.precipitation.preload_all_cid_data(all_cids)
 
         if self.factor_neg_reduction != 1:
             self.dg_train.reduce_negatives(self.factor_neg_reduction)

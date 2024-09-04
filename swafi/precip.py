@@ -53,6 +53,7 @@ class Precipitation:
 
         self.hash_tag = None
         self.pickle_files = []
+        self.cid_time_series = None
         self.mem_nb_pixels = 64  # Number of pixels to process at once (per spatial dimension; e.g. 100x100)
 
     def set_data_path(self, data_path):
@@ -156,6 +157,60 @@ class Precipitation:
             return ts[self.precip_var].to_numpy()
 
         return ts[self.precip_var].mean(dim=[self.x_axis, self.y_axis]).to_numpy()
+
+    def preload_all_cid_data(self, cids):
+        """
+        Preload all the data for each cell ID.
+
+        Parameters
+        ----------
+        cids: list
+            The list of cell IDs
+        """
+        hash_tag = hashlib.md5(
+            pickle.dumps(self.pickle_files) + pickle.dumps(cids)).hexdigest()
+
+        filename = f"precip_{self.dataset_name.lower()}_all_cids_{hash_tag}.pickle"
+        tmp_filename = self.tmp_dir / filename
+
+        if tmp_filename.exists():
+            print("Loading all data for each CID from pickle file.")
+            try:
+                with open(tmp_filename, 'rb') as f:
+                    self.cid_time_series = pickle.load(f)
+                return
+
+            except EOFError:
+                raise EOFError(f"Error: {tmp_filename} is empty or corrupted.")
+
+        locations = [self.domain.get_cid_coordinates(cid) for cid in cids]
+
+        for idx in tqdm(range(len(self.time_index)),
+                        desc="Preloading all data for each CID"):
+            f = self.pickle_files[idx]
+            try:
+                with open(f, 'rb') as file:
+                    ts = []
+                    data = pickle.load(file)
+                    for x, y in locations:
+                        ts.append(data[self.precip_var].sel(
+                            {self.x_axis: x, self.y_axis: y}
+                        ))
+
+                    tx_xr = xr.concat(ts, dim='cid')
+                    if self.cid_time_series is None:
+                        self.cid_time_series = tx_xr
+                    else:
+                        self.cid_time_series = xr.concat([self.cid_time_series, tx_xr],
+                                                         dim=self.time_axis)
+
+            except EOFError:
+                raise EOFError(f"Error: {f} is empty or corrupted.")
+
+        self.cid_time_series['cid'] = cids
+
+        with open(tmp_filename, 'wb') as f:
+            pickle.dump(self.cid_time_series, f)
 
     def save_nc_file_per_cid(self, cid, start, end):
         """
@@ -557,6 +612,12 @@ class Precipitation:
         np.array
             The precipitation data for the temporal and spatial chunk
         """
+        if self.cid_time_series is not None:
+            return self.cid_time_series.sel(
+                time=slice(t_start, t_end),
+                cid=slice(x_start, x_end)
+            ).to_numpy()
+
         # Get the index/indices in the temporal index
         idx_start = self.time_index.get_loc(t_start.normalize().replace(day=1))
         idx_end = self.time_index.get_loc(t_end.normalize().replace(day=1))
