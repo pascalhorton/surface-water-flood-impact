@@ -738,4 +738,7 @@ class Precipitation:
                 data = data.chunk({'time': -1})
                 data = data.interpolate_na(dim='time', method='linear')
 
+        # Replace NaN values with 0
+        data = data.fillna(0)
+
         return data
