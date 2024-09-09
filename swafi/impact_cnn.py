@@ -586,7 +586,7 @@ class ImpactCnn(Impact):
         if self.model is None:
             raise ValueError("Model not defined")
 
-        filename = f'{dir_output}/model_{self.options.run_name}.h5'
+        filename = f'{dir_output}/model_{self.options.run_name}.keras'
         self.model.save(filename)
         print(f"Model saved: {filename}")
 
