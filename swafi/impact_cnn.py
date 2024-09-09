@@ -112,48 +112,48 @@ class ImpactCnnOptions:
         self._set_parser_arguments()
 
         # General options
-        self.run_name = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.optimize_with_optuna = False
-        self.optuna_trials_nb = 100
-        self.optuna_study_name = ''
-        self.target_type = ''
-        self.factor_neg_reduction = 10
-        self.weight_denominator = 5
+        self.run_name = None
+        self.optimize_with_optuna = None
+        self.optuna_trials_nb = None
+        self.optuna_study_name = None
+        self.target_type = None
+        self.factor_neg_reduction = None
+        self.weight_denominator = None
         self.random_state = None
 
         # Data options
-        self.use_precip = True
-        self.use_dem = True
-        self.use_simple_features = True
-        self.simple_feature_classes = []
-        self.simple_features = []
-        self.precip_window_size = 0
-        self.precip_resolution = 0
-        self.precip_time_step = 0
-        self.precip_days_before = 1
-        self.precip_days_after = 0
-        self.transform_static = 'standardize'
-        self.transform_2d = 'normalize'
-        self.log_transform_precip = True
+        self.use_precip = None
+        self.use_dem = None
+        self.use_simple_features = None
+        self.simple_feature_classes = None
+        self.simple_features = None
+        self.precip_window_size = None
+        self.precip_resolution = None
+        self.precip_time_step = None
+        self.precip_days_before = None
+        self.precip_days_after = None
+        self.transform_static = None
+        self.transform_2d = None
+        self.log_transform_precip = None
 
         # Training options
-        self.batch_size = 0
-        self.epochs = 0
-        self.learning_rate = 0
+        self.batch_size = None
+        self.epochs = None
+        self.learning_rate = None
 
         # Model options
-        self.dropout_rate_cnn = 0
-        self.dropout_rate_dense = 0
-        self.with_spatial_dropout = True
-        self.with_batchnorm_cnn = True
-        self.with_batchnorm_dense = True
-        self.nb_filters = 0
-        self.nb_conv_blocks = 0
-        self.nb_dense_layers = 0
-        self.nb_dense_units = 0
-        self.nb_dense_units_decreasing = False
-        self.inner_activation_cnn = 'relu'
-        self.inner_activation_dense = 'relu'
+        self.dropout_rate_cnn = None
+        self.dropout_rate_dense = None
+        self.with_spatial_dropout = None
+        self.with_batchnorm_cnn = None
+        self.with_batchnorm_dense = None
+        self.nb_filters = None
+        self.nb_conv_blocks = None
+        self.nb_dense_layers = None
+        self.nb_dense_units = None
+        self.nb_dense_units_decreasing = None
+        self.inner_activation_cnn = None
+        self.inner_activation_dense = None
 
     def copy(self):
         """
@@ -179,7 +179,7 @@ class ImpactCnnOptions:
         self.weight_denominator = args.weight_denominator
         self.random_state = args.random_state
         self.use_precip = not args.do_not_use_precip
-        self.use_dem = not args.do_not_use_dem
+        self.use_dem = args.use_dem
         self.use_simple_features = not args.do_not_use_simple_features
         self.simple_feature_classes = args.simple_feature_classes
         self.simple_features = args.simple_features
@@ -240,7 +240,7 @@ class ImpactCnnOptions:
 
         if isinstance(hp_to_optimize, str) and hp_to_optimize == 'default':
             hp_to_optimize = ['precip_window_size', 'precip_time_step',
-                              'transform_static', 'transform_2d', 'precip_days_before']
+                              'precip_days_before']
 
         if 'weight_denominator' in hp_to_optimize:
             self.weight_denominator = trial.suggest_int(
@@ -249,13 +249,13 @@ class ImpactCnnOptions:
         if self.use_precip:
             if 'precip_window_size' in hp_to_optimize:
                 self.precip_window_size = trial.suggest_categorical(
-                    'precip_window_size', [2, 4, 6, 8, 12])
+                    'precip_window_size', [1, 3, 5, 7])
             if 'precip_resolution' in hp_to_optimize:
                 self.precip_resolution = trial.suggest_categorical(
-                    'precip_resolution', [1, 2, 4])
+                    'precip_resolution', [1, 3, 5])
             if 'precip_time_step' in hp_to_optimize:
                 self.precip_time_step = trial.suggest_categorical(
-                    'precip_time_step', [1, 2, 3, 4, 6, 12, 24])
+                    'precip_time_step', [1, 2, 4, 6, 12, 24])
             if 'precip_days_before' in hp_to_optimize:
                 self.precip_days_before = trial.suggest_int(
                     'precip_days_before', 1, 3)
@@ -405,9 +405,8 @@ class ImpactCnnOptions:
         if self.use_precip:
             assert self.precip_window_size % self.precip_resolution == 0, \
                 "precip_window_size must be divisible by precip_resolution"
-            pixels_per_side = self.precip_window_size // self.precip_resolution
-            if pixels_per_side != 1:
-                assert pixels_per_side % 2 == 0, "pixels per side must be even"
+            assert self.precip_window_size >= self.precip_resolution, \
+                "precip_window_size must be >= precip_resolution"
             assert self.precip_days_before >= 0, "precip_days_before must be >= 0"
             assert self.precip_days_after >= 0, "precip_days_after must be >= 0"
 
@@ -452,8 +451,8 @@ class ImpactCnnOptions:
             '--do-not-use-precip', action='store_true',
             help='Do not use precipitation data')
         self.parser.add_argument(
-            '--do-not-use-dem', action='store_true',
-            help='Do not use DEM data')
+            '--use-dem', action='store_true',
+            help='Use DEM data')
         self.parser.add_argument(
             '--do-not-use-simple-features', action='store_true',
             help='Do not use simple features (event properties and static attributes)')
@@ -469,7 +468,7 @@ class ImpactCnnOptions:
                  'If specified, the default class features will be overridden for'
                  'this class only (e.g. event).')
         self.parser.add_argument(
-            '--precip-window-size', type=int, default=8,
+            '--precip-window-size', type=int, default=5,
             help='The precipitation window size [km]')
         self.parser.add_argument(
             '--precip-resolution', type=int, default=1,
@@ -587,7 +586,7 @@ class ImpactCnn(Impact):
         if self.model is None:
             raise ValueError("Model not defined")
 
-        filename = f'{dir_output}/model_{self.options.run_name}.h5'
+        filename = f'{dir_output}/model_{self.options.run_name}.keras'
         self.model.save(filename)
         print(f"Model saved: {filename}")
 
@@ -670,7 +669,8 @@ class ImpactCnn(Impact):
             epochs=self.options.epochs,
             validation_data=self.dg_val,
             callbacks=[callback],
-            verbose=verbose
+            verbose=verbose,
+            shuffle=False
         )
 
         # Plot the training history
@@ -926,6 +926,12 @@ class ImpactCnn(Impact):
             debug=DEBUG
         )
 
+        if (self.options.use_precip and self.precipitation is not None and
+                self.options.precip_window_size / self.options.precip_resolution == 1):
+            print("Preloading all precipitation data.")
+            all_cids = self.df['cid'].unique()
+            self.precipitation.preload_all_cid_data(all_cids)
+
         if self.factor_neg_reduction != 1:
             self.dg_train.reduce_negatives(self.factor_neg_reduction)
 
@@ -953,7 +959,7 @@ class ImpactCnn(Impact):
             std_precip=self.dg_train.std_precip,
             min_static=self.dg_train.min_static,
             max_static=self.dg_train.max_static,
-            q95_precip=self.dg_train.q95_precip,
+            q99_precip=self.dg_train.q99_precip,
             debug=DEBUG
         )
 
@@ -984,7 +990,7 @@ class ImpactCnn(Impact):
             std_precip=self.dg_train.std_precip,
             min_static=self.dg_train.min_static,
             max_static=self.dg_train.max_static,
-            q95_precip=self.dg_train.q95_precip,
+            q99_precip=self.dg_train.q99_precip,
             debug=DEBUG
         )
 
@@ -1110,7 +1116,9 @@ class ImpactCnn(Impact):
         precip_window_size: int
             The precipitation window size [km].
         """
-        precip_window_size_m = precip_window_size * 1000
+        precip_window_size_m = 15 * 1000
+        if precip_window_size > 15:
+            precip_window_size_m = precip_window_size * 1000
         x_min = self.df['x'].min() - precip_window_size_m / 2
         x_max = self.df['x'].max() + precip_window_size_m / 2
         y_min = self.df['y'].min() - precip_window_size_m / 2

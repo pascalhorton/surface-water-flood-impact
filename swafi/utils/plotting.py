@@ -1,3 +1,4 @@
+import pickle
 import re
 import numpy as np
 import matplotlib.pyplot as plt
@@ -152,6 +153,29 @@ def plot_claim_events_timeseries(window_days, precip, claim_1, label_1, claim_2=
     plt.tight_layout()
 
     filename = f"{claim_date} {cid}"
+
+    _save_or_show(dir_output, filename)
+
+
+def plot_precipitation_quantile_from_pickle_file(filepath, dir_output=None):
+    file = open(filepath, 'rb')
+    data = pickle.load(file)
+
+    # Scale plot size based on the data shape
+    cbar_fraction = 0.1
+    h_data, w_data = data.shape
+    w_fig = 8
+    h_fig = (1 - cbar_fraction) * w_fig * h_data / w_data
+
+    plt.figure(figsize=(w_fig, h_fig))
+    plt.imshow(data, cmap='Blues')
+    plt.axis('equal')
+    plt.colorbar(fraction=cbar_fraction)
+    plt.tight_layout()
+    plt.show()
+
+    filepath = Path(filepath)
+    filename = f"map quantiles {filepath.stem}"
 
     _save_or_show(dir_output, filename)
 

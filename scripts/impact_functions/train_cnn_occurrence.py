@@ -28,6 +28,7 @@ OPTUNA_RANDOM = True
 DATASET = 'mobiliar'  # 'mobiliar' or 'gvz'
 LABEL_EVENT_FILE = 'original_w_prior_pluvial_occurrence'
 SAVE_MODEL = True
+SHOW_PLOTS = False
 
 config = Config()
 
@@ -80,7 +81,7 @@ def main():
     if not options.optimize_with_optuna:
         cnn = _setup_model(options, events, precip, dem)
         cnn.fit(dir_plots=config.get('OUTPUT_DIR'),
-                tag=options.run_name)
+                tag=options.run_name, show_plots=SHOW_PLOTS)
         cnn.assess_model_on_all_periods()
         if SAVE_MODEL:
             cnn.save_model(dir_output=config.get('OUTPUT_DIR'))

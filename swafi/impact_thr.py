@@ -16,10 +16,10 @@ class ImpactThresholds(Impact):
         super().__init__(events, target_type='occurrence')
 
         self.thr_i_max = 0.9
-        self.thr_p_sum = 0.98
+        self.thr_p_sum = 0.99
         self.method = 'union'
 
-    def set_thresholds(self, thr_i_max=0.9, thr_p_sum=0.98, method='union'):
+    def set_thresholds(self, thr_i_max=0.9, thr_p_sum=0.99, method='union'):
         """
         Set the thresholds for the impact function.
 
