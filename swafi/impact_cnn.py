@@ -91,6 +91,10 @@ class ImpactCnnOptions:
         Whether to use batch normalization or not for the CNN.
     with_batchnorm_dense: bool
         Whether to use batch normalization or not for the dense layers.
+    kernel_size_spatial: int
+        The kernel size for the spatial convolution.
+    kernel_size_temporal: int
+        The kernel size for the temporal convolution.
     nb_filters: int
         The number of filters.
     nb_conv_blocks: int
@@ -147,6 +151,8 @@ class ImpactCnnOptions:
         self.with_spatial_dropout = None
         self.with_batchnorm_cnn = None
         self.with_batchnorm_dense = None
+        self.kernel_size_spatial = None
+        self.kernel_size_temporal = None
         self.nb_filters = None
         self.nb_conv_blocks = None
         self.nb_dense_layers = None
@@ -199,6 +205,8 @@ class ImpactCnnOptions:
         self.with_spatial_dropout = not args.no_spatial_dropout
         self.with_batchnorm_cnn = not args.no_batchnorm_cnn
         self.with_batchnorm_dense = not args.no_batchnorm_dense
+        self.kernel_size_spatial = args.kernel_size_spatial
+        self.kernel_size_temporal = args.kernel_size_temporal
         self.nb_filters = args.nb_filters
         self.nb_conv_blocks = args.nb_conv_blocks
         self.nb_dense_layers = args.nb_dense_layers
@@ -224,7 +232,8 @@ class ImpactCnnOptions:
             precip_days_before, precip_resolution, precip_days_after, transform_static,
             transform_3d, log_transform_precip, batch_size, learning_rate,
             dropout_rate_dense, dropout_rate_cnn, with_spatial_dropout,
-            with_batchnorm_cnn, with_batchnorm_dense, nb_filters, nb_conv_blocks,
+            with_batchnorm_cnn, with_batchnorm_dense, nb_filters,
+            kernel_size_spatial, kernel_size_temporal, nb_conv_blocks,
             nb_dense_layers, nb_dense_units, nb_dense_units_decreasing,
             inner_activation_dense, inner_activation_cnn,
 
@@ -298,6 +307,12 @@ class ImpactCnnOptions:
             self.with_batchnorm_dense = trial.suggest_categorical(
                 'with_batchnorm_dense', [True, False])
         if self.use_precip:
+            if 'kernel_size_spatial' in hp_to_optimize:
+                self.kernel_size_spatial = trial.suggest_categorical(
+                    'kernel_size_spatial', [1, 3, 5])
+            if 'kernel_size_temporal' in hp_to_optimize:
+                self.kernel_size_temporal = trial.suggest_categorical(
+                    'kernel_size_temporal', [1, 3, 5, 7, 9, 11])
             if 'nb_filters' in hp_to_optimize:
                 self.nb_filters = trial.suggest_categorical(
                     'nb_filters', [16, 32, 64, 128, 256])
@@ -383,6 +398,8 @@ class ImpactCnnOptions:
 
         if self.use_precip:
             print("- with_batchnorm_cnn: ", self.with_batchnorm_cnn)
+            print("- kernel_size_spatial: ", self.kernel_size_spatial)
+            print("- kernel_size_temporal: ", self.kernel_size_temporal)
             print("- nb_filters: ", self.nb_filters)
             print("- nb_conv_blocks: ", self.nb_conv_blocks)
             print("- inner_activation_cnn: ", self.inner_activation_cnn)
@@ -468,7 +485,7 @@ class ImpactCnnOptions:
                  'If specified, the default class features will be overridden for'
                  'this class only (e.g. event).')
         self.parser.add_argument(
-            '--precip-window-size', type=int, default=5,
+            '--precip-window-size', type=int, default=1,
             help='The precipitation window size [km]')
         self.parser.add_argument(
             '--precip-resolution', type=int, default=1,
@@ -477,7 +494,7 @@ class ImpactCnnOptions:
             '--precip-time-step', type=int, default=1,
             help='The precipitation time step [h]')
         self.parser.add_argument(
-            '--precip-days-before', type=int, default=2,
+            '--precip-days-before', type=int, default=5,
             help='The number of days before the event to use for the precipitation')
         self.parser.add_argument(
             '--precip-days-after', type=int, default=1,
@@ -515,6 +532,12 @@ class ImpactCnnOptions:
         self.parser.add_argument(
             '--no-batchnorm-dense', action='store_true',
             help='Do not use batch normalization for the dense layers')
+        self.parser.add_argument(
+            '--kernel-size-spatial', type=int, default=1,
+            help='The kernel size for the spatial convolution')
+        self.parser.add_argument(
+            '--kernel-size-temporal', type=int, default=3,
+            help='The kernel size for the temporal convolution')
         self.parser.add_argument(
             '--nb-filters', type=int, default=64,
             help='The number of filters')

@@ -78,7 +78,10 @@ class ModelCnn(models.Model):
             x = input_3d
             for i in range(self.options.nb_conv_blocks):
                 nb_filters = self.options.nb_filters * (2 ** i)
-                x = self.conv2d_block(x, i, filters=nb_filters, kernel_size=3)
+                kernel_size = (self.options.kernel_size_spatial,
+                               self.options.kernel_size_spatial,
+                               self.options.kernel_size_temporal)
+                x = self.conv3d_block(x, i, filters=nb_filters, kernel_size=kernel_size)
 
             # Flatten
             x = layers.Flatten()(x)
