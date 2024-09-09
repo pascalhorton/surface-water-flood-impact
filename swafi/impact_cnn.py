@@ -97,6 +97,10 @@ class ImpactCnnOptions:
         The kernel size for the temporal convolution.
     nb_filters: int
         The number of filters.
+    pool_size_spatial: int
+        The pool size for the spatial (max) pooling.
+    pool_size_temporal: int
+        The pool size for the temporal (max) pooling.
     nb_conv_blocks: int
         The number of convolutional blocks.
     nb_dense_layers: int
@@ -154,6 +158,8 @@ class ImpactCnnOptions:
         self.kernel_size_spatial = None
         self.kernel_size_temporal = None
         self.nb_filters = None
+        self.pool_size_spatial = None
+        self.pool_size_temporal = None
         self.nb_conv_blocks = None
         self.nb_dense_layers = None
         self.nb_dense_units = None
@@ -208,6 +214,8 @@ class ImpactCnnOptions:
         self.kernel_size_spatial = args.kernel_size_spatial
         self.kernel_size_temporal = args.kernel_size_temporal
         self.nb_filters = args.nb_filters
+        self.pool_size_spatial = args.pool_size_spatial
+        self.pool_size_temporal = args.pool_size_temporal
         self.nb_conv_blocks = args.nb_conv_blocks
         self.nb_dense_layers = args.nb_dense_layers
         self.nb_dense_units = args.nb_dense_units
@@ -232,9 +240,9 @@ class ImpactCnnOptions:
             precip_days_before, precip_resolution, precip_days_after, transform_static,
             transform_3d, log_transform_precip, batch_size, learning_rate,
             dropout_rate_dense, dropout_rate_cnn, with_spatial_dropout,
-            with_batchnorm_cnn, with_batchnorm_dense, nb_filters,
-            kernel_size_spatial, kernel_size_temporal, nb_conv_blocks,
-            nb_dense_layers, nb_dense_units, nb_dense_units_decreasing,
+            with_batchnorm_cnn, with_batchnorm_dense, kernel_size_spatial,
+            kernel_size_temporal, nb_filters, pool_size_spatial, pool_size_temporal,
+            nb_conv_blocks, nb_dense_layers, nb_dense_units, nb_dense_units_decreasing,
             inner_activation_dense, inner_activation_cnn,
 
         Returns
@@ -316,6 +324,12 @@ class ImpactCnnOptions:
             if 'nb_filters' in hp_to_optimize:
                 self.nb_filters = trial.suggest_categorical(
                     'nb_filters', [16, 32, 64, 128, 256])
+            if 'pool_size_spatial' in hp_to_optimize:
+                self.pool_size_spatial = trial.suggest_categorical(
+                    'pool_size_spatial', [1, 2, 3, 4])
+            if 'pool_size_temporal' in hp_to_optimize:
+                self.pool_size_temporal = trial.suggest_categorical(
+                    'pool_size_temporal', [1, 2, 3, 4, 5, 6, 9, 12])
             if 'nb_conv_blocks' in hp_to_optimize:
                 self.nb_conv_blocks = trial.suggest_int(
                     'nb_conv_blocks', 1, 5)
@@ -401,6 +415,8 @@ class ImpactCnnOptions:
             print("- kernel_size_spatial: ", self.kernel_size_spatial)
             print("- kernel_size_temporal: ", self.kernel_size_temporal)
             print("- nb_filters: ", self.nb_filters)
+            print("- pool_size_spatial: ", self.pool_size_spatial)
+            print("- pool_size_temporal: ", self.pool_size_temporal)
             print("- nb_conv_blocks: ", self.nb_conv_blocks)
             print("- inner_activation_cnn: ", self.inner_activation_cnn)
 
@@ -533,7 +549,7 @@ class ImpactCnnOptions:
             '--no-batchnorm-dense', action='store_true',
             help='Do not use batch normalization for the dense layers')
         self.parser.add_argument(
-            '--kernel-size-spatial', type=int, default=1,
+            '--kernel-size-spatial', type=int, default=3,
             help='The kernel size for the spatial convolution')
         self.parser.add_argument(
             '--kernel-size-temporal', type=int, default=3,
@@ -541,6 +557,12 @@ class ImpactCnnOptions:
         self.parser.add_argument(
             '--nb-filters', type=int, default=64,
             help='The number of filters')
+        self.parser.add_argument(
+            '--pool-size-spatial', type=int, default=1,
+            help='The pool size for the spatial (max) pooling')
+        self.parser.add_argument(
+            '--pool-size-temporal', type=int, default=3,
+            help='The pool size for the temporal (max) pooling')
         self.parser.add_argument(
             '--nb-conv-blocks', type=int, default=2,
             help='The number of convolutional blocks')

@@ -81,7 +81,11 @@ class ModelCnn(models.Model):
                 kernel_size = (self.options.kernel_size_spatial,
                                self.options.kernel_size_spatial,
                                self.options.kernel_size_temporal)
-                x = self.conv3d_block(x, i, filters=nb_filters, kernel_size=kernel_size)
+                pool_size = (self.options.pool_size_spatial,
+                             self.options.pool_size_spatial,
+                             self.options.pool_size_temporal)
+                x = self.conv3d_block(x, i, filters=nb_filters, kernel_size=kernel_size,
+                                      pool_size=pool_size)
 
             # Flatten
             x = layers.Flatten()(x)
@@ -125,8 +129,9 @@ class ModelCnn(models.Model):
         else:
             raise ValueError("At least one input size must be provided")
 
-    def conv2d_block(self, x, i, filters, kernel_size=3, initializer='he_normal',
-                     activation='default'):
+    def conv3d_block(self, x, i, filters, kernel_size=(3, 3, 3),
+                     initializer='he_normal', activation='default',
+                     pool_size=(1, 1, 3)):
         """
         3D convolution block.
 
@@ -138,12 +143,14 @@ class ModelCnn(models.Model):
             The index of the block.
         filters: int
             The number of filters.
-        kernel_size: int
-            The kernel size.
+        kernel_size: tuple
+            The kernel size (default: (3, 3, 3)).
         initializer: str
             The initializer.
         activation: str
             The activation function.
+        pool_size: tuple
+            The pool size for the 3D max pooling (default: (1, 1, 3)).
 
         Returns
         -------
@@ -152,21 +159,23 @@ class ModelCnn(models.Model):
         if activation == 'default':
             activation = self.options.inner_activation_cnn
 
-        x = layers.Conv2D(
+        x = layers.Conv3D(
             filters=filters,
-            kernel_size=(kernel_size, kernel_size),
+            kernel_size=kernel_size,
+            strides=(1, 1, 1),
             padding='same',
             activation=activation,
             kernel_initializer=initializer,
-            name=f'conv2d_{i}a',
+            name=f'conv3d_{i}a',
         )(x)
-        x = layers.Conv2D(
+        x = layers.Conv3D(
             filters=filters,
-            kernel_size=(kernel_size, kernel_size),
+            kernel_size=kernel_size,
+            strides=(1, 1, 1),
             padding='same',
             activation=activation,
             kernel_initializer=initializer,
-            name=f'conv2d_{i}b',
+            name=f'conv3d_{i}b',
         )(x)
 
         if self.options.with_batchnorm_cnn:
@@ -177,14 +186,14 @@ class ModelCnn(models.Model):
                 name=f'batchnorm_cnn_{i}'
             )(x)
 
-        x = layers.MaxPooling2D(
-            pool_size=(2, 2),
-            name=f'maxpool2d_cnn_{i}',
+        x = layers.MaxPooling3D(
+            pool_size=pool_size,
+            name=f'maxpool3d_cnn_{i}',
         )(x)
 
         if self.options.dropout_rate_cnn > 0:
             if self.options.with_spatial_dropout and x.shape[1] > 1 and x.shape[2] > 1:
-                x = layers.SpatialDropout2D(
+                x = layers.SpatialDropout3D(
                     rate=self.options.dropout_rate_cnn,
                     name=f'spatial_dropout_cnn_{i}',
                 )(x)
