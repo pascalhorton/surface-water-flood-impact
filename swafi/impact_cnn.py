@@ -468,7 +468,7 @@ class ImpactCnnOptions:
                  'If specified, the default class features will be overridden for'
                  'this class only (e.g. event).')
         self.parser.add_argument(
-            '--precip-window-size', type=int, default=1,
+            '--precip-window-size', type=int, default=5,
             help='The precipitation window size [km]')
         self.parser.add_argument(
             '--precip-resolution', type=int, default=1,
@@ -959,7 +959,7 @@ class ImpactCnn(Impact):
             std_precip=self.dg_train.std_precip,
             min_static=self.dg_train.min_static,
             max_static=self.dg_train.max_static,
-            q98_precip=self.dg_train.q98_precip,
+            q99_precip=self.dg_train.q99_precip,
             debug=DEBUG
         )
 
@@ -990,7 +990,7 @@ class ImpactCnn(Impact):
             std_precip=self.dg_train.std_precip,
             min_static=self.dg_train.min_static,
             max_static=self.dg_train.max_static,
-            q98_precip=self.dg_train.q98_precip,
+            q99_precip=self.dg_train.q99_precip,
             debug=DEBUG
         )
 

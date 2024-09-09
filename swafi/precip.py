@@ -374,14 +374,14 @@ class Precipitation:
             except EOFError:
                 raise EOFError(f"Error: {original_file} is empty or corrupted.")
 
-    def normalize(self, q98):
+    def normalize(self, q99):
         """
         Normalize the precipitation data.
 
         Parameters
         ----------
-        q98: float
-            The 98th quantile
+        q99: float
+            The 99th quantile
         """
         for idx in tqdm(range(len(self.time_index)),
                         desc="Normalizing precipitation data"):
@@ -401,7 +401,7 @@ class Precipitation:
                     precip = data[self.precip_var]
                     min_precip = float(precip.min())  # Might not be 0 when log-transformed
                     data[self.precip_var] = ((precip - min_precip) /
-                                             (q98 - min_precip)).astype('float32')
+                                             (q99 - min_precip)).astype('float32')
 
                     with open(tmp_filename, 'wb') as f_out:
                         pickle.dump(data, f_out)
@@ -429,7 +429,7 @@ class Precipitation:
                 with open(original_file, 'rb') as f_in:
                     data = pickle.load(f_in)
                     precip = data[self.precip_var]
-                    data[self.precip_var] = (np.log(precip + 1e-10)).astype('float32')
+                    data[self.precip_var] = (np.log(precip + 0.1)).astype('float32')
 
                     with open(tmp_filename, 'wb') as f_out:
                         pickle.dump(data, f_out)
