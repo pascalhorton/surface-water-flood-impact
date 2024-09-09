@@ -70,8 +70,8 @@ class ImpactCnnOptions:
     transform_static: str
         The transformation to apply to the static data.
         Options are: 'standardize', 'normalize'.
-    transform_2d: str
-        The transformation to apply to the 2D data.
+    transform_3d: str
+        The transformation to apply to the 3D data.
         Options are: 'standardize', 'normalize'.
     log_transform_precip: bool
         Whether to log-transform the precipitation or not.
@@ -133,7 +133,7 @@ class ImpactCnnOptions:
         self.precip_days_before = None
         self.precip_days_after = None
         self.transform_static = None
-        self.transform_2d = None
+        self.transform_3d = None
         self.log_transform_precip = None
 
         # Training options
@@ -189,7 +189,7 @@ class ImpactCnnOptions:
         self.precip_days_before = args.precip_days_before
         self.precip_days_after = args.precip_days_after
         self.transform_static = args.transform_static
-        self.transform_2d = args.transform_2d
+        self.transform_3d = args.transform_3d
         self.log_transform_precip = not args.no_log_transform_precip
         self.batch_size = args.batch_size
         self.epochs = args.epochs
@@ -222,7 +222,7 @@ class ImpactCnnOptions:
             The list of hyperparameters to optimize. Can be the string 'default'
             Options are: weight_denominator, precip_window_size, precip_time_step,
             precip_days_before, precip_resolution, precip_days_after, transform_static,
-            transform_2d, log_transform_precip, batch_size, learning_rate,
+            transform_3d, log_transform_precip, batch_size, learning_rate,
             dropout_rate_dense, dropout_rate_cnn, with_spatial_dropout,
             with_batchnorm_cnn, with_batchnorm_dense, nb_filters, nb_conv_blocks,
             nb_dense_layers, nb_dense_units, nb_dense_units_decreasing,
@@ -267,9 +267,9 @@ class ImpactCnnOptions:
                 self.transform_static = trial.suggest_categorical(
                     'transform_static', ['standardize', 'normalize'])
         if self.use_precip:
-            if 'transform_2d' in hp_to_optimize:
-                self.transform_2d = trial.suggest_categorical(
-                    'transform_2d', ['standardize', 'normalize'])
+            if 'transform_3d' in hp_to_optimize:
+                self.transform_3d = trial.suggest_categorical(
+                    'transform_3d', ['standardize', 'normalize'])
             if 'log_transform_precip' in hp_to_optimize:
                 self.log_transform_precip = trial.suggest_categorical(
                     'log_transform_precip', [True, False])
@@ -323,7 +323,7 @@ class ImpactCnnOptions:
                 'inner_activation_cnn', ['relu', 'tanh', 'sigmoid', 'softmax',
                                          'elu', 'selu', 'leaky_relu', 'linear'])
 
-        # Check the input 2D size vs nb_conv_blocks
+        # Check the input 3D size vs nb_conv_blocks
         pixels_nb = int(self.precip_window_size / self.precip_resolution)
         nb_conv_blocks_max = math.floor(math.log(pixels_nb, 2))
         if self.nb_conv_blocks > nb_conv_blocks_max:
@@ -367,7 +367,7 @@ class ImpactCnnOptions:
             print("- transform_static: ", self.transform_static)
 
         if self.use_precip:
-            print("- transform_2d: ", self.transform_2d)
+            print("- transform_3d: ", self.transform_3d)
             print("- log_transform_precip: ", self.log_transform_precip)
 
         print("- batch_size: ", self.batch_size)
@@ -486,8 +486,8 @@ class ImpactCnnOptions:
             '--transform-static', type=str, default='standardize',
             help='The transformation to apply to the static data')
         self.parser.add_argument(
-            '--transform-2d', type=str, default='normalize',
-            help='The transformation to apply to the 2D data')
+            '--transform-3d', type=str, default='normalize',
+            help='The transformation to apply to the 3D data')
         self.parser.add_argument(
             '--no-log-transform-precip', action='store_true',
             help='Do not log-transform the precipitation')
@@ -625,12 +625,12 @@ class ImpactCnn(Impact):
         pixels_per_side = (self.options.precip_window_size //
                            self.options.precip_resolution)
         if self.options.use_precip:
-            self._define_model(input_2d_size=[pixels_per_side,
+            self._define_model(input_3d_size=[pixels_per_side,
                                               pixels_per_side,
                                               self.dg_train.get_channels_nb()],
                                input_1d_size=self.x_train.shape[1:])
         else:
-            self._define_model(input_2d_size=None,
+            self._define_model(input_3d_size=None,
                                input_1d_size=self.x_train.shape[1:])
 
         # Early stopping
@@ -921,7 +921,7 @@ class ImpactCnn(Impact):
             precip_days_after=self.options.precip_days_after,
             tmp_dir=self.tmp_dir,
             transform_static=self.options.transform_static,
-            transform_2d=self.options.transform_2d,
+            transform_3d=self.options.transform_3d,
             log_transform_precip=self.options.log_transform_precip,
             debug=DEBUG
         )
@@ -951,7 +951,7 @@ class ImpactCnn(Impact):
             precip_days_after=self.options.precip_days_after,
             tmp_dir=self.tmp_dir,
             transform_static=self.options.transform_static,
-            transform_2d=self.options.transform_2d,
+            transform_3d=self.options.transform_3d,
             log_transform_precip=self.options.log_transform_precip,
             mean_static=self.dg_train.mean_static,
             std_static=self.dg_train.std_static,
@@ -982,7 +982,7 @@ class ImpactCnn(Impact):
             precip_days_after=self.options.precip_days_after,
             tmp_dir=self.tmp_dir,
             transform_static=self.options.transform_static,
-            transform_2d=self.options.transform_2d,
+            transform_3d=self.options.transform_3d,
             log_transform_precip=self.options.log_transform_precip,
             mean_static=self.dg_train.mean_static,
             std_static=self.dg_train.std_static,
@@ -994,14 +994,14 @@ class ImpactCnn(Impact):
             debug=DEBUG
         )
 
-    def _define_model(self, input_2d_size, input_1d_size):
+    def _define_model(self, input_3d_size, input_1d_size):
         """
         Define the model.
         """
         self.model = ModelCnn(
             task=self.target_type,
             options=self.options,
-            input_2d_size=input_2d_size,
+            input_3d_size=input_3d_size,
             input_1d_size=input_1d_size,
         )
 

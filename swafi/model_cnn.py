@@ -16,22 +16,22 @@ class ModelCnn(models.Model):
         The task. Options are: 'regression', 'classification'
     options: ImpactCnnOptions
         The options.
-    input_2d_size: ?list
-        The input 2D size.
-    input_1d_size: ?list
+    input_3d_size: list, None
+        The input 3D size.
+    input_1d_size: list, None
         The input 1D size.
     """
 
-    def __init__(self, task, options, input_2d_size, input_1d_size):
+    def __init__(self, task, options, input_3d_size, input_1d_size):
         super(ModelCnn, self).__init__()
         self.model = None
         self.task = task
         self.options = options
 
-        if input_2d_size is None:
-            self.input_2d_size = None
+        if input_3d_size is None:
+            self.input_3d_size = None
         else:
-            self.input_2d_size = list(input_2d_size)
+            self.input_3d_size = list(input_3d_size)
 
         if input_1d_size is None:
             self.input_1d_size = None
@@ -47,19 +47,19 @@ class ModelCnn(models.Model):
         """
         Check the input size.
         """
-        if self.input_1d_size is None and self.input_2d_size is None:
+        if self.input_1d_size is None and self.input_3d_size is None:
             raise ValueError("At least one input size must be provided")
 
         if self.input_1d_size is not None:
             assert len(self.input_1d_size) == 1, "Input 1D size must be 1D"
 
-        if self.input_2d_size is not None:
-            assert len(self.input_2d_size) == 3, \
-                "Input 2D size must be 3D (with channels)"
+        if self.input_3d_size is not None:
+            assert len(self.input_3d_size) == 3, \
+                "Input 3D size must be 3D (with channels)"
 
-            # Check the input 2D size vs nb_conv_blocks
-            input_2d_size = min(self.input_2d_size[0], self.input_2d_size[1])
-            nb_conv_blocks_max = math.floor(math.log(input_2d_size, 2))
+            # Check the input 3D size vs nb_conv_blocks
+            input_3d_size = min(self.input_3d_size[0], self.input_3d_size[1])
+            nb_conv_blocks_max = math.floor(math.log(input_3d_size, 2))
             if self.options.nb_conv_blocks > nb_conv_blocks_max:
                 self.options.nb_conv_blocks = nb_conv_blocks_max
                 print(f"Warning: Number of convolution blocks was reduced "
@@ -71,11 +71,11 @@ class ModelCnn(models.Model):
         """
         x = None
 
-        if self.input_2d_size is not None:
-            input_2d = layers.Input(shape=self.input_2d_size, name='input_2d')
+        if self.input_3d_size is not None:
+            input_3d = layers.Input(shape=self.input_3d_size, name='input_3d')
 
-            # 2D convolution
-            x = input_2d
+            # 3D convolution
+            x = input_3d
             for i in range(self.options.nb_conv_blocks):
                 nb_filters = self.options.nb_filters * (2 ** i)
                 x = self.conv2d_block(x, i, filters=nb_filters, kernel_size=3)
@@ -86,7 +86,7 @@ class ModelCnn(models.Model):
         if self.input_1d_size is not None:
             input_1d = layers.Input(shape=self.input_1d_size, name='input_1d')
 
-            if self.input_2d_size is not None:
+            if self.input_3d_size is not None:
                 # Concatenate with 1D input
                 x = layers.concatenate([x, input_1d])
             else:
@@ -113,19 +113,19 @@ class ModelCnn(models.Model):
                               name=f'dense_last')(x)
 
         # Build model
-        if self.input_2d_size is not None and self.input_1d_size is not None:
-            self.model = models.Model(inputs=[input_2d, input_1d], outputs=output)
-        elif self.input_2d_size is None:
+        if self.input_3d_size is not None and self.input_1d_size is not None:
+            self.model = models.Model(inputs=[input_3d, input_1d], outputs=output)
+        elif self.input_3d_size is None:
             self.model = models.Model(inputs=input_1d, outputs=output)
         elif self.input_1d_size is None:
-            self.model = models.Model(inputs=input_2d, outputs=output)
+            self.model = models.Model(inputs=input_3d, outputs=output)
         else:
             raise ValueError("At least one input size must be provided")
 
     def conv2d_block(self, x, i, filters, kernel_size=3, initializer='he_normal',
                      activation='default'):
         """
-        Convolution block.
+        3D convolution block.
 
         Parameters
         ----------
