@@ -196,7 +196,7 @@ class Impact:
         # Sort the dataframe by date
         self.df.sort_values(by=['e_end'], inplace=True)
         x = self.df[self.features].to_numpy()
-        events = self.df[['target', 'e_end', 'date_claim', 'x', 'y']].copy()
+        events = self.df[['target', 'e_end', 'date_claim', 'x', 'y', 'cid']].copy()
         # Rename the column date_claim to date
         events.rename(columns={'date_claim': 'date'}, inplace=True)
         # Transform the dates to a date without time
@@ -205,7 +205,7 @@ class Impact:
 
         # Fill NaN values with the event end date (as date, not datetime)
         events['date'] = events['date'].fillna(events['e_end'])
-        events = events[['target', 'date', 'x', 'y']].to_numpy()
+        events = events[['target', 'date', 'x', 'y', 'cid']].to_numpy()
 
         # Remove lines with NaN values
         x_nan = np.argwhere(np.isnan(x))
@@ -228,9 +228,9 @@ class Impact:
             shuffle=False)
 
         # Set the event properties in a separate variable
-        self.events_train = self.y_train[:, 1:4]
-        self.events_valid = self.y_valid[:, 1:4]
-        self.events_test = self.y_test[:, 1:4]
+        self.events_train = self.y_train[:, 1:5]
+        self.events_valid = self.y_valid[:, 1:5]
+        self.events_test = self.y_test[:, 1:5]
         self.events_train[:, 0] = pd.to_datetime(self.events_train[:, 0])
         self.events_valid[:, 0] = pd.to_datetime(self.events_valid[:, 0])
         self.events_test[:, 0] = pd.to_datetime(self.events_test[:, 0])

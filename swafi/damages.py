@@ -642,7 +642,7 @@ class Damages:
         """
         Check shape consistency with other files.
         """
-        assert data.ndim == 2, f"Data should be 2D in _check_shape()."
+        assert data.ndim == 2, f"Data should be 3D in _check_shape()."
         if self.mask['shape'] is None:
             self.mask['shape'] = data.shape
         elif self.mask['shape'] != data.shape:
