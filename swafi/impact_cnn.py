@@ -176,6 +176,138 @@ class ImpactCnnOptions:
             The copy of the object.
         """
         return copy.deepcopy(self)
+    
+    def _set_parser_arguments(self):
+        """
+        Set the parser arguments.
+        """
+        self.parser.add_argument(
+            '--run-name', type=str,
+            default=datetime.datetime.now().strftime("%Y%m%d_%H%M%S"),
+            help='The run name')
+        self.parser.add_argument(
+            '--optimize-with-optuna', action='store_true',
+            help='Optimize the hyperparameters with Optuna')
+        self.parser.add_argument(
+            '--optuna-study-name', type=str,
+            default=datetime.datetime.now().strftime("%Y%m%d_%H%M%S"),
+            help='The Optuna study name (default: using the date and time'),
+        self.parser.add_argument(
+            '--optuna-trials-nb', type=int, default=100,
+            help='The number of trials for Optuna')
+        self.parser.add_argument(
+            '--target-type', type=str, default='occurrence',
+            help='The target type. Options are: occurrence, damage_ratio')
+        self.parser.add_argument(
+            '--factor-neg-reduction', type=int, default=10,
+            help='The factor to reduce the number of negatives only for training')
+        self.parser.add_argument(
+            '--weight-denominator', type=int, default=40,
+            help='The weight denominator to reduce the negative class weights')
+        self.parser.add_argument(
+            '--random-state', type=int, default=42,
+            help='The random state to use for the random number generator')
+        self.parser.add_argument(
+            '--do-not-use-precip', action='store_true',
+            help='Do not use precipitation data')
+        self.parser.add_argument(
+            '--use-dem', action='store_true',
+            help='Use DEM data')
+        self.parser.add_argument(
+            '--do-not-use-simple-features', action='store_true',
+            help='Do not use simple features (event properties and static attributes)')
+        self.parser.add_argument(
+            '--simple-feature-classes', nargs='+',
+            default=['event', 'terrain', 'swf_map', 'flowacc', 'twi'],
+            help='The list of simple feature classes to use (e.g. event terrain)')
+        self.parser.add_argument(
+            '--simple-features', nargs='+',
+            default=[],
+            help='The list of specific simple features to use (e.g. event:i_max_q).'
+                 'If not specified, the default class features will be used.'
+                 'If specified, the default class features will be overridden for'
+                 'this class only (e.g. event).')
+        self.parser.add_argument(
+            '--precip-window-size', type=int, default=1,
+            help='The precipitation window size [km]')
+        self.parser.add_argument(
+            '--precip-resolution', type=int, default=1,
+            help='The precipitation resolution [km]')
+        self.parser.add_argument(
+            '--precip-time-step', type=int, default=1,
+            help='The precipitation time step [h]')
+        self.parser.add_argument(
+            '--precip-days-before', type=int, default=5,
+            help='The number of days before the event to use for the precipitation')
+        self.parser.add_argument(
+            '--precip-days-after', type=int, default=1,
+            help='The number of days after the event to use for the precipitation')
+        self.parser.add_argument(
+            '--transform-static', type=str, default='standardize',
+            help='The transformation to apply to the static data')
+        self.parser.add_argument(
+            '--transform-3d', type=str, default='normalize',
+            help='The transformation to apply to the 3D data')
+        self.parser.add_argument(
+            '--no-log-transform-precip', action='store_true',
+            help='Do not log-transform the precipitation')
+        self.parser.add_argument(
+            '--batch-size', type=int, default=64,
+            help='The batch size')
+        self.parser.add_argument(
+            '--epochs', type=int, default=100,
+            help='The number of epochs')
+        self.parser.add_argument(
+            '--learning-rate', type=float, default=0.001,
+            help='The learning rate')
+        self.parser.add_argument(
+            '--dropout-rate-cnn', type=float, default=0.4,
+            help='The dropout rate for the CNN')
+        self.parser.add_argument(
+            '--dropout-rate-dense', type=float, default=0.2,
+            help='The dropout rate for the dense layers')
+        self.parser.add_argument(
+            '--no-spatial-dropout', action='store_true',
+            help='Do not use spatial dropout')
+        self.parser.add_argument(
+            '--no-batchnorm-cnn', action='store_true',
+            help='Do not use batch normalization for the CNN')
+        self.parser.add_argument(
+            '--no-batchnorm-dense', action='store_true',
+            help='Do not use batch normalization for the dense layers')
+        self.parser.add_argument(
+            '--kernel-size-spatial', type=int, default=3,
+            help='The kernel size for the spatial convolution')
+        self.parser.add_argument(
+            '--kernel-size-temporal', type=int, default=3,
+            help='The kernel size for the temporal convolution')
+        self.parser.add_argument(
+            '--nb-filters', type=int, default=64,
+            help='The number of filters')
+        self.parser.add_argument(
+            '--pool-size-spatial', type=int, default=1,
+            help='The pool size for the spatial (max) pooling')
+        self.parser.add_argument(
+            '--pool-size-temporal', type=int, default=2,
+            help='The pool size for the temporal (max) pooling')
+        self.parser.add_argument(
+            '--nb-conv-blocks', type=int, default=5,
+            help='The number of convolutional blocks')
+        self.parser.add_argument(
+            '--nb-dense-layers', type=int, default=5,
+            help='The number of dense layers')
+        self.parser.add_argument(
+            '--nb-dense-units', type=int, default=256,
+            help='The number of dense units')
+        self.parser.add_argument(
+            '--dense-units-decreasing', action='store_true',
+            help='The number of dense units should decrease')
+        self.parser.add_argument(
+            '--inner-activation-cnn', type=str, default='elu',
+            help='The inner activation function for the CNN')
+        self.parser.add_argument(
+            '--inner-activation-dense', type=str, default='leaky_relu',
+            help='The inner activation function for the dense layers')
 
     def parse_args(self):
         """
@@ -449,138 +581,6 @@ class ImpactCnnOptions:
                 print("Warning: DEM will not be used as precipitation is not.")
 
         return True
-
-    def _set_parser_arguments(self):
-        """
-        Set the parser arguments.
-        """
-        self.parser.add_argument(
-            '--run-name', type=str,
-            default=datetime.datetime.now().strftime("%Y%m%d_%H%M%S"),
-            help='The run name')
-        self.parser.add_argument(
-            '--optimize-with-optuna', action='store_true',
-            help='Optimize the hyperparameters with Optuna')
-        self.parser.add_argument(
-            '--optuna-study-name', type=str,
-            default=datetime.datetime.now().strftime("%Y%m%d_%H%M%S"),
-            help='The Optuna study name (default: using the date and time'),
-        self.parser.add_argument(
-            '--optuna-trials-nb', type=int, default=100,
-            help='The number of trials for Optuna')
-        self.parser.add_argument(
-            '--target-type', type=str, default='occurrence',
-            help='The target type. Options are: occurrence, damage_ratio')
-        self.parser.add_argument(
-            '--factor-neg-reduction', type=int, default=10,
-            help='The factor to reduce the number of negatives only for training')
-        self.parser.add_argument(
-            '--weight-denominator', type=int, default=40,
-            help='The weight denominator to reduce the negative class weights')
-        self.parser.add_argument(
-            '--random-state', type=int, default=42,
-            help='The random state to use for the random number generator')
-        self.parser.add_argument(
-            '--do-not-use-precip', action='store_true',
-            help='Do not use precipitation data')
-        self.parser.add_argument(
-            '--use-dem', action='store_true',
-            help='Use DEM data')
-        self.parser.add_argument(
-            '--do-not-use-simple-features', action='store_true',
-            help='Do not use simple features (event properties and static attributes)')
-        self.parser.add_argument(
-            '--simple-feature-classes', nargs='+',
-            default=['event', 'terrain', 'swf_map', 'flowacc', 'twi'],
-            help='The list of simple feature classes to use (e.g. event terrain)')
-        self.parser.add_argument(
-            '--simple-features', nargs='+',
-            default=[],
-            help='The list of specific simple features to use (e.g. event:i_max_q).'
-                 'If not specified, the default class features will be used.'
-                 'If specified, the default class features will be overridden for'
-                 'this class only (e.g. event).')
-        self.parser.add_argument(
-            '--precip-window-size', type=int, default=1,
-            help='The precipitation window size [km]')
-        self.parser.add_argument(
-            '--precip-resolution', type=int, default=1,
-            help='The precipitation resolution [km]')
-        self.parser.add_argument(
-            '--precip-time-step', type=int, default=1,
-            help='The precipitation time step [h]')
-        self.parser.add_argument(
-            '--precip-days-before', type=int, default=5,
-            help='The number of days before the event to use for the precipitation')
-        self.parser.add_argument(
-            '--precip-days-after', type=int, default=1,
-            help='The number of days after the event to use for the precipitation')
-        self.parser.add_argument(
-            '--transform-static', type=str, default='standardize',
-            help='The transformation to apply to the static data')
-        self.parser.add_argument(
-            '--transform-3d', type=str, default='normalize',
-            help='The transformation to apply to the 3D data')
-        self.parser.add_argument(
-            '--no-log-transform-precip', action='store_true',
-            help='Do not log-transform the precipitation')
-        self.parser.add_argument(
-            '--batch-size', type=int, default=64,
-            help='The batch size')
-        self.parser.add_argument(
-            '--epochs', type=int, default=100,
-            help='The number of epochs')
-        self.parser.add_argument(
-            '--learning-rate', type=float, default=0.001,
-            help='The learning rate')
-        self.parser.add_argument(
-            '--dropout-rate-cnn', type=float, default=0.4,
-            help='The dropout rate for the CNN')
-        self.parser.add_argument(
-            '--dropout-rate-dense', type=float, default=0.2,
-            help='The dropout rate for the dense layers')
-        self.parser.add_argument(
-            '--no-spatial-dropout', action='store_true',
-            help='Do not use spatial dropout')
-        self.parser.add_argument(
-            '--no-batchnorm-cnn', action='store_true',
-            help='Do not use batch normalization for the CNN')
-        self.parser.add_argument(
-            '--no-batchnorm-dense', action='store_true',
-            help='Do not use batch normalization for the dense layers')
-        self.parser.add_argument(
-            '--kernel-size-spatial', type=int, default=3,
-            help='The kernel size for the spatial convolution')
-        self.parser.add_argument(
-            '--kernel-size-temporal', type=int, default=3,
-            help='The kernel size for the temporal convolution')
-        self.parser.add_argument(
-            '--nb-filters', type=int, default=64,
-            help='The number of filters')
-        self.parser.add_argument(
-            '--pool-size-spatial', type=int, default=1,
-            help='The pool size for the spatial (max) pooling')
-        self.parser.add_argument(
-            '--pool-size-temporal', type=int, default=2,
-            help='The pool size for the temporal (max) pooling')
-        self.parser.add_argument(
-            '--nb-conv-blocks', type=int, default=5,
-            help='The number of convolutional blocks')
-        self.parser.add_argument(
-            '--nb-dense-layers', type=int, default=5,
-            help='The number of dense layers')
-        self.parser.add_argument(
-            '--nb-dense-units', type=int, default=256,
-            help='The number of dense units')
-        self.parser.add_argument(
-            '--dense-units-decreasing', action='store_true',
-            help='The number of dense units should decrease')
-        self.parser.add_argument(
-            '--inner-activation-cnn', type=str, default='elu',
-            help='The inner activation function for the CNN')
-        self.parser.add_argument(
-            '--inner-activation-dense', type=str, default='leaky_relu',
-            help='The inner activation function for the dense layers')
 
 
 class ImpactCnn(Impact):
