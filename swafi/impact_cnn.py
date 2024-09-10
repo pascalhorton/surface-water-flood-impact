@@ -282,7 +282,7 @@ class ImpactCnnOptions:
             '--kernel-size-temporal', type=int, default=3,
             help='The kernel size for the temporal convolution')
         self.parser.add_argument(
-            '--nb-filters', type=int, default=64,
+            '--nb-filters', type=int, default=32,
             help='The number of filters')
         self.parser.add_argument(
             '--pool-size-spatial', type=int, default=1,
@@ -291,7 +291,7 @@ class ImpactCnnOptions:
             '--pool-size-temporal', type=int, default=2,
             help='The pool size for the temporal (max) pooling')
         self.parser.add_argument(
-            '--nb-conv-blocks', type=int, default=5,
+            '--nb-conv-blocks', type=int, default=4,
             help='The number of convolutional blocks')
         self.parser.add_argument(
             '--nb-dense-layers', type=int, default=5,
