@@ -14,7 +14,7 @@ class DataGenerator(keras.utils.Sequence):
     def __init__(self, event_props, x_static, x_precip, x_dem, y, batch_size=32,
                  shuffle=True, precip_window_size=2, precip_resolution=1,
                  precip_time_step=12, precip_days_before=1, precip_days_after=1,
-                 tmp_dir=None, transform_static='standardize', transform_2d='normalize',
+                 tmp_dir=None, transform_static='standardize', transform_3d='normalize',
                  log_transform_precip=True, mean_static=None, std_static=None,
                  mean_precip=None, std_precip=None, min_static=None,
                  max_static=None, q99_precip=None, debug=False):
@@ -42,22 +42,22 @@ class DataGenerator(keras.utils.Sequence):
         shuffle: bool
             Whether to shuffle the data or not.
         precip_window_size: int
-            The window size for the 2D predictors [km].
+            The window size for the 3D predictors [km].
         precip_resolution: int
             The desired grid resolution of the precipitation data [km].
         precip_time_step: int
             The desired time step of the precipitation data [h].
         precip_days_before: int
-            The number of days before the event to include in the 2D predictors.
+            The number of days before the event to include in the 3D predictors.
         precip_days_after: int
-            The number of days after the event to include in the 2D predictors.
+            The number of days after the event to include in the 3D predictors.
         tmp_dir: Path
             The temporary directory to use.
         transform_static: str
             The transformation to apply to the static data.
             Options: 'normalize' or 'standardize'.
-        transform_2d: str
-            The transformation to apply to the 2D data.
+        transform_3d: str
+            The transformation to apply to the 3D data.
             Options: 'normalize' or 'standardize'.
         log_transform_precip: bool
             Whether to log-transform the precipitation data or not.
@@ -86,7 +86,7 @@ class DataGenerator(keras.utils.Sequence):
         self.shuffle = shuffle
         self.debug = debug
         self.warning_counter = 0
-        self.channels_nb = None
+        self.third_dim_size = None
         self.precip_window_size = precip_window_size
         self.precip_resolution = precip_resolution
         self.precip_time_step = precip_time_step
@@ -94,7 +94,7 @@ class DataGenerator(keras.utils.Sequence):
         self.precip_days_after = precip_days_after
 
         self.transform_static = transform_static
-        self.transform_2d = transform_2d
+        self.transform_3d = transform_3d
         self.log_transform_precip = log_transform_precip
 
         self.mean_static = mean_static
@@ -124,10 +124,10 @@ class DataGenerator(keras.utils.Sequence):
         elif transform_static == 'normalize':
             self._normalize_static_inputs()
 
-        if transform_2d == 'standardize':
-            self._standardize_2d_inputs()
-        elif transform_2d == 'normalize':
-            self._normalize_2d_inputs()
+        if transform_3d == 'standardize':
+            self._standardize_3d_inputs()
+        elif transform_3d == 'normalize':
+            self._normalize_3d_inputs()
 
         self.n_samples = self.y.shape[0]
         self.idxs = np.arange(self.n_samples)
@@ -140,22 +140,22 @@ class DataGenerator(keras.utils.Sequence):
         if self.X_dem is not None:
             self.X_dem.load()
 
-    def get_channels_nb(self):
-        """ Get the number of channels of the 2D predictors. """
-        if self.channels_nb is not None:
-            return self.channels_nb
+    def get_third_dim_size(self):
+        """ Get the size of the 3rd dimension for the 3D predictors. """
+        if self.third_dim_size is not None:
+            return self.third_dim_size
 
-        input_2d_channels = 0
+        third_dim_size = 0
         if self.X_precip is not None:
-            input_2d_channels += self.precip_days_after + self.precip_days_before
-            input_2d_channels *= int(24 / self.precip_time_step)  # Time step
-            input_2d_channels += 1  # Because the 1st and last time steps are included.
+            third_dim_size += self.precip_days_after + self.precip_days_before
+            third_dim_size *= int(24 / self.precip_time_step)  # Time step
+            third_dim_size += 1  # Because the 1st and last time steps are included.
         if self.X_dem is not None:
-            input_2d_channels += 1  # Add one for the DEM layer
+            third_dim_size += 1  # Add one for the DEM layer
 
-        self.channels_nb = input_2d_channels
+        self.third_dim_size = third_dim_size
 
-        return input_2d_channels
+        return third_dim_size
 
     def reduce_negatives(self, factor):
         """
@@ -233,7 +233,7 @@ class DataGenerator(keras.utils.Sequence):
         if self.X_static is not None:
             self.X_static = (self.X_static - self.mean_static) / self.std_static
 
-    def _standardize_2d_inputs(self):
+    def _standardize_3d_inputs(self):
         if self.X_precip is not None:
             self.X_precip.standardize(self.mean_precip, self.std_precip)
         if self.X_dem is not None:
@@ -244,7 +244,7 @@ class DataGenerator(keras.utils.Sequence):
             self.X_static = ((self.X_static - self.min_static) /
                              (self.max_static - self.min_static))
 
-    def _normalize_2d_inputs(self):
+    def _normalize_3d_inputs(self):
         if self.X_precip is not None:
             self.X_precip.normalize(self.q99_precip)
         if self.X_dem is not None:
@@ -268,11 +268,11 @@ class DataGenerator(keras.utils.Sequence):
 
         if self.X_dem is not None:
             print('Computing DEM predictor statistics')
-            if self.transform_2d == 'standardize':
+            if self.transform_3d == 'standardize':
                 # Compute the mean and standard deviation of the DEM (non-temporal)
                 self.mean_dem = self.X_dem.mean(('x', 'y')).compute().values
                 self.std_dem = self.X_dem.std(('x', 'y')).compute().values
-            elif self.transform_2d == 'normalize':
+            elif self.transform_3d == 'normalize':
                 # Compute the min and max of the DEM (non-temporal)
                 self.min_dem = self.X_dem.min(('x', 'y')).compute().values
                 self.max_dem = self.X_dem.max(('x', 'y')).compute().values
@@ -286,11 +286,11 @@ class DataGenerator(keras.utils.Sequence):
             self.X_precip.log_transform()
 
         # Load or compute the precipitation statistics
-        if self.transform_2d == 'standardize':
+        if self.transform_3d == 'standardize':
             if self.mean_precip is not None and self.std_precip is not None:
                 return
             self.mean_precip, self.std_precip = self.X_precip.compute_mean_and_std_per_pixel()
-        elif self.transform_2d == 'normalize':
+        elif self.transform_3d == 'normalize':
             if self.q99_precip is not None:
                 return
             self.q99_precip = self.X_precip.compute_quantile_per_pixel(0.99)
@@ -306,22 +306,25 @@ class DataGenerator(keras.utils.Sequence):
         # Select the events
         y = self.y[idxs]
 
-        x_2d = None
+        x_3d = None
         x_static = None
 
-        # Select the 2D data
+        # Select the 3D data
         if self.X_precip is not None:
             pixels_nb = int(self.precip_window_size / self.precip_resolution)
-            x_2d = np.zeros((self.batch_size,
+            x_3d = np.zeros((self.batch_size,
                              pixels_nb,
                              pixels_nb,
-                             self.get_channels_nb()))
+                             self.get_third_dim_size()))
 
             for i_b, event in enumerate(self.event_props[idxs]):
-                x_2d[i_b] = self._extract_precipitation(event)
+                x_3d[i_b] = self._extract_precipitation(event)
+
+            # Add a new axis for the channels
+            x_3d = np.expand_dims(x_3d, axis=-1)
 
             if self.X_static is None:
-                return x_2d, y
+                return x_3d, y
 
         # Select the static data
         if self.X_static is not None:
@@ -330,7 +333,7 @@ class DataGenerator(keras.utils.Sequence):
             if self.X_precip is None:
                 return x_static, y
 
-        return (x_2d, x_static), y
+        return (x_3d, x_static), y
 
     def _extract_precipitation(self, event):
         precip_window_size_m = self.precip_window_size * 1000
@@ -365,55 +368,55 @@ class DataGenerator(keras.utils.Sequence):
             # Replace the NaNs by zeros
             x_dem_ev = np.nan_to_num(x_dem_ev)
 
-            # Add a new axis for the channels
+            # Add a new axis for the 3rd dimension
             x_dem_ev = np.expand_dims(x_dem_ev, axis=-1)
 
             # Concatenate
-            x_2d_ev = np.concatenate([x_dem_ev, x_precip_ev], axis=-1)
+            x_3d_ev = np.concatenate([x_dem_ev, x_precip_ev], axis=-1)
         else:
-            x_2d_ev = x_precip_ev
+            x_3d_ev = x_precip_ev
 
         # If too large, remove the last line(s) or column(s)
-        if x_2d_ev.shape[0] > pixels_nb:
-            x_2d_ev = x_2d_ev[:pixels_nb, :, :]
-        if x_2d_ev.shape[1] > pixels_nb:
-            x_2d_ev = x_2d_ev[:, :pixels_nb, :]
+        if x_3d_ev.shape[0] > pixels_nb:
+            x_3d_ev = x_3d_ev[:pixels_nb, :, :]
+        if x_3d_ev.shape[1] > pixels_nb:
+            x_3d_ev = x_3d_ev[:, :pixels_nb, :]
 
         # Handle missing precipitation data
-        if x_2d_ev.shape[2] != self.get_channels_nb():
+        if x_3d_ev.shape[2] != self.get_third_dim_size():
             self.warning_counter += 1
 
             if self.debug:
-                print(f"Shape mismatch: actual: {x_2d_ev.shape[2]} !="
-                      f" expected: {self.get_channels_nb()}")
+                print(f"Shape mismatch: actual: {x_3d_ev.shape[2]} !="
+                      f" expected: {self.get_third_dim_size()}")
                 print(f"Event: {event}")
 
             if self.warning_counter in [10, 50, 100, 500, 1000, 5000, 10000]:
-                print(f"Shape mismatch: actual: {x_2d_ev.shape[2]} !="
-                      f" expected: {self.get_channels_nb()}")
+                print(f"Shape mismatch: actual: {x_3d_ev.shape[2]} !="
+                      f" expected: {self.get_third_dim_size()}")
                 print(f"Warning: {self.warning_counter} events with "
                       f"shape missmatch (e.g., missing precipitation data).")
 
-            diff = x_2d_ev.shape[2] - self.get_channels_nb()
-            if abs(diff / self.get_channels_nb()) > 0.1:  # 10% tolerance
+            diff = x_3d_ev.shape[2] - self.get_third_dim_size()
+            if abs(diff / self.get_third_dim_size()) > 0.1:  # 10% tolerance
                 if self.debug:
-                    print(f"Warning: too many missing channels ({diff}).")
+                    print(f"Warning: too many missing timesteps ({diff}).")
 
                 pixels_nb = int(self.precip_window_size / self.precip_resolution)
-                x_2d_ev = np.zeros((pixels_nb, pixels_nb, self.get_channels_nb()))
+                x_3d_ev = np.zeros((pixels_nb, pixels_nb, self.get_third_dim_size()))
 
             else:
-                if x_2d_ev.shape[2] > self.get_channels_nb():  # Loaded too many
-                    x_2d_ev = x_2d_ev[:, :, :-diff]
+                if x_3d_ev.shape[2] > self.get_third_dim_size():  # Loaded too many
+                    x_3d_ev = x_3d_ev[:, :, :-diff]
 
-                elif x_2d_ev.shape[2] < self.get_channels_nb():  # Loaded too few
+                elif x_3d_ev.shape[2] < self.get_third_dim_size():  # Loaded too few
                     diff = -diff
-                    x_2d_ev = np.concatenate(
-                        [x_2d_ev, np.zeros((x_2d_ev.shape[0],
-                                            x_2d_ev.shape[1],
+                    x_3d_ev = np.concatenate(
+                        [x_3d_ev, np.zeros((x_3d_ev.shape[0],
+                                            x_3d_ev.shape[1],
                                             diff))], axis=-1)
 
-        return x_2d_ev
+        return x_3d_ev
 
     def on_epoch_end(self):
         """Updates indexes after each epoch and reset the warning counter."""
