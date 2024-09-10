@@ -39,7 +39,7 @@ def main():
     options = ImpactCnnOptions()
     options.parse_args()
     # options.parser.print_help()
-    options.print()
+    options.print_options()
     assert options.is_ok()
 
     year_start = None

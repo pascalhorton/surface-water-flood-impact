@@ -486,13 +486,24 @@ class ImpactCnnOptions:
 
         # Check the input 3D size vs nb_conv_blocks
         pixels_nb = int(self.precip_window_size / self.precip_resolution)
-        nb_conv_blocks_max = math.floor(math.log(pixels_nb, 2))
+        time_steps = int((self.precip_days_before + self.precip_days_after + 1) *
+                         24 / self.precip_time_step)
+
+        nb_conv_blocks_max = self.nb_conv_blocks
+        if self.pool_size_spatial > 1:
+            nb_conv_blocks_max = min(
+                nb_conv_blocks_max, math.floor(
+                    math.log(pixels_nb, self.pool_size_spatial)))
+        if self.pool_size_temporal > 1:
+            nb_conv_blocks_max = min(
+                nb_conv_blocks_max, math.floor(
+                    math.log(time_steps, self.pool_size_temporal)))
         if self.nb_conv_blocks > nb_conv_blocks_max:
             return False  # Not valid
 
         return True
 
-    def print(self):
+    def print_options(self):
         """
         Print the options.
         """

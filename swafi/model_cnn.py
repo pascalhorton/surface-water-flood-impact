@@ -54,8 +54,8 @@ class ModelCnn(models.Model):
             assert len(self.input_1d_size) == 1, "Input 1D size must be 1D"
 
         if self.input_3d_size is not None:
-            assert len(self.input_3d_size) == 3, \
-                "Input 3D size must be 3D (with channels)"
+            assert len(self.input_3d_size) == 4, \
+                "Input 3D size must be 4D (with channels)"
 
             # Check the input 3D size vs nb_conv_blocks
             nb_conv_blocks_max = self.options.nb_conv_blocks
