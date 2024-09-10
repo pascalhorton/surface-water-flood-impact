@@ -58,8 +58,17 @@ class ModelCnn(models.Model):
                 "Input 3D size must be 3D (with channels)"
 
             # Check the input 3D size vs nb_conv_blocks
-            input_3d_size = min(self.input_3d_size[0], self.input_3d_size[1])
-            nb_conv_blocks_max = math.floor(math.log(input_3d_size, 2))
+            nb_conv_blocks_max = self.options.nb_conv_blocks
+            if self.options.pool_size_spatial > 1:
+                spatial_size = min(self.input_3d_size[0], self.input_3d_size[1])
+                nb_conv_blocks_max = min(
+                    nb_conv_blocks_max, math.floor(
+                        math.log(spatial_size, self.options.pool_size_spatial)))
+            if self.options.pool_size_temporal > 1:
+                nb_conv_blocks_max = min(
+                    nb_conv_blocks_max, math.floor(
+                        math.log(self.input_3d_size[2],
+                                 self.options.pool_size_temporal)))
             if self.options.nb_conv_blocks > nb_conv_blocks_max:
                 self.options.nb_conv_blocks = nb_conv_blocks_max
                 print(f"Warning: Number of convolution blocks was reduced "

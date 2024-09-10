@@ -561,10 +561,10 @@ class ImpactCnnOptions:
             '--pool-size-spatial', type=int, default=1,
             help='The pool size for the spatial (max) pooling')
         self.parser.add_argument(
-            '--pool-size-temporal', type=int, default=3,
+            '--pool-size-temporal', type=int, default=2,
             help='The pool size for the temporal (max) pooling')
         self.parser.add_argument(
-            '--nb-conv-blocks', type=int, default=2,
+            '--nb-conv-blocks', type=int, default=5,
             help='The number of convolutional blocks')
         self.parser.add_argument(
             '--nb-dense-layers', type=int, default=5,
@@ -631,7 +631,7 @@ class ImpactCnn(Impact):
         if self.model is None:
             raise ValueError("Model not defined")
 
-        filename = f'{dir_output}/model_{self.options.run_name}.keras'
+        filename = f'{dir_output}/model_cnn_{self.options.run_name}.keras'
         self.model.save(filename)
         print(f"Model saved: {filename}")
 
