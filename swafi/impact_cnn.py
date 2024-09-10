@@ -388,8 +388,21 @@ class ImpactCnnOptions:
         assert self.optimize_with_optuna, "Optimize with Optuna is not set to True"
 
         if isinstance(hp_to_optimize, str) and hp_to_optimize == 'default':
-            hp_to_optimize = ['precip_window_size', 'precip_time_step',
-                              'precip_days_before']
+            if self.use_precip:
+                hp_to_optimize = [
+                    'precip_window_size', 'precip_time_step', 'precip_days_before',
+                    'transform_3d', 'log_transform_precip', 'batch_size',
+                    'dropout_rate_dense', 'dropout_rate_cnn', 'kernel_size_spatial',
+                    'kernel_size_temporal', 'nb_filters', 'pool_size_spatial',
+                    'pool_size_temporal', 'nb_dense_layers', 'nb_dense_units',
+                    'inner_activation_dense', 'inner_activation_cnn',
+                    'with_batchnorm_cnn', 'with_batchnorm_dense', 'nb_conv_blocks',
+                    'learning_rate']
+            else:
+                hp_to_optimize = [
+                    'batch_size', 'dropout_rate_dense', 'nb_dense_layers',
+                    'nb_dense_units', 'inner_activation_dense',
+                    'with_batchnorm_dense', 'learning_rate']
 
         if 'weight_denominator' in hp_to_optimize:
             self.weight_denominator = trial.suggest_int(
@@ -407,7 +420,7 @@ class ImpactCnnOptions:
                     'precip_time_step', [1, 2, 4, 6, 12, 24])
             if 'precip_days_before' in hp_to_optimize:
                 self.precip_days_before = trial.suggest_int(
-                    'precip_days_before', 1, 3)
+                    'precip_days_before', 1, 10)
             if 'precip_days_after' in hp_to_optimize:
                 self.precip_days_after = trial.suggest_int(
                     'precip_days_after', 1, 2)
@@ -431,11 +444,11 @@ class ImpactCnnOptions:
                 'learning_rate', 1e-4, 1e-2, log=True)
         if 'dropout_rate_dense' in hp_to_optimize:
             self.dropout_rate_dense = trial.suggest_float(
-                'dropout_rate_dense', 0.0, 0.5)
+                'dropout_rate_dense', 0.2, 0.5)
         if self.use_precip:
             if 'dropout_rate_cnn' in hp_to_optimize:
                 self.dropout_rate_cnn = trial.suggest_float(
-                    'dropout_rate_cnn', 0.0, 0.5)
+                    'dropout_rate_cnn', 0.2, 0.5)
             if 'with_spatial_dropout' in hp_to_optimize:
                 self.with_spatial_dropout = trial.suggest_categorical(
                     'with_spatial_dropout', [True, False])
@@ -464,7 +477,7 @@ class ImpactCnnOptions:
                     'pool_size_temporal', [1, 2, 3, 4, 5, 6, 9, 12])
             if 'nb_conv_blocks' in hp_to_optimize:
                 self.nb_conv_blocks = trial.suggest_int(
-                    'nb_conv_blocks', 1, 5)
+                    'nb_conv_blocks', 0, 5)
 
         if 'nb_dense_layers' in hp_to_optimize:
             self.nb_dense_layers = trial.suggest_int(
