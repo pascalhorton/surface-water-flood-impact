@@ -86,7 +86,7 @@ class DataGenerator(keras.utils.Sequence):
         self.shuffle = shuffle
         self.debug = debug
         self.warning_counter = 0
-        self.channels_nb = None
+        self.third_dim_size = None
         self.precip_window_size = precip_window_size
         self.precip_resolution = precip_resolution
         self.precip_time_step = precip_time_step
@@ -140,22 +140,22 @@ class DataGenerator(keras.utils.Sequence):
         if self.X_dem is not None:
             self.X_dem.load()
 
-    def get_channels_nb(self):
-        """ Get the number of channels of the 3D predictors. """
-        if self.channels_nb is not None:
-            return self.channels_nb
+    def get_third_dim_size(self):
+        """ Get the size of the 3rd dimension for the 3D predictors. """
+        if self.third_dim_size is not None:
+            return self.third_dim_size
 
-        input_3d_channels = 0
+        third_dim_size = 0
         if self.X_precip is not None:
-            input_3d_channels += self.precip_days_after + self.precip_days_before
-            input_3d_channels *= int(24 / self.precip_time_step)  # Time step
-            input_3d_channels += 1  # Because the 1st and last time steps are included.
+            third_dim_size += self.precip_days_after + self.precip_days_before
+            third_dim_size *= int(24 / self.precip_time_step)  # Time step
+            third_dim_size += 1  # Because the 1st and last time steps are included.
         if self.X_dem is not None:
-            input_3d_channels += 1  # Add one for the DEM layer
+            third_dim_size += 1  # Add one for the DEM layer
 
-        self.channels_nb = input_3d_channels
+        self.third_dim_size = third_dim_size
 
-        return input_3d_channels
+        return third_dim_size
 
     def reduce_negatives(self, factor):
         """
@@ -315,10 +315,13 @@ class DataGenerator(keras.utils.Sequence):
             x_3d = np.zeros((self.batch_size,
                              pixels_nb,
                              pixels_nb,
-                             self.get_channels_nb()))
+                             self.get_third_dim_size()))
 
             for i_b, event in enumerate(self.event_props[idxs]):
                 x_3d[i_b] = self._extract_precipitation(event)
+
+            # Add a new axis for the channels
+            x_3d = np.expand_dims(x_3d, axis=-1)
 
             if self.X_static is None:
                 return x_3d, y
@@ -365,7 +368,7 @@ class DataGenerator(keras.utils.Sequence):
             # Replace the NaNs by zeros
             x_dem_ev = np.nan_to_num(x_dem_ev)
 
-            # Add a new axis for the channels
+            # Add a new axis for the 3rd dimension
             x_dem_ev = np.expand_dims(x_dem_ev, axis=-1)
 
             # Concatenate
@@ -380,33 +383,33 @@ class DataGenerator(keras.utils.Sequence):
             x_3d_ev = x_3d_ev[:, :pixels_nb, :]
 
         # Handle missing precipitation data
-        if x_3d_ev.shape[2] != self.get_channels_nb():
+        if x_3d_ev.shape[2] != self.get_third_dim_size():
             self.warning_counter += 1
 
             if self.debug:
                 print(f"Shape mismatch: actual: {x_3d_ev.shape[2]} !="
-                      f" expected: {self.get_channels_nb()}")
+                      f" expected: {self.get_third_dim_size()}")
                 print(f"Event: {event}")
 
             if self.warning_counter in [10, 50, 100, 500, 1000, 5000, 10000]:
                 print(f"Shape mismatch: actual: {x_3d_ev.shape[2]} !="
-                      f" expected: {self.get_channels_nb()}")
+                      f" expected: {self.get_third_dim_size()}")
                 print(f"Warning: {self.warning_counter} events with "
                       f"shape missmatch (e.g., missing precipitation data).")
 
-            diff = x_3d_ev.shape[2] - self.get_channels_nb()
-            if abs(diff / self.get_channels_nb()) > 0.1:  # 10% tolerance
+            diff = x_3d_ev.shape[2] - self.get_third_dim_size()
+            if abs(diff / self.get_third_dim_size()) > 0.1:  # 10% tolerance
                 if self.debug:
-                    print(f"Warning: too many missing channels ({diff}).")
+                    print(f"Warning: too many missing timesteps ({diff}).")
 
                 pixels_nb = int(self.precip_window_size / self.precip_resolution)
-                x_3d_ev = np.zeros((pixels_nb, pixels_nb, self.get_channels_nb()))
+                x_3d_ev = np.zeros((pixels_nb, pixels_nb, self.get_third_dim_size()))
 
             else:
-                if x_3d_ev.shape[2] > self.get_channels_nb():  # Loaded too many
+                if x_3d_ev.shape[2] > self.get_third_dim_size():  # Loaded too many
                     x_3d_ev = x_3d_ev[:, :, :-diff]
 
-                elif x_3d_ev.shape[2] < self.get_channels_nb():  # Loaded too few
+                elif x_3d_ev.shape[2] < self.get_third_dim_size():  # Loaded too few
                     diff = -diff
                     x_3d_ev = np.concatenate(
                         [x_3d_ev, np.zeros((x_3d_ev.shape[0],

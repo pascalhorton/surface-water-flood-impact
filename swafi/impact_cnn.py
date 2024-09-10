@@ -672,7 +672,8 @@ class ImpactCnn(Impact):
         if self.options.use_precip:
             self._define_model(input_3d_size=[pixels_per_side,
                                               pixels_per_side,
-                                              self.dg_train.get_channels_nb()],
+                                              self.dg_train.get_third_dim_size(),
+                                              1],  # 1 channel
                                input_1d_size=self.x_train.shape[1:])
         else:
             self._define_model(input_3d_size=None,
