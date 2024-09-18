@@ -14,7 +14,7 @@ class DataGenerator(keras.utils.Sequence):
     def __init__(self, event_props, x_static, x_precip, x_dem, y, batch_size=32,
                  shuffle=True, precip_window_size=2, precip_resolution=1,
                  precip_time_step=12, precip_days_before=1, precip_days_after=1,
-                 tmp_dir=None, transform_static='standardize', transform_3d='normalize',
+                 tmp_dir=None, transform_static='standardize', transform_precip='normalize',
                  log_transform_precip=True, mean_static=None, std_static=None,
                  mean_precip=None, std_precip=None, min_static=None,
                  max_static=None, q99_precip=None, debug=False):
@@ -56,7 +56,7 @@ class DataGenerator(keras.utils.Sequence):
         transform_static: str
             The transformation to apply to the static data.
             Options: 'normalize' or 'standardize'.
-        transform_3d: str
+        transform_precip: str
             The transformation to apply to the 3D data.
             Options: 'normalize' or 'standardize'.
         log_transform_precip: bool
@@ -94,7 +94,7 @@ class DataGenerator(keras.utils.Sequence):
         self.precip_days_after = precip_days_after
 
         self.transform_static = transform_static
-        self.transform_3d = transform_3d
+        self.transform_precip = transform_precip
         self.log_transform_precip = log_transform_precip
 
         self.mean_static = mean_static
@@ -124,10 +124,10 @@ class DataGenerator(keras.utils.Sequence):
         elif transform_static == 'normalize':
             self._normalize_static_inputs()
 
-        if transform_3d == 'standardize':
-            self._standardize_3d_inputs()
-        elif transform_3d == 'normalize':
-            self._normalize_3d_inputs()
+        if transform_precip == 'standardize':
+            self._standardize_precip_inputs()
+        elif transform_precip == 'normalize':
+            self._normalize_precip_inputs()
 
         self.n_samples = self.y.shape[0]
         self.idxs = np.arange(self.n_samples)
@@ -233,7 +233,7 @@ class DataGenerator(keras.utils.Sequence):
         if self.X_static is not None:
             self.X_static = (self.X_static - self.mean_static) / self.std_static
 
-    def _standardize_3d_inputs(self):
+    def _standardize_precip_inputs(self):
         if self.X_precip is not None:
             self.X_precip.standardize(self.mean_precip, self.std_precip)
         if self.X_dem is not None:
@@ -244,7 +244,7 @@ class DataGenerator(keras.utils.Sequence):
             self.X_static = ((self.X_static - self.min_static) /
                              (self.max_static - self.min_static))
 
-    def _normalize_3d_inputs(self):
+    def _normalize_precip_inputs(self):
         if self.X_precip is not None:
             self.X_precip.normalize(self.q99_precip)
         if self.X_dem is not None:
@@ -268,11 +268,11 @@ class DataGenerator(keras.utils.Sequence):
 
         if self.X_dem is not None:
             print('Computing DEM predictor statistics')
-            if self.transform_3d == 'standardize':
+            if self.transform_precip == 'standardize':
                 # Compute the mean and standard deviation of the DEM (non-temporal)
                 self.mean_dem = self.X_dem.mean(('x', 'y')).compute().values
                 self.std_dem = self.X_dem.std(('x', 'y')).compute().values
-            elif self.transform_3d == 'normalize':
+            elif self.transform_precip == 'normalize':
                 # Compute the min and max of the DEM (non-temporal)
                 self.min_dem = self.X_dem.min(('x', 'y')).compute().values
                 self.max_dem = self.X_dem.max(('x', 'y')).compute().values
@@ -286,11 +286,11 @@ class DataGenerator(keras.utils.Sequence):
             self.X_precip.log_transform()
 
         # Load or compute the precipitation statistics
-        if self.transform_3d == 'standardize':
+        if self.transform_precip == 'standardize':
             if self.mean_precip is not None and self.std_precip is not None:
                 return
             self.mean_precip, self.std_precip = self.X_precip.compute_mean_and_std_per_pixel()
-        elif self.transform_3d == 'normalize':
+        elif self.transform_precip == 'normalize':
             if self.q99_precip is not None:
                 return
             self.q99_precip = self.X_precip.compute_quantile_per_pixel(0.99)

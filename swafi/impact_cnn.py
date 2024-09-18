@@ -1,14 +1,14 @@
 """
-Class to compute the impact function.
+Class to compute the impact function with the CNN model.
 """
 
 from .impact import Impact
+from .impact_dl import ImpactDlOptions
 from .model_cnn import ModelCnn
 from .utils.data_generator import DataGenerator
 from .utils.verification import compute_confusion_matrix, print_classic_scores, \
     assess_roc_auc, compute_score_binary
 
-import argparse
 import copy
 import hashlib
 import pickle
@@ -29,34 +29,18 @@ except ImportError:
     pass
 
 DEBUG = False
-epsilon = 1e-7  # a small constant to avoid division by zero
 
 
-class ImpactCnnOptions:
+class ImpactCnnOptions(ImpactDlOptions):
     """
     The CNN Deep Learning Impact class options.
 
     Attributes
     ----------
-    run_name: str
-        The run name.
-    target_type: str
-        The target type. Options are: 'occurrence', 'damage_ratio'
-    factor_neg_reduction: int
-        The factor to reduce the number of negatives only for training.
-    weight_denominator: int
-        The weight denominator to reduce the negative class weights.
-    random_state: int|None
-        The random state to use for the random number generator.
-        Default: 42. Set to None to not set the random seed.
     use_precip: bool
         Whether to use precipitation data (CombiPrecip) or not.
     use_dem: bool
         Whether to use DEM data or not.
-    use_simple_features: bool
-        Whether to use simple features (event properties and static attributes) or not.
-    simple_features: list
-        The list of simple features to use.
     precip_window_size: int
         The precipitation window size [km].
     precip_resolution: int
@@ -70,27 +54,12 @@ class ImpactCnnOptions:
     transform_static: str
         The transformation to apply to the static data.
         Options are: 'standardize', 'normalize'.
-    transform_3d: str
-        The transformation to apply to the 3D data.
-        Options are: 'standardize', 'normalize'.
-    log_transform_precip: bool
-        Whether to log-transform the precipitation or not.
-    batch_size: int
-        The batch size.
-    epochs: int
-        The number of epochs.
-    learning_rate: float
-        The learning rate.
     dropout_rate_cnn: float
         The dropout rate for the CNN.
-    dropout_rate_dense: float
-        The dropout rate for the dense layers.
     with_spatial_dropout: bool
         Whether to use spatial dropout or not.
     with_batchnorm_cnn: bool
         Whether to use batch normalization or not for the CNN.
-    with_batchnorm_dense: bool
-        Whether to use batch normalization or not for the dense layers.
     kernel_size_spatial: int
         The kernel size for the spatial convolution.
     kernel_size_temporal: int
@@ -103,69 +72,34 @@ class ImpactCnnOptions:
         The pool size for the temporal (max) pooling.
     nb_conv_blocks: int
         The number of convolutional blocks.
-    nb_dense_layers: int
-        The number of dense layers.
-    nb_dense_units: int
-        The number of dense units.
-    nb_dense_units_decreasing: bool
-        Whether the number of dense units should decrease or not.
     inner_activation_cnn: str
         The inner activation function for the CNN.
-    inner_activation_dense: str
-        The inner activation function for the dense layers.
     """
-
     def __init__(self):
-        self.parser = argparse.ArgumentParser(description="SWAFI CNN")
+        super().__init__()
         self._set_parser_arguments()
-
-        # General options
-        self.run_name = None
-        self.optimize_with_optuna = None
-        self.optuna_trials_nb = None
-        self.optuna_study_name = None
-        self.target_type = None
-        self.factor_neg_reduction = None
-        self.weight_denominator = None
-        self.random_state = None
 
         # Data options
         self.use_precip = None
         self.use_dem = None
-        self.use_simple_features = None
-        self.simple_feature_classes = None
-        self.simple_features = None
         self.precip_window_size = None
         self.precip_resolution = None
         self.precip_time_step = None
         self.precip_days_before = None
         self.precip_days_after = None
         self.transform_static = None
-        self.transform_3d = None
-        self.log_transform_precip = None
-
-        # Training options
-        self.batch_size = None
-        self.epochs = None
-        self.learning_rate = None
 
         # Model options
         self.dropout_rate_cnn = None
-        self.dropout_rate_dense = None
         self.with_spatial_dropout = None
         self.with_batchnorm_cnn = None
-        self.with_batchnorm_dense = None
         self.kernel_size_spatial = None
         self.kernel_size_temporal = None
         self.nb_filters = None
         self.pool_size_spatial = None
         self.pool_size_temporal = None
         self.nb_conv_blocks = None
-        self.nb_dense_layers = None
-        self.nb_dense_units = None
-        self.nb_dense_units_decreasing = None
         self.inner_activation_cnn = None
-        self.inner_activation_dense = None
 
     def copy(self):
         """
@@ -182,51 +116,11 @@ class ImpactCnnOptions:
         Set the parser arguments.
         """
         self.parser.add_argument(
-            '--run-name', type=str,
-            default=datetime.datetime.now().strftime("%Y%m%d_%H%M%S"),
-            help='The run name')
-        self.parser.add_argument(
-            '--optimize-with-optuna', action='store_true',
-            help='Optimize the hyperparameters with Optuna')
-        self.parser.add_argument(
-            '--optuna-study-name', type=str,
-            default=datetime.datetime.now().strftime("%Y%m%d_%H%M%S"),
-            help='The Optuna study name (default: using the date and time'),
-        self.parser.add_argument(
-            '--optuna-trials-nb', type=int, default=100,
-            help='The number of trials for Optuna')
-        self.parser.add_argument(
-            '--target-type', type=str, default='occurrence',
-            help='The target type. Options are: occurrence, damage_ratio')
-        self.parser.add_argument(
-            '--factor-neg-reduction', type=int, default=10,
-            help='The factor to reduce the number of negatives only for training')
-        self.parser.add_argument(
-            '--weight-denominator', type=int, default=40,
-            help='The weight denominator to reduce the negative class weights')
-        self.parser.add_argument(
-            '--random-state', type=int, default=42,
-            help='The random state to use for the random number generator')
-        self.parser.add_argument(
             '--do-not-use-precip', action='store_true',
             help='Do not use precipitation data')
         self.parser.add_argument(
             '--use-dem', action='store_true',
             help='Use DEM data')
-        self.parser.add_argument(
-            '--do-not-use-simple-features', action='store_true',
-            help='Do not use simple features (event properties and static attributes)')
-        self.parser.add_argument(
-            '--simple-feature-classes', nargs='+',
-            default=['event', 'terrain', 'swf_map', 'flowacc', 'twi'],
-            help='The list of simple feature classes to use (e.g. event terrain)')
-        self.parser.add_argument(
-            '--simple-features', nargs='+',
-            default=[],
-            help='The list of specific simple features to use (e.g. event:i_max_q).'
-                 'If not specified, the default class features will be used.'
-                 'If specified, the default class features will be overridden for'
-                 'this class only (e.g. event).')
         self.parser.add_argument(
             '--precip-window-size', type=int, default=1,
             help='The precipitation window size [km]')
@@ -246,35 +140,14 @@ class ImpactCnnOptions:
             '--transform-static', type=str, default='standardize',
             help='The transformation to apply to the static data')
         self.parser.add_argument(
-            '--transform-3d', type=str, default='normalize',
-            help='The transformation to apply to the 3D data')
-        self.parser.add_argument(
-            '--no-log-transform-precip', action='store_true',
-            help='Do not log-transform the precipitation')
-        self.parser.add_argument(
-            '--batch-size', type=int, default=64,
-            help='The batch size')
-        self.parser.add_argument(
-            '--epochs', type=int, default=100,
-            help='The number of epochs')
-        self.parser.add_argument(
-            '--learning-rate', type=float, default=0.001,
-            help='The learning rate')
-        self.parser.add_argument(
             '--dropout-rate-cnn', type=float, default=0.4,
             help='The dropout rate for the CNN')
-        self.parser.add_argument(
-            '--dropout-rate-dense', type=float, default=0.2,
-            help='The dropout rate for the dense layers')
         self.parser.add_argument(
             '--no-spatial-dropout', action='store_true',
             help='Do not use spatial dropout')
         self.parser.add_argument(
             '--no-batchnorm-cnn', action='store_true',
             help='Do not use batch normalization for the CNN')
-        self.parser.add_argument(
-            '--no-batchnorm-dense', action='store_true',
-            help='Do not use batch normalization for the dense layers')
         self.parser.add_argument(
             '--kernel-size-spatial', type=int, default=3,
             help='The kernel size for the spatial convolution')
@@ -294,66 +167,34 @@ class ImpactCnnOptions:
             '--nb-conv-blocks', type=int, default=4,
             help='The number of convolutional blocks')
         self.parser.add_argument(
-            '--nb-dense-layers', type=int, default=5,
-            help='The number of dense layers')
-        self.parser.add_argument(
-            '--nb-dense-units', type=int, default=256,
-            help='The number of dense units')
-        self.parser.add_argument(
-            '--dense-units-decreasing', action='store_true',
-            help='The number of dense units should decrease')
-        self.parser.add_argument(
             '--inner-activation-cnn', type=str, default='elu',
             help='The inner activation function for the CNN')
-        self.parser.add_argument(
-            '--inner-activation-dense', type=str, default='leaky_relu',
-            help='The inner activation function for the dense layers')
 
     def parse_args(self):
         """
         Parse the arguments.
         """
         args = self.parser.parse_args()
-        self.run_name = args.run_name
-        self.target_type = args.target_type
-        self.optimize_with_optuna = args.optimize_with_optuna
-        self.optuna_trials_nb = args.optuna_trials_nb
-        self.optuna_study_name = args.optuna_study_name
-        self.factor_neg_reduction = args.factor_neg_reduction
-        self.weight_denominator = args.weight_denominator
-        self.random_state = args.random_state
+        self._parse_args(args)
+
         self.use_precip = not args.do_not_use_precip
         self.use_dem = args.use_dem
-        self.use_simple_features = not args.do_not_use_simple_features
-        self.simple_feature_classes = args.simple_feature_classes
-        self.simple_features = args.simple_features
         self.precip_window_size = args.precip_window_size
         self.precip_resolution = args.precip_resolution
         self.precip_time_step = args.precip_time_step
         self.precip_days_before = args.precip_days_before
         self.precip_days_after = args.precip_days_after
         self.transform_static = args.transform_static
-        self.transform_3d = args.transform_3d
-        self.log_transform_precip = not args.no_log_transform_precip
-        self.batch_size = args.batch_size
-        self.epochs = args.epochs
-        self.learning_rate = args.learning_rate
         self.dropout_rate_cnn = args.dropout_rate_cnn
-        self.dropout_rate_dense = args.dropout_rate_dense
         self.with_spatial_dropout = not args.no_spatial_dropout
         self.with_batchnorm_cnn = not args.no_batchnorm_cnn
-        self.with_batchnorm_dense = not args.no_batchnorm_dense
         self.kernel_size_spatial = args.kernel_size_spatial
         self.kernel_size_temporal = args.kernel_size_temporal
         self.nb_filters = args.nb_filters
         self.pool_size_spatial = args.pool_size_spatial
         self.pool_size_temporal = args.pool_size_temporal
         self.nb_conv_blocks = args.nb_conv_blocks
-        self.nb_dense_layers = args.nb_dense_layers
-        self.nb_dense_units = args.nb_dense_units
-        self.nb_dense_units_decreasing = args.dense_units_decreasing
         self.inner_activation_cnn = args.inner_activation_cnn
-        self.inner_activation_dense = args.inner_activation_dense
 
         if self.optimize_with_optuna:
             print("Optimizing with Optuna; some options will be ignored.")
@@ -370,7 +211,7 @@ class ImpactCnnOptions:
             The list of hyperparameters to optimize. Can be the string 'default'
             Options are: weight_denominator, precip_window_size, precip_time_step,
             precip_days_before, precip_resolution, precip_days_after, transform_static,
-            transform_3d, log_transform_precip, batch_size, learning_rate,
+            transform_precip, log_transform_precip, batch_size, learning_rate,
             dropout_rate_dense, dropout_rate_cnn, with_spatial_dropout,
             with_batchnorm_cnn, with_batchnorm_dense, kernel_size_spatial,
             kernel_size_temporal, nb_filters, pool_size_spatial, pool_size_temporal,
@@ -391,7 +232,7 @@ class ImpactCnnOptions:
             if self.use_precip:
                 hp_to_optimize = [
                     'precip_window_size', 'precip_time_step', 'precip_days_before',
-                    'transform_3d', 'log_transform_precip', 'batch_size',
+                    'transform_precip', 'log_transform_precip', 'batch_size',
                     'dropout_rate_dense', 'dropout_rate_cnn', 'kernel_size_spatial',
                     'kernel_size_temporal', 'nb_filters', 'pool_size_spatial',
                     'pool_size_temporal', 'nb_dense_layers', 'nb_dense_units',
@@ -429,9 +270,9 @@ class ImpactCnnOptions:
                 self.transform_static = trial.suggest_categorical(
                     'transform_static', ['standardize', 'normalize'])
         if self.use_precip:
-            if 'transform_3d' in hp_to_optimize:
-                self.transform_3d = trial.suggest_categorical(
-                    'transform_3d', ['standardize', 'normalize'])
+            if 'transform_precip' in hp_to_optimize:
+                self.transform_precip = trial.suggest_categorical(
+                    'transform_precip', ['standardize', 'normalize'])
             if 'log_transform_precip' in hp_to_optimize:
                 self.log_transform_precip = trial.suggest_categorical(
                     'log_transform_precip', [True, False])
@@ -560,7 +401,7 @@ class ImpactCnnOptions:
             print("- transform_static: ", self.transform_static)
 
         if self.use_precip:
-            print("- transform_3d: ", self.transform_3d)
+            print("- transform_precip: ", self.transform_precip)
             print("- log_transform_precip: ", self.log_transform_precip)
 
         print("- batch_size: ", self.batch_size)
@@ -868,6 +709,7 @@ class ImpactCnn(Impact):
             The F1 score.
         """
         n_batches = dg.__len__()
+        epsilon = 1e-7  # a small constant to avoid division by zero
 
         # Predict
         all_pred = []
@@ -975,6 +817,7 @@ class ImpactCnn(Impact):
         -------
         The CSI score.
         """
+        epsilon = 1e-7  # a small constant to avoid division by zero
         y_true = tf.cast(y_true, dtype=y_pred.dtype)
         y_pred = tf.cast(y_pred, dtype=y_pred.dtype)
         y_pred = tf.round(y_pred)  # convert probabilities to binary predictions
@@ -1001,7 +844,7 @@ class ImpactCnn(Impact):
             precip_days_after=self.options.precip_days_after,
             tmp_dir=self.tmp_dir,
             transform_static=self.options.transform_static,
-            transform_3d=self.options.transform_3d,
+            transform_precip=self.options.transform_precip,
             log_transform_precip=self.options.log_transform_precip,
             debug=DEBUG
         )
@@ -1031,7 +874,7 @@ class ImpactCnn(Impact):
             precip_days_after=self.options.precip_days_after,
             tmp_dir=self.tmp_dir,
             transform_static=self.options.transform_static,
-            transform_3d=self.options.transform_3d,
+            transform_precip=self.options.transform_precip,
             log_transform_precip=self.options.log_transform_precip,
             mean_static=self.dg_train.mean_static,
             std_static=self.dg_train.std_static,
@@ -1062,7 +905,7 @@ class ImpactCnn(Impact):
             precip_days_after=self.options.precip_days_after,
             tmp_dir=self.tmp_dir,
             transform_static=self.options.transform_static,
-            transform_3d=self.options.transform_3d,
+            transform_precip=self.options.transform_precip,
             log_transform_precip=self.options.log_transform_precip,
             mean_static=self.dg_train.mean_static,
             std_static=self.dg_train.std_static,
