@@ -1,5 +1,5 @@
 """
-Class to compute the impact function.
+Class for the CNN model.
 """
 
 import math
@@ -101,9 +101,7 @@ class ModelCnn(models.Model):
 
         if self.input_1d_size is not None:
             input_1d = layers.Input(shape=self.input_1d_size, name='input_1d')
-
             if self.input_3d_size is not None:
-                # Concatenate with 1D input
                 x = layers.concatenate([x, input_1d])
             else:
                 x = input_1d
