@@ -516,10 +516,16 @@ class ImpactCnnOptions:
 
         return True
 
-    def print_options(self):
+    def print_options(self, show_optuna_params=False):
         """
         Print the options.
+
+        Parameters
+        ----------
+        show_optuna_params: bool
+            Whether to show the Optuna parameters or not.
         """
+        print("-" * 80)
         print(f"Options (run {self.run_name}):")
         print("- target_type: ", self.target_type)
         print("- random_state: ", self.random_state)
@@ -537,7 +543,9 @@ class ImpactCnnOptions:
             print("- optuna_study_name: ", self.optuna_study_name)
             print("- optuna_trials_nb: ", self.optuna_trials_nb)
             print("- epochs: ", self.epochs)
-            return  # Do not print the other options
+            if not show_optuna_params:
+                print("-" * 80)
+                return  # Do not print the other options
 
         print("- weight_denominator: ", self.weight_denominator)
 
@@ -580,6 +588,8 @@ class ImpactCnnOptions:
         print("- nb_dense_units: ", self.nb_dense_units)
         print("- nb_dense_units_decreasing: ", self.nb_dense_units_decreasing)
         print("- inner_activation_dense: ", self.inner_activation_dense)
+
+        print("-" * 80)
 
     def is_ok(self):
         """

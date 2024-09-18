@@ -2,6 +2,7 @@
 Train a deep learning model to predict the occurrence of damages.
 """
 
+import time
 import warnings
 import xarray as xr
 import rioxarray as rxr
@@ -158,10 +159,16 @@ def optimize_model_with_optuna(options, events, precip=None, dem=None, dir_plots
         """
         options_c = options.copy()
         options_c.generate_for_optuna(trial)
+        options_c.print_options(show_optuna_params=True)
         cnn_trial = _setup_model(options_c, events, precip, dem)
+
+        start_time = time.time()
 
         # Fit the model
         cnn_trial.fit(do_plot=False, silent=True)
+
+        end_time = time.time()
+        print(f"Model fitting took {end_time - start_time:.2f} seconds")
 
         # Assess the model
         score = cnn_trial.compute_f1_score(cnn_trial.dg_val)
