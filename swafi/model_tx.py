@@ -51,17 +51,17 @@ class ModelTransformer(models.Model):
         """
         Build the model.
         """
-        input_daily = layers.Input(
-            shape=self.input_daily_prec_size,
-            name='input_daily')
-        input_high_freq = layers.Input(
-            shape=self.input_high_freq_prec_size,
-            name='input_high_freq')
-        input_attributes = layers.Input(
-            shape=self.input_attributes_size,
-            name='input_attributes')
-
         if not self.options.combined_transformer:
+            input_daily = layers.Input(
+                shape=self.input_daily_prec_size,
+                name='input_daily')
+            input_high_freq = layers.Input(
+                shape=self.input_high_freq_prec_size,
+                name='input_high_freq')
+            input_attributes = layers.Input(
+                shape=self.input_attributes_size,
+                name='input_attributes')
+
             # Transformer for daily precipitation
             x_daily = input_daily
             for _ in range(self.options.nb_transformer_blocks_daily):
@@ -96,9 +96,30 @@ class ModelTransformer(models.Model):
             x = layers.Concatenate(axis=-1)([x_daily, x_high_freq, x_attributes])
 
         else:
+            max_length = max(self.input_daily_prec_size[0],
+                             self.input_high_freq_prec_size[0])
+
+            input_daily = layers.Input(
+                shape=(max_length, self.input_daily_prec_size[1]),
+                name='input_daily')
+            input_high_freq = layers.Input(
+                shape=(max_length, self.input_high_freq_prec_size[1]),
+                name='input_high_freq')
+            input_attributes = layers.Input(
+                shape=self.input_attributes_size,
+                name='input_attributes')
+
             x = layers.Concatenate(axis=1)([input_daily, input_high_freq])
             # Broadcast static attributes across timesteps
-            x = tf.expand_dims(input_attributes, axis=1) + x
+            x_attributes = tf.expand_dims(
+                input_attributes,
+                axis=1)  # Shape becomes (batch_size, 1, num_static_features)
+            x_attributes = tf.tile(
+                x_attributes,
+                [1, max_length, 1])  # Broadcast static features across timesteps
+
+            # Combine time series and static attributes into a single sequence
+            x = layers.Concatenate(axis=-1)([x, x_attributes])
 
             for _ in range(self.options.nb_transformer_blocks_combined):
                 x = self.transformer_block(
