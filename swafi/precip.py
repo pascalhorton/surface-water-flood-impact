@@ -193,9 +193,12 @@ class Precipitation:
                     ts = []
                     data = pickle.load(file)
                     for x, y in locations:
-                        ts.append(data[self.precip_var].sel(
+                        dat = data[self.precip_var].sel(
                             {self.x_axis: x, self.y_axis: y}
-                        ))
+                        )
+                        # Print the shape of the data array
+                        print(f"Shape of data array: {dat.shape}")
+                        ts.append(dat)
 
                     tx_xr = xr.concat(ts, dim='cid')
                     if self.cid_time_series is None:

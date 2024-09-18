@@ -387,13 +387,13 @@ class DataGenerator(keras.utils.Sequence):
             self.warning_counter += 1
 
             if self.debug:
-                print(f"Shape mismatch: actual: {x_3d_ev.shape[2]} !="
-                      f" expected: {self.get_third_dim_size()}")
+                print(f"Shape mismatch: expected: {self.get_third_dim_size()} !="
+                      f" got: {x_3d_ev.shape[2]}")
                 print(f"Event: {event}")
 
             if self.warning_counter in [10, 50, 100, 500, 1000, 5000, 10000]:
-                print(f"Shape mismatch: actual: {x_3d_ev.shape[2]} !="
-                      f" expected: {self.get_third_dim_size()}")
+                print(f"Shape mismatch: expected: {self.get_third_dim_size()} !="
+                      f" got: {x_3d_ev.shape[2]}")
                 print(f"Warning: {self.warning_counter} events with "
                       f"shape missmatch (e.g., missing precipitation data).")
 

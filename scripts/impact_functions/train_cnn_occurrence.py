@@ -157,6 +157,8 @@ def optimize_model_with_optuna(options, events, precip=None, dem=None, dir_plots
         float
             The score.
         """
+        print("#" * 80)
+        print(f"Trial {trial.number}")
         options_c = options.copy()
         options_c.generate_for_optuna(trial)
         options_c.print_options(show_optuna_params=True)
