@@ -85,7 +85,7 @@ def main():
                 tag=options.run_name, show_plots=SHOW_PLOTS)
         cnn.assess_model_on_all_periods()
         if SAVE_MODEL:
-            cnn.save_model(dir_output=config.get('OUTPUT_DIR'))
+            cnn.save_model(dir_output=config.get('OUTPUT_DIR'), base_name='model_cnn')
             print(f"Model saved in {config.get('OUTPUT_DIR')}")
 
     else:
