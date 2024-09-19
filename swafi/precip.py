@@ -196,8 +196,6 @@ class Precipitation:
                         dat = data[self.precip_var].sel(
                             {self.x_axis: x, self.y_axis: y}
                         )
-                        # Print the shape of the data array
-                        print(f"Shape of data array: {dat.shape}")
                         ts.append(dat)
 
                     tx_xr = xr.concat(ts, dim='cid')
