@@ -198,11 +198,11 @@ class Precipitation:
                         )
                         ts.append(dat)
 
-                    tx_xr = xr.concat(ts, dim='cid')
+                    ts_xr = xr.concat(ts, dim='cid')
                     if self.cid_time_series is None:
-                        self.cid_time_series = tx_xr
+                        self.cid_time_series = ts_xr
                     else:
-                        self.cid_time_series = xr.concat([self.cid_time_series, tx_xr],
+                        self.cid_time_series = xr.concat([self.cid_time_series, ts_xr],
                                                          dim=self.time_axis)
 
             except EOFError:

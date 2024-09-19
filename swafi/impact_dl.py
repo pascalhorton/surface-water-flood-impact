@@ -128,6 +128,7 @@ class ImpactDl(Impact):
             self.model.model.summary()
 
         # Fit the model
+        print("Fitting the model.")
         verbose = 1 if show_plots else 2
         verbose = 0 if silent else verbose
         hist = self.model.fit(
