@@ -37,8 +37,6 @@ class ImpactCnnOptions(ImpactDlOptions):
 
     Attributes
     ----------
-    use_precip: bool
-        Whether to use precipitation data (CombiPrecip) or not.
     use_dem: bool
         Whether to use DEM data or not.
     precip_window_size: int
@@ -51,9 +49,6 @@ class ImpactCnnOptions(ImpactDlOptions):
         The number of days before the event to use for the precipitation.
     precip_days_after: int
         The number of days after the event to use for the precipitation.
-    transform_static: str
-        The transformation to apply to the static data.
-        Options are: 'standardize', 'normalize'.
     dropout_rate_cnn: float
         The dropout rate for the CNN.
     with_spatial_dropout: bool
@@ -80,14 +75,12 @@ class ImpactCnnOptions(ImpactDlOptions):
         self._set_parser_arguments()
 
         # Data options
-        self.use_precip = None
         self.use_dem = None
         self.precip_window_size = None
         self.precip_resolution = None
         self.precip_time_step = None
         self.precip_days_before = None
         self.precip_days_after = None
-        self.transform_static = None
 
         # Model options
         self.dropout_rate_cnn = None
@@ -116,9 +109,6 @@ class ImpactCnnOptions(ImpactDlOptions):
         Set the parser arguments.
         """
         self.parser.add_argument(
-            '--do-not-use-precip', action='store_true',
-            help='Do not use precipitation data')
-        self.parser.add_argument(
             '--use-dem', action='store_true',
             help='Use DEM data')
         self.parser.add_argument(
@@ -136,9 +126,6 @@ class ImpactCnnOptions(ImpactDlOptions):
         self.parser.add_argument(
             '--precip-days-after', type=int, default=1,
             help='The number of days after the event to use for the precipitation')
-        self.parser.add_argument(
-            '--transform-static', type=str, default='standardize',
-            help='The transformation to apply to the static data')
         self.parser.add_argument(
             '--dropout-rate-cnn', type=float, default=0.4,
             help='The dropout rate for the CNN')
@@ -177,14 +164,12 @@ class ImpactCnnOptions(ImpactDlOptions):
         args = self.parser.parse_args()
         self._parse_args(args)
 
-        self.use_precip = not args.do_not_use_precip
         self.use_dem = args.use_dem
         self.precip_window_size = args.precip_window_size
         self.precip_resolution = args.precip_resolution
         self.precip_time_step = args.precip_time_step
         self.precip_days_before = args.precip_days_before
         self.precip_days_after = args.precip_days_after
-        self.transform_static = args.transform_static
         self.dropout_rate_cnn = args.dropout_rate_cnn
         self.with_spatial_dropout = not args.no_spatial_dropout
         self.with_batchnorm_cnn = not args.no_batchnorm_cnn
@@ -223,11 +208,6 @@ class ImpactCnnOptions(ImpactDlOptions):
         ImpactCnnOptions
             The options.
         """
-        if not has_optuna:
-            raise ValueError("Optuna is not installed")
-
-        assert self.optimize_with_optuna, "Optimize with Optuna is not set to True"
-
         if isinstance(hp_to_optimize, str) and hp_to_optimize == 'default':
             if self.use_precip:
                 hp_to_optimize = [
@@ -245,9 +225,7 @@ class ImpactCnnOptions(ImpactDlOptions):
                     'nb_dense_units', 'inner_activation_dense',
                     'with_batchnorm_dense', 'learning_rate']
 
-        if 'weight_denominator' in hp_to_optimize:
-            self.weight_denominator = trial.suggest_int(
-                'weight_denominator', 1, 100)
+        self._generate_for_optuna(trial, hp_to_optimize)
 
         if self.use_precip:
             if 'precip_window_size' in hp_to_optimize:
@@ -265,28 +243,6 @@ class ImpactCnnOptions(ImpactDlOptions):
             if 'precip_days_after' in hp_to_optimize:
                 self.precip_days_after = trial.suggest_int(
                     'precip_days_after', 1, 2)
-        if self.use_simple_features:
-            if 'transform_static' in hp_to_optimize:
-                self.transform_static = trial.suggest_categorical(
-                    'transform_static', ['standardize', 'normalize'])
-        if self.use_precip:
-            if 'transform_precip' in hp_to_optimize:
-                self.transform_precip = trial.suggest_categorical(
-                    'transform_precip', ['standardize', 'normalize'])
-            if 'log_transform_precip' in hp_to_optimize:
-                self.log_transform_precip = trial.suggest_categorical(
-                    'log_transform_precip', [True, False])
-
-        if 'batch_size' in hp_to_optimize:
-            self.batch_size = trial.suggest_categorical(
-                'batch_size', [16, 32, 64, 128, 256, 512])
-        if 'learning_rate' in hp_to_optimize:
-            self.learning_rate = trial.suggest_float(
-                'learning_rate', 1e-4, 1e-2, log=True)
-        if 'dropout_rate_dense' in hp_to_optimize:
-            self.dropout_rate_dense = trial.suggest_float(
-                'dropout_rate_dense', 0.2, 0.5)
-        if self.use_precip:
             if 'dropout_rate_cnn' in hp_to_optimize:
                 self.dropout_rate_cnn = trial.suggest_float(
                     'dropout_rate_cnn', 0.2, 0.5)
@@ -296,11 +252,6 @@ class ImpactCnnOptions(ImpactDlOptions):
             if 'with_batchnorm_cnn' in hp_to_optimize:
                 self.with_batchnorm_cnn = trial.suggest_categorical(
                     'with_batchnorm_cnn', [True, False])
-
-        if 'with_batchnorm_dense' in hp_to_optimize:
-            self.with_batchnorm_dense = trial.suggest_categorical(
-                'with_batchnorm_dense', [True, False])
-        if self.use_precip:
             if 'kernel_size_spatial' in hp_to_optimize:
                 self.kernel_size_spatial = trial.suggest_categorical(
                     'kernel_size_spatial', [1, 3, 5])
@@ -319,24 +270,10 @@ class ImpactCnnOptions(ImpactDlOptions):
             if 'nb_conv_blocks' in hp_to_optimize:
                 self.nb_conv_blocks = trial.suggest_int(
                     'nb_conv_blocks', 0, 5)
-
-        if 'nb_dense_layers' in hp_to_optimize:
-            self.nb_dense_layers = trial.suggest_int(
-                'nb_dense_layers', 1, 10)
-        if 'nb_dense_units' in hp_to_optimize:
-            self.nb_dense_units = trial.suggest_int(
-                'nb_dense_units', 16, 512)
-        if 'nb_dense_units_decreasing' in hp_to_optimize:
-            self.nb_dense_units_decreasing = trial.suggest_categorical(
-                'nb_dense_units_decreasing', [True, False])
-        if 'inner_activation_dense' in hp_to_optimize:
-            self.inner_activation_dense = trial.suggest_categorical(
-                'inner_activation_dense', ['relu', 'tanh', 'sigmoid', 'softmax',
-                                           'elu', 'selu', 'leaky_relu', 'linear'])
-        if 'inner_activation_cnn' in hp_to_optimize:
-            self.inner_activation_cnn = trial.suggest_categorical(
-                'inner_activation_cnn', ['relu', 'tanh', 'sigmoid', 'softmax',
-                                         'elu', 'selu', 'leaky_relu', 'linear'])
+            if 'inner_activation_cnn' in hp_to_optimize:
+                self.inner_activation_cnn = trial.suggest_categorical(
+                    'inner_activation_cnn', ['relu', 'tanh', 'sigmoid', 'softmax',
+                                             'elu', 'selu', 'leaky_relu', 'linear'])
 
         # Check the input 3D size vs nb_conv_blocks
         pixels_nb = int(self.precip_window_size / self.precip_resolution)
@@ -367,28 +304,14 @@ class ImpactCnnOptions(ImpactDlOptions):
             Whether to show the Optuna parameters or not.
         """
         print("-" * 80)
-        print(f"Options (run {self.run_name}):")
-        print("- target_type: ", self.target_type)
-        print("- random_state: ", self.random_state)
-        print("- factor_neg_reduction: ", self.factor_neg_reduction)
-        print("- use_precip: ", self.use_precip)
+        self._print_shared_options(show_optuna_params)
+        print("CNN-specific options:")
+
         print("- use_dem: ", self.use_dem)
-        print("- use_simple_features: ", self.use_simple_features)
 
-        if self.use_simple_features:
-            print("- simple_feature_classes: ", self.simple_feature_classes)
-            print("- simple_features: ", self.simple_features)
-
-        if self.optimize_with_optuna:
-            print("- optimize_with_optuna: ", self.optimize_with_optuna)
-            print("- optuna_study_name: ", self.optuna_study_name)
-            print("- optuna_trials_nb: ", self.optuna_trials_nb)
-            print("- epochs: ", self.epochs)
-            if not show_optuna_params:
-                print("-" * 80)
-                return  # Do not print the other options
-
-        print("- weight_denominator: ", self.weight_denominator)
+        if self.optimize_with_optuna and not show_optuna_params:
+            print("-" * 80)
+            return
 
         if self.use_precip:
             print("- precip_window_size: ", self.precip_window_size)
@@ -396,26 +319,8 @@ class ImpactCnnOptions(ImpactDlOptions):
             print("- precip_time_step: ", self.precip_time_step)
             print("- precip_days_before: ", self.precip_days_before)
             print("- precip_days_after: ", self.precip_days_after)
-
-        if self.use_simple_features:
-            print("- transform_static: ", self.transform_static)
-
-        if self.use_precip:
-            print("- transform_precip: ", self.transform_precip)
-            print("- log_transform_precip: ", self.log_transform_precip)
-
-        print("- batch_size: ", self.batch_size)
-        print("- epochs: ", self.epochs)
-        print("- learning_rate: ", self.learning_rate)
-        print("- dropout_rate_dense: ", self.dropout_rate_dense)
-
-        if self.use_precip:
             print("- with_spatial_dropout: ", self.with_spatial_dropout)
             print("- dropout_rate_cnn: ", self.dropout_rate_cnn)
-
-        print("- with_batchnorm_dense: ", self.with_batchnorm_dense)
-
-        if self.use_precip:
             print("- with_batchnorm_cnn: ", self.with_batchnorm_cnn)
             print("- kernel_size_spatial: ", self.kernel_size_spatial)
             print("- kernel_size_temporal: ", self.kernel_size_temporal)
@@ -424,11 +329,6 @@ class ImpactCnnOptions(ImpactDlOptions):
             print("- pool_size_temporal: ", self.pool_size_temporal)
             print("- nb_conv_blocks: ", self.nb_conv_blocks)
             print("- inner_activation_cnn: ", self.inner_activation_cnn)
-
-        print("- nb_dense_layers: ", self.nb_dense_layers)
-        print("- nb_dense_units: ", self.nb_dense_units)
-        print("- nb_dense_units_decreasing: ", self.nb_dense_units_decreasing)
-        print("- inner_activation_dense: ", self.inner_activation_dense)
 
         print("-" * 80)
 

@@ -6,6 +6,13 @@ Used by ImpactCnn and ImpactTransformer.
 import argparse
 import datetime
 
+has_optuna = False
+try:
+    import optuna
+    has_optuna = True
+except ImportError:
+    pass
+
 
 class ImpactDlOptions:
     """
@@ -32,6 +39,8 @@ class ImpactDlOptions:
     random_state: int|None
         The random state to use for the random number generator.
         Default: 42. Set to None to not set the random seed.
+    use_precip: bool
+        Whether to use precipitation data (CombiPrecip) or not.
     use_simple_features: bool
         Whether to use simple features (event properties and static attributes) or not.
     simple_feature_classes: list
@@ -42,6 +51,9 @@ class ImpactDlOptions:
         Whether to log-transform the precipitation or not.
     transform_precip: str
         The transformation to apply to the precipitation data.
+        Options are: 'standardize', 'normalize'.
+    transform_static: str
+        The transformation to apply to the static data.
         Options are: 'standardize', 'normalize'.
     batch_size: int
         The batch size.
@@ -78,11 +90,13 @@ class ImpactDlOptions:
         self.random_state = None
 
         # Data options
+        self.use_precip = None
         self.use_simple_features = None
         self.simple_feature_classes = None
         self.simple_features = None
         self.log_transform_precip = None
         self.transform_precip = None
+        self.transform_static = None
 
         # Training options
         self.batch_size = None
@@ -128,6 +142,9 @@ class ImpactDlOptions:
             '--random-state', type=int, default=42,
             help='The random state to use for the random number generator')
         self.parser.add_argument(
+            '--do-not-use-precip', action='store_true',
+            help='Do not use precipitation data')
+        self.parser.add_argument(
             '--do-not-use-simple-features', action='store_true',
             help='Do not use simple features (event properties and static attributes)')
         self.parser.add_argument(
@@ -147,6 +164,9 @@ class ImpactDlOptions:
         self.parser.add_argument(
             '--transform-precip', type=str, default='normalize',
             help='The transformation to apply to the 3D data')
+        self.parser.add_argument(
+            '--transform-static', type=str, default='standardize',
+            help='The transformation to apply to the static data')
         self.parser.add_argument(
             '--batch-size', type=int, default=64,
             help='The batch size')
@@ -187,11 +207,13 @@ class ImpactDlOptions:
         self.factor_neg_reduction = args.factor_neg_reduction
         self.weight_denominator = args.weight_denominator
         self.random_state = args.random_state
+        self.use_precip = not args.do_not_use_precip
         self.use_simple_features = not args.do_not_use_simple_features
         self.simple_feature_classes = args.simple_feature_classes
         self.simple_features = args.simple_features
         self.log_transform_precip = not args.no_log_transform_precip
         self.transform_precip = args.transform_precip
+        self.transform_static = args.transform_static
         self.batch_size = args.batch_size
         self.epochs = args.epochs
         self.learning_rate = args.learning_rate
@@ -202,7 +224,93 @@ class ImpactDlOptions:
         self.nb_dense_units_decreasing = args.dense_units_decreasing
         self.inner_activation_dense = args.inner_activation_dense
 
+    def _generate_for_optuna(self, trial, hp_to_optimize):
+        if not has_optuna:
+            raise ValueError("Optuna is not installed")
 
+        assert self.optimize_with_optuna, "Optimize with Optuna is not set to True"
 
+        if 'weight_denominator' in hp_to_optimize:
+            self.weight_denominator = trial.suggest_int(
+                'weight_denominator', 1, 100)
 
+        if self.use_simple_features:
+            if 'transform_static' in hp_to_optimize:
+                self.transform_static = trial.suggest_categorical(
+                    'transform_static', ['standardize', 'normalize'])
+
+        if self.use_precip:
+            if 'transform_precip' in hp_to_optimize:
+                self.transform_precip = trial.suggest_categorical(
+                    'transform_precip', ['standardize', 'normalize'])
+            if 'log_transform_precip' in hp_to_optimize:
+                self.log_transform_precip = trial.suggest_categorical(
+                    'log_transform_precip', [True, False])
+
+        if 'batch_size' in hp_to_optimize:
+            self.batch_size = trial.suggest_categorical(
+                'batch_size', [16, 32, 64, 128, 256, 512])
+        if 'learning_rate' in hp_to_optimize:
+            self.learning_rate = trial.suggest_float(
+                'learning_rate', 1e-4, 1e-2, log=True)
+        if 'dropout_rate_dense' in hp_to_optimize:
+            self.dropout_rate_dense = trial.suggest_float(
+                'dropout_rate_dense', 0.2, 0.5)
+        if 'with_batchnorm_dense' in hp_to_optimize:
+            self.with_batchnorm_dense = trial.suggest_categorical(
+                'with_batchnorm_dense', [True, False])
+        if 'nb_dense_layers' in hp_to_optimize:
+            self.nb_dense_layers = trial.suggest_int(
+                'nb_dense_layers', 1, 10)
+        if 'nb_dense_units' in hp_to_optimize:
+            self.nb_dense_units = trial.suggest_int(
+                'nb_dense_units', 16, 512)
+        if 'nb_dense_units_decreasing' in hp_to_optimize:
+            self.nb_dense_units_decreasing = trial.suggest_categorical(
+                'nb_dense_units_decreasing', [True, False])
+        if 'inner_activation_dense' in hp_to_optimize:
+            self.inner_activation_dense = trial.suggest_categorical(
+                'inner_activation_dense', ['relu', 'tanh', 'sigmoid', 'softmax',
+                                           'elu', 'selu', 'leaky_relu', 'linear'])
+
+        return True
+
+    def _print_shared_options(self, show_optuna_params=False):
+        print(f"Options (run {self.run_name}):")
+        print("- target_type: ", self.target_type)
+        print("- random_state: ", self.random_state)
+        print("- factor_neg_reduction: ", self.factor_neg_reduction)
+        print("- use_precip: ", self.use_precip)
+        print("- use_simple_features: ", self.use_simple_features)
+
+        if self.use_simple_features:
+            print("- simple_feature_classes: ", self.simple_feature_classes)
+            print("- simple_features: ", self.simple_features)
+
+        if self.optimize_with_optuna:
+            print("- optimize_with_optuna: ", self.optimize_with_optuna)
+            print("- optuna_study_name: ", self.optuna_study_name)
+            print("- optuna_trials_nb: ", self.optuna_trials_nb)
+            print("- epochs: ", self.epochs)
+            if not show_optuna_params:
+                return  # Do not print the other options
+
+        print("- weight_denominator: ", self.weight_denominator)
+
+        if self.use_simple_features:
+            print("- transform_static: ", self.transform_static)
+
+        if self.use_precip:
+            print("- transform_precip: ", self.transform_precip)
+            print("- log_transform_precip: ", self.log_transform_precip)
+
+        print("- batch_size: ", self.batch_size)
+        print("- epochs: ", self.epochs)
+        print("- learning_rate: ", self.learning_rate)
+        print("- dropout_rate_dense: ", self.dropout_rate_dense)
+        print("- with_batchnorm_dense: ", self.with_batchnorm_dense)
+        print("- nb_dense_layers: ", self.nb_dense_layers)
+        print("- nb_dense_units: ", self.nb_dense_units)
+        print("- nb_dense_units_decreasing: ", self.nb_dense_units_decreasing)
+        print("- inner_activation_dense: ", self.inner_activation_dense)
 
