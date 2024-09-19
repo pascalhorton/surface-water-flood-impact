@@ -1,7 +1,6 @@
 """
-Class to handle the DL options and impact function for models based on deep learning.
+Class to handle the DL options for models based on deep learning.
 It is not meant to be used directly, but to be inherited by other classes.
-Used by ImpactCnn and ImpactTransformer.
 """
 import argparse
 import datetime
@@ -313,4 +312,3 @@ class ImpactDlOptions:
         print("- nb_dense_units: ", self.nb_dense_units)
         print("- nb_dense_units_decreasing: ", self.nb_dense_units_decreasing)
         print("- inner_activation_dense: ", self.inner_activation_dense)
-
