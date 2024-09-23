@@ -16,6 +16,10 @@ class ImpactTxDataGenerator(ImpactDlDataGenerator):
                  std_precip_daily=None, min_static=None, max_static=None,
                  q99_precip_hf=None, q99_precip_daily=None, debug=False):
         """
+        Data generator class.
+
+        Parameters
+        ----------
         event_props: np.array
             The event properties (2D; dates and coordinates).
         x_static: np.array
@@ -30,16 +34,14 @@ class ImpactTxDataGenerator(ImpactDlDataGenerator):
             The batch size.
         shuffle: bool
             Whether to shuffle the data or not.
-        precip_window_size: int
-            The window size for the 3D predictors [km].
-        precip_resolution: int
-            The desired grid resolution of the precipitation data [km].
-        precip_time_step: int
-            The desired time step of the precipitation data [h].
-        precip_days_before: int
-            The number of days before the event to include in the 3D predictors.
-        precip_days_after: int
-            The number of days after the event to include in the 3D predictors.
+        precip_daily_days_before: int
+            The number of days before the event to include in the daily precipitation data.
+        precip_hf_time_step: int
+            The time step of the high-frequency precipitation data.
+        precip_hf_days_before: int
+            The number of days before the event to include in the high-frequency precipitation data.
+        precip_hf_days_after: int
+            The number of days after the event to include in the high-frequency precipitation data.
         tmp_dir: Path
             The temporary directory to use.
         transform_static: str
@@ -54,16 +56,22 @@ class ImpactTxDataGenerator(ImpactDlDataGenerator):
             The mean of the static data.
         std_static: np.array
             The standard deviation of the static data.
-        mean_precip: np.array
-            The mean of the precipitation data.
-        std_precip: np.array
-            The standard deviation of the precipitation data.
+        mean_precip_hf: np.array
+            The mean of the high-frequency precipitation data.
+        std_precip_hf: np.array
+            The standard deviation of the high-frequency precipitation data.
+        mean_precip_daily: np.array
+            The mean of the daily precipitation data.
+        std_precip_daily: np.array
+            The standard deviation of the daily precipitation data.
         min_static: np.array
             The min of the static data.
         max_static: np.array
             The max of the static data.
-        q99_precip: np.array
-            The 99th percentile of the precipitation data.
+        q99_precip_hf: np.array
+            The 99th percentile of the high-frequency precipitation data.
+        q99_precip_daily: np.array
+            The 99th percentile of the daily precipitation data.
         debug: bool
             Whether to run in debug mode or not (print more messages).
         """

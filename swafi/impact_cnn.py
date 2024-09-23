@@ -262,11 +262,9 @@ class ImpactCnn(ImpactDl):
         p_start = pd.to_datetime(f'{self.precipitation_hf.year_start}-01-01').date()
         p_end = pd.to_datetime(f'{self.precipitation_hf.year_end}-12-31').date()
 
-        if self.options.precip_days_before > 0:
-            self.df = self.df[events['date'] > p_start + pd.Timedelta(
-                days=self.options.precip_days_before)]
-            events = events[events['date'] > p_start + pd.Timedelta(
-                days=self.options.precip_days_before)]
-        if self.options.precip_days_after > 0:
-            self.df = self.df[events['date'] < p_end - pd.Timedelta(
-                days=self.options.precip_days_after)]
+        self.df = self.df[events['date'] > p_start + pd.Timedelta(
+            days=self.options.precip_days_before)]
+        events = events[events['date'] > p_start + pd.Timedelta(
+            days=self.options.precip_days_before)]
+        self.df = self.df[events['date'] < p_end - pd.Timedelta(
+            days=self.options.precip_days_after)]
