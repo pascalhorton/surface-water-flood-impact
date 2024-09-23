@@ -193,9 +193,14 @@ class Precipitation:
                     ts = []
                     data = pickle.load(file)
                     for x, y in locations:
-                        dat = data[self.precip_var].sel(
-                            {self.x_axis: x, self.y_axis: y}
-                        )
+                        try:
+                            dat = data[self.precip_var].sel(
+                                {self.x_axis: x, self.y_axis: y}
+                            )
+                        except ValueError:
+                            print(f"Error with file {f} and location {x}, {y}")
+                            print(f"Data shape: {data[self.precip_var].shape}")
+
                         ts.append(dat)
 
                     ts_xr = xr.concat(ts, dim='cid')
