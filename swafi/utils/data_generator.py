@@ -386,16 +386,26 @@ class DataGenerator(keras.utils.Sequence):
         if x_3d_ev.shape[2] != self.get_third_dim_size():
             self.warning_counter += 1
 
+            if x_3d_ev.shape[2] > self.get_third_dim_size():
+                print(f"Data array larger than expected: {x_3d_ev.shape[2]} > "
+                      f"{self.get_third_dim_size()}")
+                print(f"Event: {event}")
+                print(f"Data: {x_3d_ev}")
+                raise ValueError("Data array larger than expected.")
+
             if self.debug:
                 print(f"Shape mismatch: expected: {self.get_third_dim_size()} !="
                       f" got: {x_3d_ev.shape[2]}")
                 print(f"Event: {event}")
 
-            if self.warning_counter in [10, 50, 100, 500, 1000, 5000, 10000]:
+            if self.warning_counter in [10, 50, 100, 500]:
                 print(f"Shape mismatch: expected: {self.get_third_dim_size()} !="
                       f" got: {x_3d_ev.shape[2]}")
                 print(f"Warning: {self.warning_counter} events with "
-                      f"shape missmatch (e.g., missing precipitation data).")
+                      f"shape mismatch (e.g., missing precipitation data).")
+
+            if self.warning_counter > 500:
+                raise ValueError("Too many issues with precipitation data.")
 
             diff = x_3d_ev.shape[2] - self.get_third_dim_size()
             if abs(diff / self.get_third_dim_size()) > 0.1:  # 10% tolerance
