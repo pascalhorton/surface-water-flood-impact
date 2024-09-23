@@ -3,7 +3,6 @@ Class to handle the DL basics for models based on deep learning.
 It is not meant to be used directly, but to be inherited by other classes.
 """
 from .impact import Impact
-from .utils.data_generator import DataGenerator
 from .utils.verification import compute_confusion_matrix, print_classic_scores, \
     assess_roc_auc, compute_score_binary
 
@@ -11,7 +10,6 @@ import hashlib
 import pickle
 import keras
 import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
 import tensorflow as tf
 import datetime
@@ -46,7 +44,8 @@ class ImpactDl(Impact):
         self.options = options
         self.reload_trained_models = reload_trained_models
 
-        self.precipitation = None
+        self.precipitation_hf = None
+        self.precipitation_daily = None
         self.dem = None
         self.dg_train = None
         self.dg_val = None
@@ -426,7 +425,7 @@ class ImpactDl(Impact):
         """
         Remove the events at the period limits.
         """
-        if self.precipitation is None:
+        if self.precipitation_hf is None:
             return
 
         # Extract events dates
@@ -439,8 +438,8 @@ class ImpactDl(Impact):
         events['date'] = events['date'].fillna(events['e_end'])
 
         # Precipitation period
-        p_start = pd.to_datetime(f'{self.precipitation.year_start}-01-01').date()
-        p_end = pd.to_datetime(f'{self.precipitation.year_end}-12-31').date()
+        p_start = pd.to_datetime(f'{self.precipitation_hf.year_start}-01-01').date()
+        p_end = pd.to_datetime(f'{self.precipitation_hf.year_end}-12-31').date()
 
         if self.options.precip_days_before > 0:
             self.df = self.df[events['date'] > p_start + pd.Timedelta(

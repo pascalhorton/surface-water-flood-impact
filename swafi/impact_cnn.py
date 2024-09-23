@@ -4,9 +4,10 @@ Class to compute the impact function with the CNN model.
 from .impact_dl import ImpactDl
 from .impact_cnn_options import ImpactCnnOptions
 from .impact_cnn_model import ModelCnn
-from .utils.data_generator import DataGenerator
+from .impact_cnn_data_generator import ImpactCnnDataGenerator
 
 import copy
+import pandas as pd
 
 has_optuna = False
 try:
@@ -51,10 +52,10 @@ class ImpactCnn(ImpactDl):
         return copy.deepcopy(self)
 
     def _create_data_generator_train(self):
-        self.dg_train = DataGenerator(
+        self.dg_train = ImpactCnnDataGenerator(
             event_props=self.events_train,
             x_static=self.x_train,
-            x_precip=self.precipitation,
+            x_precip=self.precipitation_hf,
             x_dem=self.dem,
             y=self.y_train,
             batch_size=self.options.batch_size,
@@ -71,20 +72,20 @@ class ImpactCnn(ImpactDl):
             debug=DEBUG
         )
 
-        if (self.options.use_precip and self.precipitation is not None and
+        if (self.options.use_precip and self.precipitation_hf is not None and
                 self.options.precip_window_size / self.options.precip_resolution == 1):
             print("Preloading all precipitation data.")
             all_cids = self.df['cid'].unique()
-            self.precipitation.preload_all_cid_data(all_cids)
+            self.precipitation_hf.preload_all_cid_data(all_cids)
 
         if self.factor_neg_reduction != 1:
             self.dg_train.reduce_negatives(self.factor_neg_reduction)
 
     def _create_data_generator_valid(self):
-        self.dg_val = DataGenerator(
+        self.dg_val = ImpactCnnDataGenerator(
             event_props=self.events_valid,
             x_static=self.x_valid,
-            x_precip=self.precipitation,
+            x_precip=self.precipitation_hf,
             x_dem=self.dem,
             y=self.y_valid,
             batch_size=self.options.batch_size,
@@ -112,10 +113,10 @@ class ImpactCnn(ImpactDl):
             self.dg_val.reduce_negatives(self.factor_neg_reduction)
 
     def _create_data_generator_test(self):
-        self.dg_test = DataGenerator(
+        self.dg_test = ImpactCnnDataGenerator(
             event_props=self.events_test,
             x_static=self.x_test,
-            x_precip=self.precipitation,
+            x_precip=self.precipitation_hf,
             x_dem=self.dem,
             y=self.y_test,
             batch_size=self.options.batch_size,
@@ -185,7 +186,7 @@ class ImpactCnn(ImpactDl):
             # Select the same domain as the DEM
             precipitation.generate_pickles_for_subdomain(self.dem.x, self.dem.y)
 
-        self.precipitation = precipitation
+        self.precipitation_hf = precipitation
 
     def set_dem(self, dem):
         """
@@ -231,10 +232,10 @@ class ImpactCnn(ImpactDl):
         x_max = self.df['x'].max() + precip_window_size_m / 2
         y_min = self.df['y'].min() - precip_window_size_m / 2
         y_max = self.df['y'].max() + precip_window_size_m / 2
-        if self.precipitation is not None:
-            x_axis = self.precipitation.get_x_axis_for_bounds(x_min, x_max)
-            y_axis = self.precipitation.get_y_axis_for_bounds(y_min, y_max)
-            self.precipitation.generate_pickles_for_subdomain(x_axis, y_axis)
+        if self.precipitation_hf is not None:
+            x_axis = self.precipitation_hf.get_x_axis_for_bounds(x_min, x_max)
+            y_axis = self.precipitation_hf.get_y_axis_for_bounds(y_min, y_max)
+            self.precipitation_hf.generate_pickles_for_subdomain(x_axis, y_axis)
         if self.dem is not None:
             self.dem = self.dem.sel(
                 x=slice(x_min, x_max),
