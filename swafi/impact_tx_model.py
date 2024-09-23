@@ -70,7 +70,7 @@ class ModelTransformer(models.Model):
                     num_heads=self.options.num_heads_daily,
                     ff_dim=self.options.ff_dim_daily,
                     dropout_rate=self.options.dropout_rate_daily,
-                    activation=self.options.activation)
+                    activation=self.options.inner_activation_tx)
 
             # Transformer for high-frequency precipitation
             x_high_freq = input_high_freq
@@ -80,7 +80,7 @@ class ModelTransformer(models.Model):
                     num_heads=self.options.num_heads_high_freq,
                     ff_dim=self.options.ff_dim_high_freq,
                     dropout_rate=self.options.dropout_rate_high_freq,
-                    activation=self.options.activation)
+                    activation=self.options.inner_activation_tx)
 
             # Transformer for attributes
             x_attributes = input_attributes
@@ -90,7 +90,7 @@ class ModelTransformer(models.Model):
                     num_heads=self.options.num_heads_attributes,
                     ff_dim=self.options.ff_dim_attributes,
                     dropout_rate=self.options.dropout_rate_attributes,
-                    activation=self.options.activation)
+                    activation=self.options.inner_activation_tx)
 
             # Concatenate
             x = layers.Concatenate(axis=-1)([x_daily, x_high_freq, x_attributes])
@@ -127,7 +127,7 @@ class ModelTransformer(models.Model):
                     num_heads=self.options.num_heads_combined,
                     ff_dim=self.options.ff_dim_combined,
                     dropout_rate=self.options.dropout_rate_combined,
-                    activation=self.options.activation)
+                    activation=self.options.inner_activation_tx)
 
         # Fully connected
         for i in range(self.options.nb_dense_layers):

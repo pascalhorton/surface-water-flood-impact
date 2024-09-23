@@ -203,53 +203,55 @@ class ImpactCnnOptions(ImpactDlOptions):
 
         self._generate_for_optuna(trial, hp_to_optimize)
 
-        if self.use_precip:
-            if 'precip_window_size' in hp_to_optimize:
-                self.precip_window_size = trial.suggest_categorical(
-                    'precip_window_size', [1, 3, 5, 7])
-            if 'precip_resolution' in hp_to_optimize:
-                self.precip_resolution = trial.suggest_categorical(
-                    'precip_resolution', [1, 3, 5])
-            if 'precip_time_step' in hp_to_optimize:
-                self.precip_time_step = trial.suggest_categorical(
-                    'precip_time_step', [1, 2, 4, 6, 12, 24])
-            if 'precip_days_before' in hp_to_optimize:
-                self.precip_days_before = trial.suggest_int(
-                    'precip_days_before', 1, 10)
-            if 'precip_days_after' in hp_to_optimize:
-                self.precip_days_after = trial.suggest_int(
-                    'precip_days_after', 1, 2)
-            if 'dropout_rate_cnn' in hp_to_optimize:
-                self.dropout_rate_cnn = trial.suggest_float(
-                    'dropout_rate_cnn', 0.2, 0.5)
-            if 'with_spatial_dropout' in hp_to_optimize:
-                self.with_spatial_dropout = trial.suggest_categorical(
-                    'with_spatial_dropout', [True, False])
-            if 'with_batchnorm_cnn' in hp_to_optimize:
-                self.with_batchnorm_cnn = trial.suggest_categorical(
-                    'with_batchnorm_cnn', [True, False])
-            if 'kernel_size_spatial' in hp_to_optimize:
-                self.kernel_size_spatial = trial.suggest_categorical(
-                    'kernel_size_spatial', [1, 3, 5])
-            if 'kernel_size_temporal' in hp_to_optimize:
-                self.kernel_size_temporal = trial.suggest_categorical(
-                    'kernel_size_temporal', [1, 3, 5, 7, 9, 11])
-            if 'nb_filters' in hp_to_optimize:
-                self.nb_filters = trial.suggest_categorical(
-                    'nb_filters', [16, 32, 64, 128, 256])
-            if 'pool_size_spatial' in hp_to_optimize:
-                self.pool_size_spatial = trial.suggest_categorical(
-                    'pool_size_spatial', [1, 2, 3, 4])
-            if 'pool_size_temporal' in hp_to_optimize:
-                self.pool_size_temporal = trial.suggest_categorical(
-                    'pool_size_temporal', [1, 2, 3, 4, 5, 6, 9, 12])
-            if 'nb_conv_blocks' in hp_to_optimize:
-                self.nb_conv_blocks = trial.suggest_int(
-                    'nb_conv_blocks', 0, 5)
-            if 'inner_activation_cnn' in hp_to_optimize:
-                self.inner_activation_cnn = trial.suggest_categorical(
-                    'inner_activation_cnn', ['relu', 'tanh', 'sigmoid', 'softmax',
-                                             'elu', 'selu', 'leaky_relu', 'linear'])
+        if not self.use_precip:
+            return True
+
+        if 'precip_window_size' in hp_to_optimize:
+            self.precip_window_size = trial.suggest_categorical(
+                'precip_window_size', [1, 3, 5, 7])
+        if 'precip_resolution' in hp_to_optimize:
+            self.precip_resolution = trial.suggest_categorical(
+                'precip_resolution', [1, 3, 5])
+        if 'precip_time_step' in hp_to_optimize:
+            self.precip_time_step = trial.suggest_categorical(
+                'precip_time_step', [1, 2, 4, 6, 12, 24])
+        if 'precip_days_before' in hp_to_optimize:
+            self.precip_days_before = trial.suggest_int(
+                'precip_days_before', 1, 10)
+        if 'precip_days_after' in hp_to_optimize:
+            self.precip_days_after = trial.suggest_int(
+                'precip_days_after', 1, 2)
+        if 'dropout_rate_cnn' in hp_to_optimize:
+            self.dropout_rate_cnn = trial.suggest_float(
+                'dropout_rate_cnn', 0.2, 0.5)
+        if 'with_spatial_dropout' in hp_to_optimize:
+            self.with_spatial_dropout = trial.suggest_categorical(
+                'with_spatial_dropout', [True, False])
+        if 'with_batchnorm_cnn' in hp_to_optimize:
+            self.with_batchnorm_cnn = trial.suggest_categorical(
+                'with_batchnorm_cnn', [True, False])
+        if 'kernel_size_spatial' in hp_to_optimize:
+            self.kernel_size_spatial = trial.suggest_categorical(
+                'kernel_size_spatial', [1, 3, 5])
+        if 'kernel_size_temporal' in hp_to_optimize:
+            self.kernel_size_temporal = trial.suggest_categorical(
+                'kernel_size_temporal', [1, 3, 5, 7, 9, 11])
+        if 'nb_filters' in hp_to_optimize:
+            self.nb_filters = trial.suggest_categorical(
+                'nb_filters', [16, 32, 64, 128, 256])
+        if 'pool_size_spatial' in hp_to_optimize:
+            self.pool_size_spatial = trial.suggest_categorical(
+                'pool_size_spatial', [1, 2, 3, 4])
+        if 'pool_size_temporal' in hp_to_optimize:
+            self.pool_size_temporal = trial.suggest_categorical(
+                'pool_size_temporal', [1, 2, 3, 4, 5, 6, 9, 12])
+        if 'nb_conv_blocks' in hp_to_optimize:
+            self.nb_conv_blocks = trial.suggest_int(
+                'nb_conv_blocks', 0, 5)
+        if 'inner_activation_cnn' in hp_to_optimize:
+            self.inner_activation_cnn = trial.suggest_categorical(
+                'inner_activation_cnn', ['relu', 'tanh', 'sigmoid', 'softmax',
+                                         'elu', 'selu', 'leaky_relu', 'linear'])
 
         # Check the input 3D size vs nb_conv_blocks
         pixels_nb = int(self.precip_window_size / self.precip_resolution)
