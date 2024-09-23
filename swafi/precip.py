@@ -700,6 +700,7 @@ class Precipitation:
             end_time = (t + pd.offsets.MonthEnd(0)).replace(
                 hour=23, minute=59, second=59)
             subset = data.sel(time=slice(t, end_time)).compute()
+            subset = self._remove_duplicate_timestamps(subset)
             subset = self._fill_missing_values(subset)
             subset = self._resample(subset)
             subset = subset.compute()
@@ -724,6 +725,17 @@ class Precipitation:
                 data = data.resample(
                     time=f'{self.time_step}h',
                 ).sum(dim='time')
+
+        return data
+
+    @staticmethod
+    def _remove_duplicate_timestamps(data):
+        # Identify duplicate timestamps
+        _, index = np.unique(data['time'], return_index=True)
+        unique_times = data['time'].values[index]
+
+        # Reindex the dataset to remove duplicates
+        data = data.sel(time=unique_times)
 
         return data
 
