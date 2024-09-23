@@ -3,14 +3,11 @@ Train a deep learning model to predict the occurrence of damages.
 """
 
 import time
-import warnings
-import xarray as xr
-import rioxarray as rxr
 import pandas as pd
 
 from swafi.config import Config
-from swafi.impact_cnn import ImpactCnn
-from swafi.impact_cnn_options import ImpactCnnOptions
+from swafi.impact_tx import ImpactTransformer
+from swafi.impact_tx_options import ImpactTransformerOptions
 from swafi.events import load_events_from_pickle
 from swafi.precip_combiprecip import CombiPrecip
 
@@ -26,10 +23,10 @@ except ImportError:
 USE_SQLITE = False
 USE_TXTFILE = True
 OPTUNA_RANDOM = True
-DATASET = 'mobiliar'  # 'mobiliar' or 'gvz'
+DATASET = 'gvz'  # 'mobiliar' or 'gvz'
 LABEL_EVENT_FILE = 'original_w_prior_pluvial_occurrence'
 SAVE_MODEL = True
-SHOW_PLOTS = False
+SHOW_PLOTS = True
 
 config = Config()
 
@@ -37,7 +34,7 @@ MISSING_DATES = CombiPrecip.missing
 
 
 def main():
-    options = ImpactCnnOptions()
+    options = ImpactTransformerOptions()
     options.parse_args()
     # options.parser.print_help()
     options.print_options()
@@ -59,72 +56,72 @@ def main():
     events = load_events_from_pickle(filename=events_filename)
 
     # Remove dates where the precipitation data is not available
+    precip_days_before = max(options.precip_daily_days_before,
+                             options.precip_hf_days_before)
+    precip_days_after = options.precip_hf_days_after
     for date_range in MISSING_DATES:
         remove_start = (pd.to_datetime(date_range[0])
-                        - pd.Timedelta(days=options.precip_days_before + 1))
+                        - pd.Timedelta(days=precip_days_before + 1))
         remove_end = (pd.to_datetime(date_range[1])
-                      + pd.Timedelta(days=options.precip_days_after + 1))
+                      + pd.Timedelta(days=precip_days_after + 1))
         events.remove_period(remove_start, remove_end)
 
-    dem = None
-    precip = None
+    precip_hf = None
+    precip_daily = None
     if options.use_precip:
-        if options.use_dem:
-            # Load DEM
-            with warnings.catch_warnings():
-                warnings.filterwarnings("ignore", category=UserWarning)  # pyproj
-                dem = rxr.open_rasterio(config.get('DEM_PATH'), masked=True).squeeze()
-
         # Load CombiPrecip files
-        precip = CombiPrecip(year_start, year_end)
-        precip.set_data_path(config.get('DIR_PRECIP'))
+        precip_hf = CombiPrecip(year_start, year_end)
+        precip_hf.set_data_path(config.get('DIR_PRECIP'))
+        precip_daily = CombiPrecip(year_start, year_end)
+        precip_daily.set_data_path(config.get('DIR_PRECIP_DAILY'))
 
     if not options.optimize_with_optuna:
-        cnn = _setup_model(options, events, precip, dem)
-        cnn.fit(dir_plots=config.get('OUTPUT_DIR'),
-                tag=options.run_name, show_plots=SHOW_PLOTS)
-        cnn.assess_model_on_all_periods()
+        tx = _setup_model(options, events, precip_hf, precip_daily)
+        tx.fit(dir_plots=config.get('OUTPUT_DIR'),
+               tag=options.run_name, show_plots=SHOW_PLOTS)
+        tx.assess_model_on_all_periods()
         if SAVE_MODEL:
-            cnn.save_model(dir_output=config.get('OUTPUT_DIR'), base_name='model_cnn')
+            tx.save_model(dir_output=config.get('OUTPUT_DIR'), base_name='model_tx')
             print(f"Model saved in {config.get('OUTPUT_DIR')}")
 
     else:
-        cnn = optimize_model_with_optuna(options, events, precip, dem,
+        tx = optimize_model_with_optuna(options, events, precip_hf, precip_daily,
                                          dir_plots=config.get('OUTPUT_DIR'))
-        cnn.assess_model_on_all_periods()
+        tx.assess_model_on_all_periods()
 
 
-def _setup_model(options, events, precip, dem):
-    cnn = ImpactCnn(events, options=options)
-    cnn.set_dem(dem)
-    cnn.set_precipitation(precip)
-    cnn.remove_events_without_precipitation_data()
-    cnn.reduce_spatial_domain(options.precip_window_size)
-    if cnn.options.use_simple_features:
-        cnn.select_features(cnn.options.simple_features)
-        cnn.load_features(cnn.options.simple_feature_classes)
-    cnn.split_sample()
-    cnn.reduce_negatives_for_training(cnn.options.factor_neg_reduction)
-    cnn.compute_balanced_class_weights()
-    cnn.compute_corrected_class_weights(
-        weight_denominator=cnn.options.weight_denominator)
-    return cnn
+def _setup_model(options, events, precip_hf, precip_daily):
+    tx = ImpactTransformer(events, options=options)
+    tx.set_precipitation_hf(precip_hf)
+    tx.set_precipitation_daily(precip_daily)
+    tx.remove_events_without_precipitation_data()
+    tx.reduce_spatial_domain()
+    if tx.options.use_simple_features:
+        tx.select_features(tx.options.simple_features)
+        tx.load_features(tx.options.simple_feature_classes)
+    tx.split_sample()
+    tx.reduce_negatives_for_training(tx.options.factor_neg_reduction)
+    tx.compute_balanced_class_weights()
+    tx.compute_corrected_class_weights(
+        weight_denominator=tx.options.weight_denominator)
+    return tx
 
 
-def optimize_model_with_optuna(options, events, precip=None, dem=None, dir_plots=None):
+def optimize_model_with_optuna(options, events, precip_hf=None, precip_daily=None,
+                               dir_plots=None):
     """
     Optimize the model with Optuna.
 
     Parameters
     ----------
-    options: ImpactCnnOptions
+    options: ImpactTransformerOptions
         The options.
     events: pd.DataFrame
         The events.
-    precip: Precipitation|None
-        The precipitation data.
-    dem: xr.Dataset|None
-        The DEM data.
+    precip_hf: CombiPrecip
+        The high-frequency precipitation data.
+    precip_daily: CombiPrecip
+        The daily precipitation data.
     dir_plots: str
         The directory where to save the plots.
     """
@@ -162,18 +159,18 @@ def optimize_model_with_optuna(options, events, precip=None, dem=None, dir_plots
         options_c = options.copy()
         options_c.generate_for_optuna(trial)
         options_c.print_options(show_optuna_params=True)
-        cnn_trial = _setup_model(options_c, events, precip, dem)
+        tx_trial = _setup_model(options_c, events, precip_hf, precip_daily)
 
         start_time = time.time()
 
         # Fit the model
-        cnn_trial.fit(do_plot=False, silent=True)
+        tx_trial.fit(do_plot=False, silent=True)
 
         end_time = time.time()
         print(f"Model fitting took {end_time - start_time:.2f} seconds")
 
         # Assess the model
-        score = cnn_trial.compute_f1_score(cnn_trial.dg_val)
+        score = tx_trial.compute_f1_score(tx_trial.dg_val)
 
         return score
 
@@ -206,10 +203,10 @@ def optimize_model_with_optuna(options, events, precip=None, dem=None, dir_plots
     # Fit the model with the best parameters
     options_best = options.copy()
     options_best.generate_for_optuna(best_trial)
-    cnn = _setup_model(options_best, events, precip, dem)
-    cnn.fit(dir_plots=dir_plots, tag='best_optuna_' + cnn.options.run_name)
+    tx = _setup_model(options_best, events, precip_hf, precip_daily)
+    tx.fit(dir_plots=dir_plots, tag='best_optuna_' + tx.options.run_name)
 
-    return cnn
+    return tx
 
 
 if __name__ == '__main__':

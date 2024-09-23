@@ -249,16 +249,13 @@ class ImpactTransformer(ImpactDl):
         p_start = max(p_hf_start, p_daily_start)
         p_end = min(p_hf_end, p_daily_end)
 
-        self.df = self.df[events['date'] > p_start + pd.Timedelta(
-            days=self.options.precip_hf_days_before)]
-        events = events[events['date'] > p_start + pd.Timedelta(
-            days=self.options.precip_hf_days_before)]
-        self.df = self.df[events['date'] < p_end - pd.Timedelta(
-            days=self.options.precip_hf_days_after)]
+        precip_days_before = max(self.options.precip_daily_days_before,
+                                 self.options.precip_hf_days_before)
+        precip_days_after = self.options.precip_hf_days_after
 
         self.df = self.df[events['date'] > p_start + pd.Timedelta(
-            days=self.options.precip_daily_days_before)]
+            days=precip_days_before)]
         events = events[events['date'] > p_start + pd.Timedelta(
-            days=self.options.precip_daily_days_before)]
+            days=precip_days_before)]
         self.df = self.df[events['date'] < p_end - pd.Timedelta(
-            days=self.options.precip_daily_days_after)]
+            days=precip_days_after)]
