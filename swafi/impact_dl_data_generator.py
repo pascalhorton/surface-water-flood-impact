@@ -54,6 +54,7 @@ class ImpactDlDataGenerator(keras.utils.Sequence):
             Whether to run in debug mode or not (print more messages).
         """
         super().__init__()
+        self.warning_counter = 0
         self.tmp_dir = tmp_dir
         self.event_props = event_props
         self.y = y
@@ -171,6 +172,38 @@ class ImpactDlDataGenerator(keras.utils.Sequence):
                     self.min_static = np.min(self.X_static, axis=0)
                 if self.max_static is None:
                     self.max_static = np.max(self.X_static, axis=0)
+
+    def _create_empty_precip_block(self, shape):
+        """Create an empty precipitation block. Log-transform if needed."""
+        empty_block = np.zeros(shape)
+        if self.log_transform_precip:
+            empty_block = (np.log(empty_block + 0.1)).astype('float32')
+
+        return empty_block
+
+    def _analyze_precip_shape_difference(self, event, precip_ev, data_length,
+                                         expected_length):
+        """Analyze the precipitation data shape difference."""
+        if data_length > expected_length:
+            print(f"Data array larger than expected: {data_length} > "
+                  f"{expected_length}")
+            print(f"Event: {event}")
+            print(f"Data: {precip_ev}")
+            raise ValueError("Data array larger than expected.")
+
+        if self.debug:
+            print(f"Shape mismatch: expected: {expected_length} !="
+                  f" got: {data_length}")
+            print(f"Event: {event}")
+
+        if self.warning_counter in [10, 50, 100, 500]:
+            print(f"Shape mismatch: expected: {expected_length} !="
+                  f" got: {precip_ev.shape[0]}")
+            print(f"Warning: {self.warning_counter} events with "
+                  f"shape mismatch (e.g., missing precipitation data).")
+
+        if self.warning_counter > 500:
+            raise ValueError("Too many issues with precipitation data.")
 
     def __len__(self):
         """Denotes the number of batches per epoch"""

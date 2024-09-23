@@ -78,7 +78,6 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
                          min_static=min_static,
                          max_static=max_static,
                          debug=debug)
-        self.warning_counter = 0
         self.third_dim_size = None
         self.precip_window_size = precip_window_size
         self.precip_resolution = precip_resolution
@@ -262,27 +261,8 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
         # Handle missing precipitation data
         if x_3d_ev.shape[2] != self.get_third_dim_size():
             self.warning_counter += 1
-
-            if x_3d_ev.shape[2] > self.get_third_dim_size():
-                print(f"Data array larger than expected: {x_3d_ev.shape[2]} > "
-                      f"{self.get_third_dim_size()}")
-                print(f"Event: {event}")
-                print(f"Data: {x_3d_ev}")
-                raise ValueError("Data array larger than expected.")
-
-            if self.debug:
-                print(f"Shape mismatch: expected: {self.get_third_dim_size()} !="
-                      f" got: {x_3d_ev.shape[2]}")
-                print(f"Event: {event}")
-
-            if self.warning_counter in [10, 50, 100, 500]:
-                print(f"Shape mismatch: expected: {self.get_third_dim_size()} !="
-                      f" got: {x_3d_ev.shape[2]}")
-                print(f"Warning: {self.warning_counter} events with "
-                      f"shape mismatch (e.g., missing precipitation data).")
-
-            if self.warning_counter > 500:
-                raise ValueError("Too many issues with precipitation data.")
+            self._analyze_precip_shape_difference(
+                event, x_3d_ev, x_3d_ev.shape[2], self.get_third_dim_size())
 
             diff = x_3d_ev.shape[2] - self.get_third_dim_size()
             if abs(diff / self.get_third_dim_size()) > 0.1:  # 10% tolerance
@@ -290,17 +270,13 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
                     print(f"Warning: too many missing timesteps ({diff}).")
 
                 pixels_nb = int(self.precip_window_size / self.precip_resolution)
-                x_3d_ev = np.zeros((pixels_nb, pixels_nb, self.get_third_dim_size()))
+                x_3d_ev = self._create_empty_precip_block(
+                    (pixels_nb, pixels_nb, self.get_third_dim_size()))
 
             else:
-                if x_3d_ev.shape[2] > self.get_third_dim_size():  # Loaded too many
-                    x_3d_ev = x_3d_ev[:, :, :-diff]
+                empty_block = self._create_empty_precip_block(
+                    (x_3d_ev.shape[0], x_3d_ev.shape[1], -diff))
 
-                elif x_3d_ev.shape[2] < self.get_third_dim_size():  # Loaded too few
-                    diff = -diff
-                    x_3d_ev = np.concatenate(
-                        [x_3d_ev, np.zeros((x_3d_ev.shape[0],
-                                            x_3d_ev.shape[1],
-                                            diff))], axis=-1)
+                x_3d_ev = np.concatenate([x_3d_ev, empty_block], axis=-1)
 
         return x_3d_ev
