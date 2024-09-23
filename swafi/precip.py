@@ -200,6 +200,7 @@ class Precipitation:
                         except ValueError:
                             print(f"Error with file {f} and location {x}, {y}")
                             print(f"Data shape: {data[self.precip_var].shape}")
+                            data.info()
 
                         ts.append(dat)
 
