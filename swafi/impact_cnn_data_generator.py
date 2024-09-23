@@ -71,6 +71,8 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
                          shuffle=shuffle,
                          tmp_dir=tmp_dir,
                          transform_static=transform_static,
+                         transform_precip=transform_precip,
+                         log_transform_precip=log_transform_precip,
                          mean_static=mean_static,
                          std_static=std_static,
                          min_static=min_static,
