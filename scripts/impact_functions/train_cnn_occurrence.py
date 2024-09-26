@@ -1,5 +1,5 @@
 """
-Train a deep learning model to predict the occurrence of damages.
+Train a CNN model to predict the occurrence of damages to buildings.
 """
 
 import time

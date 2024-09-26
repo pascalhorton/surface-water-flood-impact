@@ -5,7 +5,7 @@ This script is used to analyze the results of the link between claims and events
 from swafi.config import Config
 from swafi.damages_mobiliar import DamagesMobiliar
 from swafi.events import Events
-from swafi.precip import Precipitation
+from swafi.precip_combiprecip import PrecipitationCombiprecip
 from swafi.utils.plotting import *
 from pathlib import Path
 
@@ -57,7 +57,7 @@ def main():
     precip = None
     if PLOT_TIME_SERIES_DISAGREEMENT or PLOT_ALL_TIME_SERIES:
         # Precipitation data
-        precip = Precipitation(CONFIG.get('DIR_PRECIP'))
+        precip = PrecipitationCombiprecip(CONFIG.get('DIR_PRECIP'))
 
     # Compare the events assigned
     diff_count = np.zeros((len(PARAMETERS), len(PARAMETERS)))
