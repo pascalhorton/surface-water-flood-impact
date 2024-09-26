@@ -25,7 +25,7 @@ class IconPrecip(PrecipitationForecast):
         super().__init__(cid_file)
         self.dataset_name = "ICON"
 
-    def prepare_data(self, data_path=None, resolution=1, time_step=1):
+    def load_data(self, data_path=None, resolution=1, time_step=1):
         """
         Load the precipitation data from the given path.
 
@@ -48,8 +48,8 @@ class IconPrecip(PrecipitationForecast):
         self.time_step = time_step
 
         files = sorted(glob(f"{self.data_path}/*.nc"))
-        data = xr.open_mfdataset(files, parallel=False, chunks={'time': 1000})
-        data = data.rename_vars({'CPC': 'precip'})
-        data = data.rename({'REFERENCE_TS': 'time'})
+        self.data = xr.open_mfdataset(files, parallel=False, chunks={'time': 1000})
+        self.data.rename_vars({'CPC': 'precip'}, inplace=True)
+        self.data.rename({'REFERENCE_TS': 'time'}, inplace=True)
 
         raise NotImplementedError("This method must be implemented.")

@@ -289,10 +289,10 @@ class PrecipitationArchive(Precipitation):
 
         Parameters
         ----------
-        mean: float
-            The mean value
-        std: float
-            The standard deviation
+        mean: np.array
+            The mean values (per pixel)
+        std: np.array
+            The standard deviations (per pixel)
         """
         for idx in tqdm(range(len(self.time_index)),
                         desc="Standardizing precipitation data"):
@@ -324,8 +324,8 @@ class PrecipitationArchive(Precipitation):
 
         Parameters
         ----------
-        q99: float
-            The 99th quantile
+        q99: np.array
+            The 99th quantile (per pixel)
         """
         for idx in tqdm(range(len(self.time_index)),
                         desc="Normalizing precipitation data"):

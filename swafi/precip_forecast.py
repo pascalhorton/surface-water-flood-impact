@@ -18,8 +18,9 @@ class PrecipitationForecast(Precipitation):
             The path to the CID file
         """
         super().__init__(cid_file)
+        self.data = None
 
-    def prepare_data(self):
+    def load_data(self):
         raise NotImplementedError("This method must be implemented in the child class.")
 
     def standardize(self, mean, std):
@@ -28,10 +29,10 @@ class PrecipitationForecast(Precipitation):
 
         Parameters
         ----------
-        mean: float
-            The mean value
-        std: float
-            The standard deviation
+        mean: np.array
+            The mean value (per pixel)
+        std: np.array
+            The standard deviation (per pixel)
         """
         raise NotImplementedError("This method must be implemented.")
 
@@ -41,8 +42,8 @@ class PrecipitationForecast(Precipitation):
 
         Parameters
         ----------
-        q99: float
-            The 99th quantile
+        q99: np.array
+            The 99th quantile (per pixel)
         """
         raise NotImplementedError("This method must be implemented.")
 
