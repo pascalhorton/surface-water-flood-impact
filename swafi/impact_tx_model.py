@@ -16,11 +16,11 @@ class ModelTransformer(models.Model):
         The task. Options are: 'regression', 'classification'
     options: ImpactTransformerOptions
         The options.
-    input_daily_prec_size: list, None
+    input_daily_prec_size: int, None
         The size of the daily precipitation data.
-    input_high_freq_prec_size: list, None
+    input_high_freq_prec_size: int, None
         The size of the high-frequency precipitation data.
-    input_attributes_size: list, None
+    input_attributes_size: int, None
         The input 1D size.
     """
 
@@ -30,22 +30,13 @@ class ModelTransformer(models.Model):
         self.model = None
         self.task = task
         self.options = options
-        self.input_daily_prec_size = list(input_daily_prec_size)
-        self.input_high_freq_prec_size = list(input_high_freq_prec_size)
-        self.input_attributes_size = list(input_attributes_size)
+        self.input_daily_prec_size = input_daily_prec_size
+        self.input_high_freq_prec_size = input_high_freq_prec_size
+        self.input_attributes_size = input_attributes_size
 
         self.last_activation = 'relu' if task == 'regression' else 'sigmoid'
 
-        self._check_input_size()
         self._build_model()
-
-    def _check_input_size(self):
-        """
-        Check the input size.
-        """
-        assert len(self.input_daily_prec_size) == 2
-        assert len(self.input_high_freq_prec_size) == 2
-        assert len(self.input_attributes_size) == 1
 
     def _build_model(self):
         """
@@ -53,13 +44,13 @@ class ModelTransformer(models.Model):
         """
         if not self.options.combined_transformer:
             input_daily = layers.Input(
-                shape=self.input_daily_prec_size,
+                shape=(self.input_daily_prec_size,),
                 name='input_daily')
             input_high_freq = layers.Input(
-                shape=self.input_high_freq_prec_size,
+                shape=(self.input_high_freq_prec_size,),
                 name='input_high_freq')
             input_attributes = layers.Input(
-                shape=self.input_attributes_size,
+                shape=(self.input_attributes_size,),
                 name='input_attributes')
 
             # Transformer for daily precipitation
@@ -96,17 +87,17 @@ class ModelTransformer(models.Model):
             x = layers.Concatenate(axis=-1)([x_daily, x_high_freq, x_attributes])
 
         else:
-            max_length = max(self.input_daily_prec_size[0],
-                             self.input_high_freq_prec_size[0])
+            max_length = max(self.input_daily_prec_size,
+                             self.input_high_freq_prec_size)
 
             input_daily = layers.Input(
-                shape=(max_length, self.input_daily_prec_size[1]),
+                shape=(max_length,),
                 name='input_daily')
             input_high_freq = layers.Input(
-                shape=(max_length, self.input_high_freq_prec_size[1]),
+                shape=(max_length,),
                 name='input_high_freq')
             input_attributes = layers.Input(
-                shape=self.input_attributes_size,
+                shape=(self.input_attributes_size,),
                 name='input_attributes')
 
             x = layers.Concatenate(axis=1)([input_daily, input_high_freq])
@@ -183,9 +174,13 @@ class ModelTransformer(models.Model):
         x_attn = layers.LayerNormalization()(x_in + x_attn)
 
         # Feed-forward network
-        x_ffn = layers.Dense(ff_dim, activation=activation)(x_attn)
+        x_ffn = layers.Dense(ff_dim, activation=activation,
+                             name=f'dense_tx_{int(1e4 * tf.random.uniform([]))}'
+                             )(x_attn)
         x_ffn = layers.Dropout(dropout_rate)(x_ffn)
-        x_ffn = layers.Dense(ff_dim, activation=activation)(x_ffn)
+        x_ffn = layers.Dense(x_attn.shape[1], activation=activation,
+                             name=f'dense_tx_{int(1e4 * tf.random.uniform([]))}'
+                             )(x_ffn)
         x_ffn = layers.LayerNormalization()(x_attn + x_ffn)
 
         return x_ffn

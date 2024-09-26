@@ -233,7 +233,7 @@ class ImpactTxDataGenerator(ImpactDlDataGenerator):
             elif self.X_precip_daily is None:
                 return x_precip_hf, y
             else:
-                return (x_precip_hf, x_precip_daily), y
+                return (x_precip_daily, x_precip_hf), y
 
         if self.X_precip_hf is None:
             if self.X_precip_daily is None:
@@ -241,7 +241,7 @@ class ImpactTxDataGenerator(ImpactDlDataGenerator):
             elif self.X_static is None:
                 return x_precip_daily, y
             else:
-                return (x_static, x_precip_daily), y
+                return (x_precip_daily, x_static), y
 
         if self.X_precip_daily is None:
             if self.X_precip_hf is None:
@@ -251,7 +251,7 @@ class ImpactTxDataGenerator(ImpactDlDataGenerator):
             else:
                 return (x_static, x_precip_hf), y
 
-        return (x_precip_hf, x_precip_daily, x_static), y
+        return (x_precip_daily, x_precip_hf, x_static), y
 
     def _extract_precipitation_hf(self, event):
         # Temporal selection
@@ -268,8 +268,8 @@ class ImpactTxDataGenerator(ImpactDlDataGenerator):
             t_start, t_end, x, x, y, y, cid
         )
 
-        # Move the time axis to the last position
-        x_precip_ev = np.moveaxis(x_precip_ev, 0, -1)
+        # Remove axis with length 1
+        x_precip_ev = np.squeeze(x_precip_ev)
 
         # Handle missing precipitation data
         if x_precip_ev.shape[0] != self.get_precip_hf_length():
@@ -307,8 +307,8 @@ class ImpactTxDataGenerator(ImpactDlDataGenerator):
             t_start, t_end, x, x, y, y, cid
         )
 
-        # Move the time axis to the last position
-        x_precip_ev = np.moveaxis(x_precip_ev, 0, -1)
+        # Remove axis with length 1
+        x_precip_ev = np.squeeze(x_precip_ev)
 
         # Handle missing precipitation data
         if x_precip_ev.shape[0] != self.get_precip_daily_length():

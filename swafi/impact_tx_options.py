@@ -1,12 +1,9 @@
 """
 Class to define the options for the Transformer-based impact function.
 """
-from sqlalchemy.engine import TupleResult
-
 from .impact_dl_options import ImpactDlOptions
 
 import copy
-import math
 
 
 class ImpactTransformerOptions(ImpactDlOptions):

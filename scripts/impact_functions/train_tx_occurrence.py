@@ -73,7 +73,7 @@ def main():
         precip_hf = CombiPrecip(year_start, year_end)
         precip_hf.set_data_path(config.get('DIR_PRECIP'))
         precip_daily = CombiPrecip(year_start, year_end)
-        precip_daily.set_data_path(config.get('DIR_PRECIP_DAILY'))
+        precip_daily.set_data_path(config.get('DIR_PRECIP'))
 
     if not options.optimize_with_optuna:
         tx = _setup_model(options, events, precip_hf, precip_daily)

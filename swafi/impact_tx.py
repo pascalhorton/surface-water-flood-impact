@@ -149,7 +149,7 @@ class ImpactTransformer(ImpactDl):
         """
         Define the model.
         """
-        input_attributes_size = self.x_train.shape[1:]
+        input_attributes_size = self.x_train.shape[1]
         input_daily_prec_size = None
         input_high_freq_prec_size = None
 
