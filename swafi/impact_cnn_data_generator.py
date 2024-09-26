@@ -1,32 +1,20 @@
 """
-Class to compute the impact function.
+Class to generate the data for the CNN model.
 """
+from .impact_dl_data_generator import ImpactDlDataGenerator
 
-import hashlib
-import pickle
-import keras
-import os
 import numpy as np
-from pathlib import Path
 
 
-class DataGenerator(keras.utils.Sequence):
+class ImpactCnnDataGenerator(ImpactDlDataGenerator):
     def __init__(self, event_props, x_static, x_precip, x_dem, y, batch_size=32,
                  shuffle=True, precip_window_size=2, precip_resolution=1,
                  precip_time_step=12, precip_days_before=1, precip_days_after=1,
-                 tmp_dir=None, transform_static='standardize', transform_3d='normalize',
+                 tmp_dir=None, transform_static='standardize', transform_precip='normalize',
                  log_transform_precip=True, mean_static=None, std_static=None,
                  mean_precip=None, std_precip=None, min_static=None,
                  max_static=None, q99_precip=None, debug=False):
         """
-        Data generator class.
-        Template from:
-        https://stanford.edu/~shervine/blog/keras-how-to-generate-data-on-the-fly
-        Adapted by :
-        https://github.com/pangeo-data/WeatherBench/blob/master/src/train_nn.py
-
-        Parameters
-        ----------
         event_props: np.array
             The event properties (2D; dates and coordinates).
         x_static: np.array
@@ -56,7 +44,7 @@ class DataGenerator(keras.utils.Sequence):
         transform_static: str
             The transformation to apply to the static data.
             Options: 'normalize' or 'standardize'.
-        transform_3d: str
+        transform_precip: str
             The transformation to apply to the 3D data.
             Options: 'normalize' or 'standardize'.
         log_transform_precip: bool
@@ -78,14 +66,18 @@ class DataGenerator(keras.utils.Sequence):
         debug: bool
             Whether to run in debug mode or not (print more messages).
         """
-        super().__init__()
-        self.tmp_dir = tmp_dir
-        self.event_props = event_props
-        self.y = y
-        self.batch_size = batch_size
-        self.shuffle = shuffle
-        self.debug = debug
-        self.warning_counter = 0
+        super().__init__(event_props, x_static, y,
+                         batch_size=batch_size,
+                         shuffle=shuffle,
+                         tmp_dir=tmp_dir,
+                         transform_static=transform_static,
+                         transform_precip=transform_precip,
+                         log_transform_precip=log_transform_precip,
+                         mean_static=mean_static,
+                         std_static=std_static,
+                         min_static=min_static,
+                         max_static=max_static,
+                         debug=debug)
         self.third_dim_size = None
         self.precip_window_size = precip_window_size
         self.precip_resolution = precip_resolution
@@ -93,27 +85,15 @@ class DataGenerator(keras.utils.Sequence):
         self.precip_days_before = precip_days_before
         self.precip_days_after = precip_days_after
 
-        self.transform_static = transform_static
-        self.transform_3d = transform_3d
-        self.log_transform_precip = log_transform_precip
-
-        self.mean_static = mean_static
-        self.std_static = std_static
         self.mean_precip = mean_precip
         self.std_precip = std_precip
-        self.min_static = min_static
-        self.max_static = max_static
         self.q99_precip = q99_precip
 
         self.mean_dem = None
         self.std_dem = None
         self.min_dem = None
         self.max_dem = None
-        self.q25_dem = None
-        self.q50_dem = None
-        self.q75_dem = None
 
-        self.X_static = x_static
         self.X_precip = x_precip
         self.X_dem = x_dem
 
@@ -124,18 +104,12 @@ class DataGenerator(keras.utils.Sequence):
         elif transform_static == 'normalize':
             self._normalize_static_inputs()
 
-        if transform_3d == 'standardize':
-            self._standardize_3d_inputs()
-        elif transform_3d == 'normalize':
-            self._normalize_3d_inputs()
-
-        self.n_samples = self.y.shape[0]
-        self.idxs = np.arange(self.n_samples)
+        if transform_precip == 'standardize':
+            self._standardize_precip_inputs()
+        elif transform_precip == 'normalize':
+            self._normalize_precip_inputs()
 
         self.on_epoch_end()  # Shuffle the data
-
-        if self.X_precip is None:
-            return
 
         if self.X_dem is not None:
             self.X_dem.load()
@@ -157,122 +131,28 @@ class DataGenerator(keras.utils.Sequence):
 
         return third_dim_size
 
-    def reduce_negatives(self, factor):
-        """
-        Reduce the number of negative events. It is done by randomly subsampling
-        indices of negative events, but does not remove data.
-
-        Parameters
-        ----------
-        factor: int
-            The factor by which to reduce the number of negative events.
-        """
-        if factor == 1:
-            return
-
-        # Select the indices of the negative events
-        idxs_neg = np.where(self.y == 0)[0]
-        n_neg = idxs_neg.shape[0]
-        n_neg_new = int(n_neg / factor)
-        idxs_neg_new = np.random.choice(idxs_neg, size=n_neg_new, replace=False)
-
-        # Select the indices of the positive events
-        idxs_pos = np.where(self.y > 0)[0]
-
-        # Concatenate the indices
-        self.idxs = np.concatenate([idxs_neg_new, idxs_pos])
-        self.n_samples = self.idxs.shape[0]
-
-        print(f"Reduced the number of negative events from {n_neg} to {n_neg_new}")
-        print(f"Number of positive events: {idxs_pos.shape[0]}")
-
-        # Shuffle
-        np.random.shuffle(self.idxs)
-
-    def get_number_of_batches_for_full_dataset(self):
-        """
-        Get the number of batches for the full data (i.e., without shuffling or
-        negative event removal).
-
-        Returns
-        -------
-        The number of batches.
-        """
-
-        return int(np.floor(len(self.y) / self.batch_size))
-
-    def get_ordered_batch_from_full_dataset(self, i):
-        """
-        Get a batch of data from the full data (i.e., without shuffling or negative
-        event removal).
-
-        Parameters
-        ----------
-        i : int
-            The batch index.
-
-        Returns
-        -------
-        The batch of data.
-        """
-
-        # Save the original indices
-        idxs_orig = self.idxs
-
-        # Reset the indices
-        self.idxs = np.arange(len(self.y))
-
-        batch = self.__getitem__(i)
-
-        # Restore the original indices
-        self.idxs = idxs_orig
-
-        return batch
-
-    def _standardize_static_inputs(self):
-        if self.X_static is not None:
-            self.X_static = (self.X_static - self.mean_static) / self.std_static
-
-    def _standardize_3d_inputs(self):
+    def _standardize_precip_inputs(self):
         if self.X_precip is not None:
             self.X_precip.standardize(self.mean_precip, self.std_precip)
         if self.X_dem is not None:
             self.X_dem = (self.X_dem - self.mean_dem) / self.std_dem
 
-    def _normalize_static_inputs(self):
-        if self.X_static is not None:
-            self.X_static = ((self.X_static - self.min_static) /
-                             (self.max_static - self.min_static))
-
-    def _normalize_3d_inputs(self):
+    def _normalize_precip_inputs(self):
         if self.X_precip is not None:
             self.X_precip.normalize(self.q99_precip)
         if self.X_dem is not None:
             self.X_dem = (self.X_dem - self.min_dem) / (self.max_dem - self.min_dem)
 
     def _compute_predictor_statistics(self):
-        if self.X_static is not None:
-            print('Computing/assigning static predictor statistics')
-            if self.transform_static == 'standardize':
-                # Compute the mean and standard deviation of the static data
-                if self.mean_static is None:
-                    self.mean_static = np.mean(self.X_static, axis=0)
-                if self.std_static is None:
-                    self.std_static = np.std(self.X_static, axis=0)
-            elif self.transform_static == 'normalize':
-                # Compute the min and max of the static data
-                if self.min_static is None:
-                    self.min_static = np.min(self.X_static, axis=0)
-                if self.max_static is None:
-                    self.max_static = np.max(self.X_static, axis=0)
+        self._compute_static_predictor_statistics()
 
         if self.X_dem is not None:
             print('Computing DEM predictor statistics')
-            if self.transform_3d == 'standardize':
+            if self.transform_precip == 'standardize':
                 # Compute the mean and standard deviation of the DEM (non-temporal)
                 self.mean_dem = self.X_dem.mean(('x', 'y')).compute().values
                 self.std_dem = self.X_dem.std(('x', 'y')).compute().values
-            elif self.transform_3d == 'normalize':
+            elif self.transform_precip == 'normalize':
                 # Compute the min and max of the DEM (non-temporal)
                 self.min_dem = self.X_dem.min(('x', 'y')).compute().values
                 self.max_dem = self.X_dem.max(('x', 'y')).compute().values
@@ -286,18 +166,14 @@ class DataGenerator(keras.utils.Sequence):
             self.X_precip.log_transform()
 
         # Load or compute the precipitation statistics
-        if self.transform_3d == 'standardize':
+        if self.transform_precip == 'standardize':
             if self.mean_precip is not None and self.std_precip is not None:
                 return
             self.mean_precip, self.std_precip = self.X_precip.compute_mean_and_std_per_pixel()
-        elif self.transform_3d == 'normalize':
+        elif self.transform_precip == 'normalize':
             if self.q99_precip is not None:
                 return
             self.q99_precip = self.X_precip.compute_quantile_per_pixel(0.99)
-
-    def __len__(self):
-        """Denotes the number of batches per epoch"""
-        return int(np.floor(self.n_samples / self.batch_size))
 
     def __getitem__(self, i):
         """Generate one batch of data"""
@@ -385,17 +261,8 @@ class DataGenerator(keras.utils.Sequence):
         # Handle missing precipitation data
         if x_3d_ev.shape[2] != self.get_third_dim_size():
             self.warning_counter += 1
-
-            if self.debug:
-                print(f"Shape mismatch: actual: {x_3d_ev.shape[2]} !="
-                      f" expected: {self.get_third_dim_size()}")
-                print(f"Event: {event}")
-
-            if self.warning_counter in [10, 50, 100, 500, 1000, 5000, 10000]:
-                print(f"Shape mismatch: actual: {x_3d_ev.shape[2]} !="
-                      f" expected: {self.get_third_dim_size()}")
-                print(f"Warning: {self.warning_counter} events with "
-                      f"shape missmatch (e.g., missing precipitation data).")
+            self._analyze_precip_shape_difference(
+                event, x_3d_ev, x_3d_ev.shape[2], self.get_third_dim_size())
 
             diff = x_3d_ev.shape[2] - self.get_third_dim_size()
             if abs(diff / self.get_third_dim_size()) > 0.1:  # 10% tolerance
@@ -403,23 +270,13 @@ class DataGenerator(keras.utils.Sequence):
                     print(f"Warning: too many missing timesteps ({diff}).")
 
                 pixels_nb = int(self.precip_window_size / self.precip_resolution)
-                x_3d_ev = np.zeros((pixels_nb, pixels_nb, self.get_third_dim_size()))
+                x_3d_ev = self._create_empty_precip_block(
+                    (pixels_nb, pixels_nb, self.get_third_dim_size()))
 
             else:
-                if x_3d_ev.shape[2] > self.get_third_dim_size():  # Loaded too many
-                    x_3d_ev = x_3d_ev[:, :, :-diff]
+                empty_block = self._create_empty_precip_block(
+                    (x_3d_ev.shape[0], x_3d_ev.shape[1], -diff))
 
-                elif x_3d_ev.shape[2] < self.get_third_dim_size():  # Loaded too few
-                    diff = -diff
-                    x_3d_ev = np.concatenate(
-                        [x_3d_ev, np.zeros((x_3d_ev.shape[0],
-                                            x_3d_ev.shape[1],
-                                            diff))], axis=-1)
+                x_3d_ev = np.concatenate([x_3d_ev, empty_block], axis=-1)
 
         return x_3d_ev
-
-    def on_epoch_end(self):
-        """Updates indexes after each epoch and reset the warning counter."""
-        self.warning_counter = 0
-        if self.shuffle:
-            np.random.shuffle(self.idxs)

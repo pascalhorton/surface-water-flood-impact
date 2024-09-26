@@ -1,18 +1,17 @@
 """
-Class to handle the precipitation data.
+Class to handle the precipitation data from CombiPrecip.
 """
 
 from glob import glob
 import xarray as xr
 
 from .config import Config
-from .domain import Domain
-from .precip import Precipitation
+from .precip_archive import PrecipitationArchive
 
 config = Config()
 
 
-class CombiPrecip(Precipitation):
+class CombiPrecip(PrecipitationArchive):
     # Missing dates
     missing = [
         ('2004-12-31', '2005-01-01'),
