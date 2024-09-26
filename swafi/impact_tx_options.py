@@ -302,8 +302,9 @@ class ImpactTransformerOptions(ImpactDlOptions):
                 "dropout_rate_attributes", 0.1, 0.5)
 
         self.inner_activation_tx = trial.suggest_categorical(
-            "inner_activation_tx", ['relu', 'tanh', 'sigmoid', 'softmax',
-                                         'elu', 'selu', 'leaky_relu', 'linear'])
+            "inner_activation_tx",
+            ['relu', 'tanh', 'sigmoid', 'silu', 'elu', 'selu', 'leaky_relu', 'linear',
+             'gelu', 'hard_sigmoid', 'hard_silu', 'softplus'])
 
         return True
 

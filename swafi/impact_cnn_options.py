@@ -250,8 +250,9 @@ class ImpactCnnOptions(ImpactDlOptions):
                 'nb_conv_blocks', 0, 5)
         if 'inner_activation_cnn' in hp_to_optimize:
             self.inner_activation_cnn = trial.suggest_categorical(
-                'inner_activation_cnn', ['relu', 'tanh', 'sigmoid', 'softmax',
-                                         'elu', 'selu', 'leaky_relu', 'linear'])
+                'inner_activation_cnn',
+                ['relu', 'tanh', 'sigmoid', 'silu', 'elu', 'selu', 'leaky_relu',
+                 'linear', 'gelu', 'hard_sigmoid', 'hard_silu', 'softplus'])
 
         # Check the input 3D size vs nb_conv_blocks
         pixels_nb = int(self.precip_window_size / self.precip_resolution)

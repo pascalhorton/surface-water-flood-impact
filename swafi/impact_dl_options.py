@@ -269,8 +269,9 @@ class ImpactDlOptions:
                 'nb_dense_units_decreasing', [True, False])
         if 'inner_activation_dense' in hp_to_optimize:
             self.inner_activation_dense = trial.suggest_categorical(
-                'inner_activation_dense', ['relu', 'tanh', 'sigmoid', 'softmax',
-                                           'elu', 'selu', 'leaky_relu', 'linear'])
+                'inner_activation_dense',
+                ['relu', 'tanh', 'sigmoid', 'silu', 'elu', 'selu', 'leaky_relu',
+                 'linear', 'gelu', 'hard_sigmoid', 'hard_silu', 'softplus'])
 
         return True
 
