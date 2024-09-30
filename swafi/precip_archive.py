@@ -134,7 +134,8 @@ class PrecipitationArchive(Precipitation):
                             dat = data[self.precip_var].sel(
                                 {self.x_axis: x, self.y_axis: y}
                             )
-                        except ValueError:
+                        except ValueError as e:
+                            print(e)
                             print(f"Error with file {f} and location {x}, {y}")
                             print(f"Data shape: {data[self.precip_var].shape}")
                             data.info()
