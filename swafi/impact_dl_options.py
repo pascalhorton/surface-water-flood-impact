@@ -251,7 +251,7 @@ class ImpactDlOptions:
                 'batch_size', [16, 32, 64, 128, 256, 512])
         if 'learning_rate' in hp_to_optimize:
             self.learning_rate = trial.suggest_float(
-                'learning_rate', 1e-4, 1e-2, log=True)
+                'learning_rate', 5e-4, 5e-3, log=True)
         if 'dropout_rate_dense' in hp_to_optimize:
             self.dropout_rate_dense = trial.suggest_float(
                 'dropout_rate_dense', 0.2, 0.5)

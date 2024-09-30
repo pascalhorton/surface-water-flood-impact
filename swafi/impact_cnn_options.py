@@ -187,14 +187,13 @@ class ImpactCnnOptions(ImpactDlOptions):
         if isinstance(hp_to_optimize, str) and hp_to_optimize == 'default':
             if self.use_precip:
                 hp_to_optimize = [
-                    'precip_window_size', 'precip_time_step', 'precip_days_before',
-                    'transform_precip', 'log_transform_precip', 'batch_size',
-                    'dropout_rate_dense', 'dropout_rate_cnn', 'kernel_size_spatial',
-                    'kernel_size_temporal', 'nb_filters', 'pool_size_spatial',
-                    'pool_size_temporal', 'nb_dense_layers', 'nb_dense_units',
-                    'inner_activation_dense', 'inner_activation_cnn',
-                    'with_batchnorm_cnn', 'with_batchnorm_dense', 'nb_conv_blocks',
-                    'learning_rate']
+                    'precip_time_step', 'precip_days_before', 'transform_precip',
+                    'log_transform_precip', 'batch_size', 'dropout_rate_dense',
+                    'dropout_rate_cnn', 'kernel_size_spatial', 'kernel_size_temporal',
+                    'nb_filters', 'pool_size_spatial', 'pool_size_temporal',
+                    'nb_dense_layers', 'nb_dense_units', 'inner_activation_dense',
+                    'inner_activation_cnn', 'with_batchnorm_cnn',
+                    'with_batchnorm_dense', 'nb_conv_blocks', 'learning_rate']
             else:
                 hp_to_optimize = [
                     'batch_size', 'dropout_rate_dense', 'nb_dense_layers',
@@ -238,7 +237,7 @@ class ImpactCnnOptions(ImpactDlOptions):
                 'kernel_size_temporal', [1, 3, 5, 7, 9, 11])
         if 'nb_filters' in hp_to_optimize:
             self.nb_filters = trial.suggest_categorical(
-                'nb_filters', [16, 32, 64, 128, 256])
+                'nb_filters', [32, 64, 128, 256, 512])
         if 'pool_size_spatial' in hp_to_optimize:
             self.pool_size_spatial = trial.suggest_categorical(
                 'pool_size_spatial', [1, 2, 3, 4])
