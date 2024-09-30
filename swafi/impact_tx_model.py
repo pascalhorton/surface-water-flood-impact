@@ -60,8 +60,7 @@ class ModelTransformer(models.Model):
                     x_daily,
                     num_heads=self.options.num_heads_daily,
                     ff_dim=self.options.ff_dim_daily,
-                    dropout_rate=self.options.dropout_rate_daily,
-                    activation=self.options.inner_activation_tx)
+                    dropout_rate=self.options.dropout_rate_daily)
 
             # Transformer for high-frequency precipitation
             x_high_freq = input_high_freq
@@ -70,8 +69,7 @@ class ModelTransformer(models.Model):
                     x_high_freq,
                     num_heads=self.options.num_heads_high_freq,
                     ff_dim=self.options.ff_dim_high_freq,
-                    dropout_rate=self.options.dropout_rate_high_freq,
-                    activation=self.options.inner_activation_tx)
+                    dropout_rate=self.options.dropout_rate_high_freq)
 
             # Transformer for attributes
             x_attributes = input_attributes
@@ -80,8 +78,7 @@ class ModelTransformer(models.Model):
                     x_attributes,
                     num_heads=self.options.num_heads_attributes,
                     ff_dim=self.options.ff_dim_attributes,
-                    dropout_rate=self.options.dropout_rate_attributes,
-                    activation=self.options.inner_activation_tx)
+                    dropout_rate=self.options.dropout_rate_attributes)
 
             # Concatenate
             x = layers.Concatenate(axis=-1)([x_daily, x_high_freq, x_attributes])
@@ -117,8 +114,7 @@ class ModelTransformer(models.Model):
                     x,
                     num_heads=self.options.num_heads_combined,
                     ff_dim=self.options.ff_dim_combined,
-                    dropout_rate=self.options.dropout_rate_combined,
-                    activation=self.options.inner_activation_tx)
+                    dropout_rate=self.options.dropout_rate_combined)
 
         # Fully connected
         for i in range(self.options.nb_dense_layers):
@@ -146,8 +142,7 @@ class ModelTransformer(models.Model):
             outputs=output)
 
     @staticmethod
-    def transformer_block(x_in, num_heads=4, ff_dim=128, dropout_rate=0.1,
-                          activation='relu'):
+    def transformer_block(x_in, num_heads=4, ff_dim=128, dropout_rate=0.1):
         """
         Transformer encoder.
 
@@ -161,8 +156,6 @@ class ModelTransformer(models.Model):
             The feed-forward dimension.
         dropout_rate: float
             The dropout rate.
-        activation: str
-            The activation function.
 
         Returns
         -------
@@ -174,14 +167,15 @@ class ModelTransformer(models.Model):
         x_attn = layers.LayerNormalization()(x_in + x_attn)
 
         # Feed-forward network
-        x_ffn = layers.Dense(ff_dim, activation=activation,
-                             name=f'dense_tx_{int(1e4 * tf.random.uniform([]))}'
+        layer_name = f'dense_tx_{int(1e4 * tf.random.uniform([]))}'
+        x_ffn = layers.Dense(ff_dim, activation='relu', name=layer_name
                              )(x_attn)
-        x_ffn = layers.Dropout(dropout_rate)(x_ffn)
-        x_ffn = layers.Dense(x_attn.shape[1], activation=activation,
-                             name=f'dense_tx_{int(1e4 * tf.random.uniform([]))}'
+        layer_name = f'dense_tx_{int(1e4 * tf.random.uniform([]))}'
+        x_ffn = layers.Dense(x_in.shape[-1], name=layer_name
                              )(x_ffn)
-        x_ffn = layers.LayerNormalization()(x_attn + x_ffn)
+        x_ffn = layers.Dropout(dropout_rate)(x_ffn)
+        x_ffn = layers.Add()([x_attn, x_ffn])
+        x_ffn = layers.LayerNormalization()(x_ffn)
 
         return x_ffn
 

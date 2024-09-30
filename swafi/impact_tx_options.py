@@ -54,8 +54,6 @@ class ImpactTransformerOptions(ImpactDlOptions):
         The feed-forward dimension for the attributes.
     dropout_rate_attributes: float
         The dropout rate for the attributes.
-    inner_activation_tx: str
-        The inner activation function for the transformer.
     """
     def __init__(self):
         super().__init__()
@@ -85,7 +83,6 @@ class ImpactTransformerOptions(ImpactDlOptions):
         self.num_heads_attributes = None
         self.ff_dim_attributes = None
         self.dropout_rate_attributes = None
-        self.inner_activation_tx = None
 
     def copy(self):
         """
@@ -164,9 +161,6 @@ class ImpactTransformerOptions(ImpactDlOptions):
         self.parser.add_argument(
             "--dropout_rate_attributes", type=float, default=0.2,
             help="The dropout rate for the attributes.")
-        self.parser.add_argument(
-            "--inner_activation_tx", type=str, default='relu',
-            help="The inner activation function for the transformer.")
 
     def parse_args(self):
         """
@@ -196,7 +190,6 @@ class ImpactTransformerOptions(ImpactDlOptions):
         self.num_heads_attributes = args.num_heads_attributes
         self.ff_dim_attributes = args.ff_dim_attributes
         self.dropout_rate_attributes = args.dropout_rate_attributes
-        self.inner_activation_tx = args.inner_activation_tx
 
         if self.optimize_with_optuna:
             print("Optimizing with Optuna; some options will be ignored.")
@@ -218,9 +211,9 @@ class ImpactTransformerOptions(ImpactDlOptions):
             'ff_dim_daily', 'dropout_rate_daily', 'nb_transformer_blocks_high_freq',
             'num_heads_high_freq', 'ff_dim_high_freq', 'dropout_rate_high_freq',
             'nb_transformer_blocks_attributes', 'num_heads_attributes',
-            'ff_dim_attributes', 'dropout_rate_attributes', 'inner_activation_tx',
-            'dropout_rate_dense', 'inner_activation_dense', 'with_batchnorm_dense',
-            'batch_size', 'learning_rate'
+            'ff_dim_attributes', 'dropout_rate_attributes', 'dropout_rate_dense',
+            'inner_activation_dense', 'with_batchnorm_dense', 'batch_size',
+            'learning_rate'
 
         Returns
         -------
@@ -240,9 +233,8 @@ class ImpactTransformerOptions(ImpactDlOptions):
                     'num_heads_high_freq', 'ff_dim_high_freq', 'dropout_rate_high_freq',
                     'nb_transformer_blocks_attributes', 'num_heads_attributes',
                     'ff_dim_attributes', 'dropout_rate_attributes',
-                    'inner_activation_tx', 'dropout_rate_dense',
-                    'inner_activation_dense', 'with_batchnorm_dense', 'batch_size',
-                    'learning_rate']
+                    'dropout_rate_dense', 'inner_activation_dense',
+                    'with_batchnorm_dense', 'batch_size', 'learning_rate']
             else:
                 hp_to_optimize = [
                     'batch_size', 'dropout_rate_dense', 'nb_dense_layers',
@@ -301,11 +293,6 @@ class ImpactTransformerOptions(ImpactDlOptions):
             self.dropout_rate_attributes = trial.suggest_uniform(
                 "dropout_rate_attributes", 0.1, 0.5)
 
-        self.inner_activation_tx = trial.suggest_categorical(
-            "inner_activation_tx",
-            ['relu', 'tanh', 'sigmoid', 'silu', 'elu', 'selu', 'leaky_relu', 'linear',
-             'gelu', 'hard_sigmoid', 'hard_silu', 'softplus'])
-
         return True
 
     def print_options(self, show_optuna_params=False):
@@ -353,8 +340,6 @@ class ImpactTransformerOptions(ImpactDlOptions):
             print("- num_heads_attributes:", self.num_heads_attributes)
             print("- ff_dim_attributes:", self.ff_dim_attributes)
             print("- dropout_rate_attributes:", self.dropout_rate_attributes)
-
-        print("- inner_activation_tx:", self.inner_activation_tx)
 
         print("-" * 80)
 
