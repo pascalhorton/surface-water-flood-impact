@@ -138,7 +138,7 @@ class ImpactTransformerOptions(ImpactDlOptions):
             "--tx-model-dim-combined", type=int, default=512,
             help="The model dimension for the combined transformer.")
         self.parser.add_argument(
-            "--num-heads-combined", type=int, default=2,
+            "--num-heads-combined", type=int, default=8,
             help="The number of heads for the combined transformer.")
         self.parser.add_argument(
             "--ff-dim-combined", type=int, default=32,
@@ -153,7 +153,7 @@ class ImpactTransformerOptions(ImpactDlOptions):
             "--tx-model-dim-daily", type=int, default=512,
             help="The model dimension for the daily precipitation.")
         self.parser.add_argument(
-            "--num-heads-daily", type=int, default=2,
+            "--num-heads-daily", type=int, default=8,
             help="The number of heads for the daily precipitation.")
         self.parser.add_argument(
             "--ff-dim-daily", type=int, default=32,
@@ -168,7 +168,7 @@ class ImpactTransformerOptions(ImpactDlOptions):
             "--tx-model-dim-high-freq", type=int, default=512,
             help="The model dimension for the high-frequency precipitation.")
         self.parser.add_argument(
-            "--num-heads-high-freq", type=int, default=2,
+            "--num-heads-high-freq", type=int, default=8,
             help="The number of heads for the high-frequency precipitation.")
         self.parser.add_argument(
             "--ff-dim-high-freq", type=int, default=32,
@@ -183,7 +183,7 @@ class ImpactTransformerOptions(ImpactDlOptions):
             "--tx-model-dim-attributes", type=int, default=512,
             help="The model dimension for the attributes.")
         self.parser.add_argument(
-            "--num-heads-attributes", type=int, default=2,
+            "--num-heads-attributes", type=int, default=8,
             help="The number of heads for the attributes.")
         self.parser.add_argument(
             "--ff-dim-attributes", type=int, default=32,
@@ -308,8 +308,8 @@ class ImpactTransformerOptions(ImpactDlOptions):
                     self.tx_model_dim_combined = trial.suggest_categorical(
                         "tx_model_dim_combined", [128, 256, 512, 1024])
                 if 'num_heads_combined' in hp_to_optimize:
-                    self.num_heads_combined = trial.suggest_int(
-                        "num_heads_combined", 1, 8)
+                    self.num_heads_combined = trial.suggest_categorical(
+                        "num_heads_combined", [1, 2, 4, 8])
                 if 'ff_dim_combined' in hp_to_optimize:
                     self.ff_dim_combined = trial.suggest_categorical(
                         "ff_dim_combined", [16, 32, 64, 128])
@@ -324,8 +324,8 @@ class ImpactTransformerOptions(ImpactDlOptions):
                     self.tx_model_dim_daily = trial.suggest_categorical(
                         "tx_model_dim_daily", [128, 256, 512, 1024])
                 if 'num_heads_daily' in hp_to_optimize:
-                    self.num_heads_daily = trial.suggest_int(
-                        "num_heads_daily", 1, 8)
+                    self.num_heads_daily = trial.suggest_categorical(
+                        "num_heads_daily", [1, 2, 4, 8])
                 if 'ff_dim_daily' in hp_to_optimize:
                     self.ff_dim_daily = trial.suggest_categorical(
                         "ff_dim_daily", [16, 32, 64, 128])
@@ -340,8 +340,8 @@ class ImpactTransformerOptions(ImpactDlOptions):
                     self.tx_model_dim_high_freq = trial.suggest_categorical(
                         "tx_model_dim_high_freq", [128, 256, 512, 1024])
                 if 'num_heads_high_freq' in hp_to_optimize:
-                    self.num_heads_high_freq = trial.suggest_int(
-                        "num_heads_high_freq", 1, 8)
+                    self.num_heads_high_freq = trial.suggest_categorical(
+                        "num_heads_high_freq", [1, 2, 4, 8])
                 if 'ff_dim_high_freq' in hp_to_optimize:
                     self.ff_dim_high_freq = trial.suggest_categorical(
                         "ff_dim_high_freq", [16, 32, 64, 128])
@@ -357,8 +357,8 @@ class ImpactTransformerOptions(ImpactDlOptions):
                 self.tx_model_dim_attributes = trial.suggest_categorical(
                     "tx_model_dim_attributes", [128, 256, 512, 1024])
             if 'num_heads_attributes' in hp_to_optimize:
-                self.num_heads_attributes = trial.suggest_int(
-                    "num_heads_attributes", 1, 8)
+                self.num_heads_attributes = trial.suggest_categorical(
+                    "num_heads_attributes", [1, 2, 4, 8])
             if 'ff_dim_attributes' in hp_to_optimize:
                 self.ff_dim_attributes = trial.suggest_categorical(
                     "ff_dim_attributes", [16, 32, 64, 128])
