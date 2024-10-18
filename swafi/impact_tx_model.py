@@ -45,23 +45,23 @@ class ModelTransformer(models.Model):
         """
         if not self.options.combined_transformer:
             input_daily = layers.Input(
-                shape=(self.input_daily_prec_size,),
+                shape=(self.input_daily_prec_size, 1),
                 name='input_daily')
             input_high_freq = layers.Input(
-                shape=(self.input_high_freq_prec_size,),
+                shape=(self.input_high_freq_prec_size, 1),
                 name='input_high_freq')
             input_attributes = layers.Input(
-                shape=(self.input_attributes_size,),
+                shape=(self.input_attributes_size, 1),
                 name='input_attributes')
 
             # Transformer for daily precipitation
-            x_daily_pos = self.get_positional_encoding(self.input_daily_prec_size)
-            x_daily = input_daily + x_daily_pos
             # Project the input into the model dimension
             x_daily = layers.Dense(
                 self.options.tx_model_dim_daily,
-                name='dense_tx_proj_daily'
-            )(x_daily)
+                name='dense_tx_proj_daily',
+                activation=None
+            )(input_daily)
+            x_daily = AddPositionalEmbedding(self.options.tx_model_dim_daily)(x_daily)
             for _ in range(self.options.nb_transformer_blocks_daily):
                 x_daily = self.transformer_block(
                     x_daily,
@@ -72,13 +72,14 @@ class ModelTransformer(models.Model):
                     use_cnn=self.options.use_cnn_in_tx)
 
             # Transformer for high-frequency precipitation
-            x_high_freq_pos = self.get_positional_encoding(self.input_high_freq_prec_size)
-            x_high_freq = input_high_freq + x_high_freq_pos
             # Project the input into the model dimension
             x_high_freq = layers.Dense(
                 self.options.tx_model_dim_high_freq,
-                name='dense_tx_proj_high_freq'
-            )(x_high_freq)
+                name='dense_tx_proj_high_freq',
+                activation=None
+            )(input_high_freq)
+            x_high_freq = AddPositionalEmbedding(
+                self.options.tx_model_dim_high_freq)(x_high_freq)
             for _ in range(self.options.nb_transformer_blocks_high_freq):
                 x_high_freq = self.transformer_block(
                     x_high_freq,
@@ -89,12 +90,12 @@ class ModelTransformer(models.Model):
                     use_cnn=self.options.use_cnn_in_tx)
 
             # Transformer for attributes
-            x_attributes = input_attributes
             # Project the input into the model dimension
             x_attributes = layers.Dense(
                 self.options.tx_model_dim_attributes,
-                name='dense_tx_proj_attributes'
-            )(x_attributes)
+                name='dense_tx_proj_attributes',
+                activation=None
+            )(input_attributes)
             for _ in range(self.options.nb_transformer_blocks_attributes):
                 x_attributes = self.transformer_block(
                     x_attributes,
@@ -112,28 +113,29 @@ class ModelTransformer(models.Model):
                              self.input_high_freq_prec_size)
 
             input_daily = layers.Input(
-                shape=(max_length,),
+                shape=(max_length, 1),
                 name='input_daily')
             input_high_freq = layers.Input(
-                shape=(max_length,),
+                shape=(max_length, 1),
                 name='input_high_freq')
             input_attributes = layers.Input(
                 shape=(self.input_attributes_size,),
                 name='input_attributes')
 
-            x_daily_pos = self.get_positional_encoding(self.input_daily_prec_size)
-            x_daily = input_daily + x_daily_pos
             x_daily = layers.Dense(
                 self.options.tx_model_dim_daily,
-                name='dense_tx_proj_daily'
-            )(x_daily)
+                name='dense_tx_proj_daily',
+                activation=None
+            )(input_daily)
+            x_daily = AddPositionalEmbedding(self.options.tx_model_dim_daily)(x_daily)
 
-            x_high_freq_pos = self.get_positional_encoding(self.input_high_freq_prec_size)
-            x_high_freq = input_high_freq + x_high_freq_pos
             x_high_freq = layers.Dense(
                 self.options.tx_model_dim_high_freq,
-                name='dense_tx_proj_high_freq'
-            )(x_high_freq)
+                name='dense_tx_proj_high_freq',
+                activation=None
+            )(input_high_freq)
+            x_high_freq = AddPositionalEmbedding(
+                self.options.tx_model_dim_high_freq)(x_high_freq)
 
             x = layers.Concatenate(axis=1)([x_daily, x_high_freq])
             # Broadcast static attributes across timesteps
@@ -181,38 +183,6 @@ class ModelTransformer(models.Model):
             inputs=[input_daily, input_high_freq, input_attributes],
             outputs=output)
 
-    @staticmethod
-    def get_positional_encoding(seq_len):
-        """
-        Get the positional encoding.
-
-        Parameters
-        ----------
-        seq_len: int
-            The sequence length.
-
-        Returns
-        -------
-        The positional encoding.
-        """
-        d_model = 1
-
-        pos = np.arange(seq_len)[:, np.newaxis]
-        i = np.arange(d_model)[np.newaxis, :]
-        angle_rates = 1 / np.power(10000, (2 * (i // 2)) / np.float32(d_model))
-
-        # Apply sin to even indices and cos to odd indices
-        pos_encoding = np.zeros((seq_len, d_model))
-        pos_encoding[:, 0::2] = np.sin(pos * angle_rates[:, 0::2])  # Even
-        pos_encoding[:, 1::2] = np.cos(pos * angle_rates[:, 1::2])  # Odd
-
-        # Squeeze as d_model is 1
-        pos_encoding = pos_encoding.squeeze()
-
-        pos_encoding = pos_encoding[np.newaxis, ...]
-
-        return tf.cast(pos_encoding, dtype=tf.float32)
-
     def transformer_block(self, inputs, model_dim=512, num_heads=8, ff_dim=128,
                           dropout_rate=0.1, use_cnn=False):
         """
@@ -237,6 +207,8 @@ class ModelTransformer(models.Model):
         -------
         The output tensor.
         """
+        # Check if model_dim is divisible by num_heads
+        assert model_dim % num_heads == 0
         key_dim = model_dim // num_heads
 
         # Self-attention
@@ -277,3 +249,50 @@ class ModelTransformer(models.Model):
         The output.
         """
         return self.model(inputs, **kwargs)
+
+
+class AddPositionalEmbedding(layers.Layer):
+    """
+    Positional embedding layer.
+    Source: https://pylessons.com/transformers-introduction
+    """
+    def __init__(self, d_model):
+        super().__init__()
+        self.d_model = d_model
+        self.pos_encoding = self.get_positional_encoding()
+
+    @staticmethod
+    def get_positional_encoding(length=1024, model_dim=512):
+        """
+        Get the positional encoding.
+
+        Parameters
+        ----------
+        length: int
+            The sequence length.
+        model_dim: int
+            The model dimension.
+
+        Returns
+        -------
+        The positional encoding.
+        """
+        # Create the positional encoding
+        position_enc = np.array([
+            [pos / np.power(10000, 2 * (i // 2) / model_dim) for i in range(model_dim)]
+            if pos != 0 else np.zeros(model_dim) for pos in range(length)])
+
+        # Apply sine to even indices in the array; 2i
+        position_enc[:, 0::2] = np.sin(position_enc[:, 0::2])
+        # Apply cosine to odd indices in the array; 2i+1
+        position_enc[:, 1::2] = np.cos(position_enc[:, 1::2])
+
+        return tf.cast(position_enc, dtype=tf.float32)
+
+    def call(self, x):
+        length = tf.shape(x)[1]
+        pos = self.pos_encoding[tf.newaxis, :length, :]
+        assert pos.shape[1:2] == x.shape[1:2]
+        x = x + pos
+
+        return x
