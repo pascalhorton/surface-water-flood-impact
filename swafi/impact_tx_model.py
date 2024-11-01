@@ -99,7 +99,7 @@ class ModelTransformer(models.Model):
             # Transformer for attributes
             # Project the input into the model dimension
             x_attributes = layers.Dense(
-                self.options.tx_model_dim_attributes,
+                self.options.tx_model_dim,
                 name='dense_tx_proj_attributes',
                 activation=None
             )(input_attributes)
@@ -170,6 +170,9 @@ class ModelTransformer(models.Model):
                     ff_dim=self.options.ff_dim,
                     dropout_rate=self.options.dropout_rate,
                     use_cnn=self.options.use_cnn_in_tx)
+
+        # Flatten
+        x = layers.Flatten()(x)
 
         # Fully connected
         for i in range(self.options.nb_dense_layers):
@@ -269,13 +272,12 @@ class AddFixedPositionalEmbedding(layers.Layer):
     Positional embedding layer.
     Source: https://pylessons.com/transformers-introduction
     """
-    def __init__(self, d_model):
+    def __init__(self, model_dim):
         super().__init__()
-        self.d_model = d_model
+        self.model_dim = model_dim
         self.pos_encoding = self.get_positional_encoding()
 
-    @staticmethod
-    def get_positional_encoding(length=1024, model_dim=512):
+    def get_positional_encoding(self, length=1024):
         """
         Get the positional encoding.
 
@@ -283,8 +285,6 @@ class AddFixedPositionalEmbedding(layers.Layer):
         ----------
         length: int
             The sequence length.
-        model_dim: int
-            The model dimension.
 
         Returns
         -------
@@ -292,8 +292,9 @@ class AddFixedPositionalEmbedding(layers.Layer):
         """
         # Create the positional encoding
         position_enc = np.array([
-            [pos / np.power(10000, 2 * (i // 2) / model_dim) for i in range(model_dim)]
-            if pos != 0 else np.zeros(model_dim) for pos in range(length)])
+            [pos / np.power(10000, 2 * (i // 2) / self.model_dim) for i in
+             range(self.model_dim)]
+            if pos != 0 else np.zeros(self.model_dim) for pos in range(length)])
 
         # Apply sine to even indices in the array; 2i
         position_enc[:, 0::2] = np.sin(position_enc[:, 0::2])

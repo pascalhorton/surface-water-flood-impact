@@ -294,10 +294,10 @@ class ImpactTxDataGenerator(ImpactDlDataGenerator):
 
     def _extract_precipitation_daily(self, event):
         # Temporal selection
-        t_shift = (np.timedelta64(self.precip_hf_days_before, 'D') +
-                   np.timedelta64(self.precip_daily_days_nb, 'D'))
-        t_start = event[0] - t_shift
-        t_end = event[0]
+        t_shift = np.timedelta64(self.precip_hf_days_before + 1, 'D')
+        t_days_nb = np.timedelta64(self.precip_daily_days_nb, 'D')
+        t_start = event[0] - t_shift - t_days_nb
+        t_end = event[0] - t_shift
 
         # Spatial domain
         x = event[1]
