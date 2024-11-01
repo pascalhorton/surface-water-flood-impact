@@ -43,108 +43,53 @@ class ModelTransformer(models.Model):
         """
         Build the model.
         """
+        input_daily = layers.Input(
+            shape=(self.input_daily_prec_size, 1),
+            name='input_daily')
+        input_high_freq = layers.Input(
+            shape=(self.input_high_freq_prec_size, 1),
+            name='input_high_freq')
+        input_attributes = layers.Input(
+            shape=(self.input_attributes_size, 1),
+            name='input_attributes')
+
         if not self.options.combined_transformer:
-            input_daily = layers.Input(
-                shape=(self.input_daily_prec_size, 1),
-                name='input_daily')
-            input_high_freq = layers.Input(
-                shape=(self.input_high_freq_prec_size, 1),
-                name='input_high_freq')
-            input_attributes = layers.Input(
-                shape=(self.input_attributes_size, 1),
-                name='input_attributes')
-
-            # Transformer for daily precipitation
-            # Project the input into the model dimension
-            x_daily = layers.Dense(
-                self.options.tx_model_dim,
-                name='dense_tx_proj_daily',
-                activation=None
-            )(input_daily)
-
+            x_daily = self.project_to_model_dim(input_daily)
             x_daily = AddFixedPositionalEmbedding(
                 self.options.tx_model_dim
             )(x_daily)
 
             for _ in range(self.options.nb_transformer_blocks):
                 x_daily = self.transformer_block(
-                    x_daily,
-                    model_dim=self.options.tx_model_dim,
-                    num_heads=self.options.num_heads,
-                    ff_dim=self.options.ff_dim,
-                    dropout_rate=self.options.dropout_rate,
-                    use_cnn=self.options.use_cnn_in_tx)
+                    x_daily, use_cnn=self.options.use_cnn_in_tx)
 
-            # Transformer for high-frequency precipitation
-            # Project the input into the model dimension
-            x_high_freq = layers.Dense(
-                self.options.tx_model_dim,
-                name='dense_tx_proj_high_freq',
-                activation=None
-            )(input_high_freq)
-
+            x_high_freq = self.project_to_model_dim(input_high_freq)
             x_high_freq = AddFixedPositionalEmbedding(
                 self.options.tx_model_dim
             )(x_high_freq)
 
             for _ in range(self.options.nb_transformer_blocks):
                 x_high_freq = self.transformer_block(
-                    x_high_freq,
-                    model_dim=self.options.tx_model_dim,
-                    num_heads=self.options.num_heads,
-                    ff_dim=self.options.ff_dim,
-                    dropout_rate=self.options.dropout_rate,
-                    use_cnn=self.options.use_cnn_in_tx)
+                    x_high_freq, use_cnn=self.options.use_cnn_in_tx)
 
-            # Transformer for attributes
-            # Project the input into the model dimension
-            x_attributes = layers.Dense(
-                self.options.tx_model_dim,
-                name='dense_tx_proj_attributes',
-                activation=None
-            )(input_attributes)
+            # Project the attributes input into the model dimension
+            x_attributes = self.project_to_model_dim(input_attributes)
 
             for _ in range(self.options.nb_transformer_blocks):
-                x_attributes = self.transformer_block(
-                    x_attributes,
-                    model_dim=self.options.tx_model_dim,
-                    num_heads=self.options.num_heads,
-                    ff_dim=self.options.ff_dim,
-                    dropout_rate=self.options.dropout_rate,
-                    use_cnn=False)
+                x_attributes = self.transformer_block(x_attributes, use_cnn=False)
 
             # Concatenate
             x = layers.Concatenate(axis=1)([x_daily, x_high_freq, x_attributes])
 
         else:
-            max_length = max(self.input_daily_prec_size,
-                             self.input_high_freq_prec_size)
+            x_daily = self.project_to_model_dim(input_daily)
+            x_high_freq = self.project_to_model_dim(input_high_freq)
 
-            input_daily = layers.Input(
-                shape=(max_length, 1),
-                name='input_daily')
-            input_high_freq = layers.Input(
-                shape=(max_length, 1),
-                name='input_high_freq')
-            input_attributes = layers.Input(
-                shape=(self.input_attributes_size,),
-                name='input_attributes')
 
-            x_daily = layers.Dense(
-                self.options.tx_model_dim,
-                name='dense_tx_proj_daily',
-                activation=None
-            )(input_daily)
 
             x_daily = AddFixedPositionalEmbedding(
                 self.options.tx_model_dim
             )(x_daily)
-
-            x_high_freq = layers.Dense(
-                self.options.tx_model_dim,
-                name='dense_tx_proj_high_freq',
-                activation=None
-            )(input_high_freq)
 
             x_high_freq = AddFixedPositionalEmbedding(
                 self.options.tx_model_dim
@@ -163,13 +108,7 @@ class ModelTransformer(models.Model):
             x = layers.Concatenate(axis=-1)([x, x_attributes])
 
             for _ in range(self.options.nb_transformer_blocks):
-                x = self.transformer_block(
-                    x,
-                    model_dim=self.options.tx_model_dim,
-                    num_heads=self.options.num_heads,
-                    ff_dim=self.options.ff_dim,
-                    dropout_rate=self.options.dropout_rate,
-                    use_cnn=self.options.use_cnn_in_tx)
+                x = self.transformer_block(x, use_cnn=self.options.use_cnn_in_tx)
 
         # Flatten
         x = layers.Flatten()(x)
@@ -199,8 +138,35 @@ class ModelTransformer(models.Model):
             inputs=[input_daily, input_high_freq, input_attributes],
             outputs=output)
 
-    def transformer_block(self, inputs, model_dim=512, num_heads=8, ff_dim=128,
-                          dropout_rate=0.1, use_cnn=False):
+    def project_to_model_dim(self, inputs):
+        """
+        Project the input into the model dimension.
+
+        Parameters
+        ----------
+        inputs: tensor
+            The input tensor.
+
+        Returns
+        -------
+        The output tensor.
+        """
+        x = layers.Dense(
+            self.options.tx_model_dim,
+            name=f'dense_proj_{int(1e4 * tf.random.uniform([]))}',
+            activation=self.options.embeddings_activation
+        )(inputs)
+
+        if self.options.embeddings_2_layers:
+            x = layers.Dense(
+                self.options.tx_model_dim,
+                name=f'dense_proj_{int(1e4 * tf.random.uniform([]))}',
+                activation=self.options.embeddings_activation
+            )(x)
+
+        return x
+
+    def transformer_block(self, inputs, use_cnn=False):
         """
         Transformer encoder.
 
@@ -208,14 +174,6 @@ class ModelTransformer(models.Model):
         ----------
         inputs: tensor
             The input tensor.
-        num_heads: int
-            The number of heads.
-        model_dim: int
-            The model dimension.
-        ff_dim: int
-            The feed-forward dimension.
-        dropout_rate: float
-            The dropout rate.
         use_cnn: bool
             Whether to use a CNN or not. If not, a dense layer is used.
 
@@ -224,27 +182,42 @@ class ModelTransformer(models.Model):
         The output tensor.
         """
         # Check if model_dim is divisible by num_heads
-        assert model_dim % num_heads == 0
-        key_dim = model_dim // num_heads
+        assert self.options.tx_model_dim % self.options.num_heads == 0
+        key_dim = self.options.tx_model_dim // self.options.num_heads
 
         # Self-attention
         x = layers.LayerNormalization(epsilon=1e-6)(inputs)
-        x = layers.MultiHeadAttention(num_heads=num_heads, key_dim=key_dim)(x, x)
-        x = layers.Dropout(dropout_rate)(x)
-        res = layers.Add()([inputs, x])
+        x = layers.MultiHeadAttention(
+            num_heads=self.options.num_heads,
+            key_dim=key_dim
+        )(x, x)
+        x = layers.Dropout(self.options.dropout_rate)(x)
+        res = inputs + x
 
         # Feed-forward network
         x = layers.LayerNormalization(epsilon=1e-6)(res)
         if use_cnn:
-            x = layers.Conv1D(filters=ff_dim, kernel_size=1, activation='relu')(x)
-            x = layers.Dropout(dropout_rate)(x)
-            x = layers.Conv1D(filters=model_dim, kernel_size=1)(x)
+            x = layers.Conv1D(
+                filters=self.options.ff_dim,
+                kernel_size=1,
+                activation='relu'
+            )(x)
+            x = layers.Dropout(self.options.dropout_rate)(x)
+            x = layers.Conv1D(
+                filters=self.options.tx_model_dim,
+                kernel_size=1
+            )(x)
         else:
-            layer_name = f'dense_tx_{int(1e4 * tf.random.uniform([]))}'
-            x = layers.Dense(ff_dim, activation='relu', name=layer_name)(x)
-            layer_name = f'dense_tx_{int(1e4 * tf.random.uniform([]))}'
-            x = layers.Dense(model_dim, name=layer_name)(x)
-            x = layers.Dropout(dropout_rate)(x)
+            x = layers.Dense(
+                self.options.ff_dim,
+                activation='relu',
+                name=f'dense_tx_{int(1e4 * tf.random.uniform([]))}'
+            )(x)
+            x = layers.Dense(
+                self.options.tx_model_dim,
+                name=f'dense_tx_{int(1e4 * tf.random.uniform([]))}'
+            )(x)
+            x = layers.Dropout(self.options.dropout_rate)(x)
 
         x = layers.Add()([x, res])
 

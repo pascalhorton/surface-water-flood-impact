@@ -47,6 +47,8 @@ class ImpactTransformerOptions(ImpactDlOptions):
 
         # Transformer options
         self.combined_transformer = None
+        self.embeddings_2_layers = None
+        self.embeddings_activation = None
         self.use_cnn_in_tx = None
         self.nb_transformer_blocks = None
         self.tx_model_dim = None
@@ -81,8 +83,14 @@ class ImpactTransformerOptions(ImpactDlOptions):
             "--precip-hf-days-after", type=int, default=1,
             help="The number of days after the event to use for the high-frequency precipitation.")
         self.parser.add_argument(
-            "--combined-transformer", action="store_true",
+            "--combined-transformer", type=bool, default=True,
             help="Whether to use a combined transformer or one for each precipitation type.")
+        self.parser.add_argument(
+            "--embeddings-2-layers", type=bool, default=False,
+            help="Whether to use two dense layers for the embeddings.")
+        self.parser.add_argument(
+            "--embeddings-activation", type=str, default="relu",
+            help="The activation function for the embeddings.")
         self.parser.add_argument(
             "--use-cnn-in-tx", action="store_true",
             help="Whether to use a CNN in the transformer instead of the dense layers.")
@@ -114,6 +122,8 @@ class ImpactTransformerOptions(ImpactDlOptions):
         self.precip_hf_days_before = args.precip_hf_days_before
         self.precip_hf_days_after = args.precip_hf_days_after
         self.combined_transformer = args.combined_transformer
+        self.embeddings_2_layers = args.embeddings_2_layers
+        self.embeddings_activation = args.embeddings_activation
         self.use_cnn_in_tx = args.use_cnn_in_tx
         self.nb_transformer_blocks = args.nb_transformer_blocks
         self.tx_model_dim = args.tx_model_dim
@@ -136,6 +146,7 @@ class ImpactTransformerOptions(ImpactDlOptions):
             The list of hyperparameters to optimize. Can be the string 'default'
             Options are: 'precip_daily_days_nb', 'precip_hf_time_step',
             'precip_hf_days_before', 'precip_hf_days_after', 'combined_transformer',
+            'embeddings_2_layers', 'embeddings_activation',
             'use_cnn_in_tx', 'nb_transformer_blocks', 'tx_model_dim', 'num_heads',
             'ff_dim', 'dropout_rate', 'dropout_rate_dense', 'inner_activation_dense',
             'with_batchnorm_dense', 'batch_size', 'learning_rate'
@@ -151,7 +162,8 @@ class ImpactTransformerOptions(ImpactDlOptions):
                     'transform_precip', 'log_transform_precip',
                     'precip_daily_days_nb', 'precip_hf_time_step',
                     'precip_hf_days_before', 'precip_hf_days_after',
-                    'combined_transformer', 'use_cnn_in_tx',
+                    'combined_transformer', 'embeddings_2_layers',
+                    'embeddings_activation', 'use_cnn_in_tx',
                     'nb_transformer_blocks', 'num_heads', 'ff_dim', 'dropout_rate',
                     'dropout_rate_dense', 'inner_activation_dense',
                     'with_batchnorm_dense', 'batch_size', 'learning_rate']
@@ -184,6 +196,12 @@ class ImpactTransformerOptions(ImpactDlOptions):
                 self.use_cnn_in_tx = trial.suggest_categorical(
                     "use_cnn_in_tx", [True, False])
 
+        if 'embeddings_2_layers' in hp_to_optimize:
+            self.embeddings_2_layers = trial.suggest_categorical(
+                "embeddings_2_layers", [True, False])
+        if 'embeddings_activation' in hp_to_optimize:
+            self.embeddings_activation = trial.suggest_categorical(
+                "embeddings_activation", ["relu", None])
         if 'nb_transformer_blocks' in hp_to_optimize:
             self.nb_transformer_blocks = trial.suggest_int(
                 "nb_transformer_blocks", 1, 4)
@@ -227,6 +245,8 @@ class ImpactTransformerOptions(ImpactDlOptions):
             print("- combined_transformer:", self.combined_transformer)
             print("- use_cnn_in_tx:", self.use_cnn_in_tx)
 
+        print("- embeddings_2_layers:", self.embeddings_2_layers)
+        print("- embeddings_activation:", self.embeddings_activation)
         print("- nb_transformer_blocks:", self.nb_transformer_blocks)
         print("- tx_model_dim:", self.tx_model_dim)
         print("- num_heads:", self.num_heads)
