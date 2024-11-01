@@ -57,43 +57,43 @@ class ModelTransformer(models.Model):
             # Transformer for daily precipitation
             # Project the input into the model dimension
             x_daily = layers.Dense(
-                self.options.tx_model_dim_daily,
+                self.options.tx_model_dim,
                 name='dense_tx_proj_daily',
                 activation=None
             )(input_daily)
 
             x_daily = AddFixedPositionalEmbedding(
-                self.options.tx_model_dim_daily
+                self.options.tx_model_dim
             )(x_daily)
 
-            for _ in range(self.options.nb_transformer_blocks_daily):
+            for _ in range(self.options.nb_transformer_blocks):
                 x_daily = self.transformer_block(
                     x_daily,
-                    model_dim=self.options.tx_model_dim_daily,
-                    num_heads=self.options.num_heads_daily,
-                    ff_dim=self.options.ff_dim_daily,
-                    dropout_rate=self.options.dropout_rate_daily,
+                    model_dim=self.options.tx_model_dim,
+                    num_heads=self.options.num_heads,
+                    ff_dim=self.options.ff_dim,
+                    dropout_rate=self.options.dropout_rate,
                     use_cnn=self.options.use_cnn_in_tx)
 
             # Transformer for high-frequency precipitation
             # Project the input into the model dimension
             x_high_freq = layers.Dense(
-                self.options.tx_model_dim_high_freq,
+                self.options.tx_model_dim,
                 name='dense_tx_proj_high_freq',
                 activation=None
             )(input_high_freq)
 
             x_high_freq = AddFixedPositionalEmbedding(
-                self.options.tx_model_dim_high_freq
+                self.options.tx_model_dim
             )(x_high_freq)
 
-            for _ in range(self.options.nb_transformer_blocks_high_freq):
+            for _ in range(self.options.nb_transformer_blocks):
                 x_high_freq = self.transformer_block(
                     x_high_freq,
-                    model_dim=self.options.tx_model_dim_high_freq,
-                    num_heads=self.options.num_heads_high_freq,
-                    ff_dim=self.options.ff_dim_high_freq,
-                    dropout_rate=self.options.dropout_rate_high_freq,
+                    model_dim=self.options.tx_model_dim,
+                    num_heads=self.options.num_heads,
+                    ff_dim=self.options.ff_dim,
+                    dropout_rate=self.options.dropout_rate,
                     use_cnn=self.options.use_cnn_in_tx)
 
             # Transformer for attributes
@@ -104,17 +104,17 @@ class ModelTransformer(models.Model):
                 activation=None
             )(input_attributes)
 
-            for _ in range(self.options.nb_transformer_blocks_attributes):
+            for _ in range(self.options.nb_transformer_blocks):
                 x_attributes = self.transformer_block(
                     x_attributes,
-                    model_dim=self.options.tx_model_dim_attributes,
-                    num_heads=self.options.num_heads_attributes,
-                    ff_dim=self.options.ff_dim_attributes,
-                    dropout_rate=self.options.dropout_rate_attributes,
+                    model_dim=self.options.tx_model_dim,
+                    num_heads=self.options.num_heads,
+                    ff_dim=self.options.ff_dim,
+                    dropout_rate=self.options.dropout_rate,
                     use_cnn=False)
 
             # Concatenate
-            x = layers.Concatenate(axis=-1)([x_daily, x_high_freq, x_attributes])
+            x = layers.Concatenate(axis=1)([x_daily, x_high_freq, x_attributes])
 
         else:
             max_length = max(self.input_daily_prec_size,
@@ -131,23 +131,23 @@ class ModelTransformer(models.Model):
                 name='input_attributes')
 
             x_daily = layers.Dense(
-                self.options.tx_model_dim_daily,
+                self.options.tx_model_dim,
                 name='dense_tx_proj_daily',
                 activation=None
             )(input_daily)
 
             x_daily = AddFixedPositionalEmbedding(
-                self.options.tx_model_dim_daily
+                self.options.tx_model_dim
             )(x_daily)
 
             x_high_freq = layers.Dense(
-                self.options.tx_model_dim_high_freq,
+                self.options.tx_model_dim,
                 name='dense_tx_proj_high_freq',
                 activation=None
             )(input_high_freq)
 
             x_high_freq = AddFixedPositionalEmbedding(
-                self.options.tx_model_dim_high_freq
+                self.options.tx_model_dim
             )(x_high_freq)
 
             x = layers.Concatenate(axis=1)([x_daily, x_high_freq])
@@ -162,13 +162,13 @@ class ModelTransformer(models.Model):
             # Combine time series and static attributes into a single sequence
             x = layers.Concatenate(axis=-1)([x, x_attributes])
 
-            for _ in range(self.options.nb_transformer_blocks_combined):
+            for _ in range(self.options.nb_transformer_blocks):
                 x = self.transformer_block(
                     x,
-                    model_dim=self.options.tx_model_dim_combined,
-                    num_heads=self.options.num_heads_combined,
-                    ff_dim=self.options.ff_dim_combined,
-                    dropout_rate=self.options.dropout_rate_combined,
+                    model_dim=self.options.tx_model_dim,
+                    num_heads=self.options.num_heads,
+                    ff_dim=self.options.ff_dim,
+                    dropout_rate=self.options.dropout_rate,
                     use_cnn=self.options.use_cnn_in_tx)
 
         # Fully connected

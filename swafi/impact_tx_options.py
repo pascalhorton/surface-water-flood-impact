@@ -24,46 +24,16 @@ class ImpactTransformerOptions(ImpactDlOptions):
         Whether to use a combined transformer or one for each precipitation type.
     use_cnn_in_tx: bool
         Whether to use a CNN in the transformer instead of the dense layers.
-    nb_transformer_blocks_combined: int
+    nb_transformer_blocks: int
         The number of transformer blocks for the combined transformer.
-    tx_model_dim_combined: int
+    tx_model_dim: int
         The model dimension for the combined transformer.
-    num_heads_combined: int
+    num_heads: int
         The number of heads for the combined transformer.
-    ff_dim_combined: int
+    ff_dim: int
         The feed-forward dimension for the combined transformer.
-    dropout_rate_combined: float
+    dropout_rate: float
         The dropout rate for the combined transformer.
-    nb_transformer_blocks_daily: int
-        The number of transformer blocks for the daily precipitation.
-    tx_model_dim_daily: int
-        The model dimension for the daily precipitation.
-    num_heads_daily: int
-        The number of heads for the daily precipitation.
-    ff_dim_daily: int
-        The feed-forward dimension for the daily precipitation.
-    dropout_rate_daily: float
-        The dropout rate for the daily precipitation.
-    nb_transformer_blocks_high_freq: int
-        The number of transformer blocks for the high-frequency precipitation.
-    tx_model_dim_high_freq: int
-        The model dimension for the high-frequency precipitation.
-    num_heads_high_freq: int
-        The number of heads for the high-frequency precipitation.
-    ff_dim_high_freq: int
-        The feed-forward dimension for the high-frequency precipitation.
-    dropout_rate_high_freq: float
-        The dropout rate for the high-frequency precipitation.
-    nb_transformer_blocks_attributes: int
-        The number of transformer blocks for the attributes.
-    tx_model_dim_attributes: int
-        The model dimension for the attributes.
-    num_heads_attributes: int
-        The number of heads for the attributes.
-    ff_dim_attributes: int
-        The feed-forward dimension for the attributes.
-    dropout_rate_attributes: float
-        The dropout rate for the attributes.
     """
     def __init__(self):
         super().__init__()
@@ -78,26 +48,11 @@ class ImpactTransformerOptions(ImpactDlOptions):
         # Transformer options
         self.combined_transformer = None
         self.use_cnn_in_tx = None
-        self.nb_transformer_blocks_combined = None
-        self.tx_model_dim_combined = None
-        self.num_heads_combined = None
-        self.ff_dim_combined = None
-        self.dropout_rate_combined = None
-        self.nb_transformer_blocks_daily = None
-        self.tx_model_dim_daily = None
-        self.num_heads_daily = None
-        self.ff_dim_daily = None
-        self.dropout_rate_daily = None
-        self.nb_transformer_blocks_high_freq = None
-        self.tx_model_dim_high_freq = None
-        self.num_heads_high_freq = None
-        self.ff_dim_high_freq = None
-        self.dropout_rate_high_freq = None
-        self.nb_transformer_blocks_attributes = None
-        self.tx_model_dim_attributes = None
-        self.num_heads_attributes = None
-        self.ff_dim_attributes = None
-        self.dropout_rate_attributes = None
+        self.nb_transformer_blocks = None
+        self.tx_model_dim = None
+        self.num_heads = None
+        self.ff_dim = None
+        self.dropout_rate = None
 
     def copy(self):
         """
@@ -132,65 +87,20 @@ class ImpactTransformerOptions(ImpactDlOptions):
             "--use-cnn-in-tx", action="store_true",
             help="Whether to use a CNN in the transformer instead of the dense layers.")
         self.parser.add_argument(
-            "--nb-transformer-blocks-combined", type=int, default=2,
-            help="The number of transformer blocks for the combined transformer.")
+            "--nb-transformer-blocks", type=int, default=2,
+            help="The number of transformer blocks.")
         self.parser.add_argument(
-            "--tx-model-dim-combined", type=int, default=512,
-            help="The model dimension for the combined transformer.")
+            "--tx-model-dim", type=int, default=128,
+            help="The model dimension.")
         self.parser.add_argument(
-            "--num-heads-combined", type=int, default=8,
-            help="The number of heads for the combined transformer.")
+            "--num-heads", type=int, default=8,
+            help="The number of heads.")
         self.parser.add_argument(
-            "--ff-dim-combined", type=int, default=32,
-            help="The feed-forward dimension for the combined transformer.")
+            "--ff-dim", type=int, default=32,
+            help="The feed-forward dimension.")
         self.parser.add_argument(
-            "--dropout-rate-combined", type=float, default=0.2,
-            help="The dropout rate for the combined transformer.")
-        self.parser.add_argument(
-            "--nb-transformer-blocks-daily", type=int, default=2,
-            help="The number of transformer blocks for the daily precipitation.")
-        self.parser.add_argument(
-            "--tx-model-dim-daily", type=int, default=512,
-            help="The model dimension for the daily precipitation.")
-        self.parser.add_argument(
-            "--num-heads-daily", type=int, default=8,
-            help="The number of heads for the daily precipitation.")
-        self.parser.add_argument(
-            "--ff-dim-daily", type=int, default=32,
-            help="The feed-forward dimension for the daily precipitation.")
-        self.parser.add_argument(
-            "--dropout-rate-daily", type=float, default=0.2,
-            help="The dropout rate for the daily precipitation.")
-        self.parser.add_argument(
-            "--nb-transformer-blocks-high-freq", type=int, default=2,
-            help="The number of transformer blocks for the high-frequency precipitation.")
-        self.parser.add_argument(
-            "--tx-model-dim-high-freq", type=int, default=512,
-            help="The model dimension for the high-frequency precipitation.")
-        self.parser.add_argument(
-            "--num-heads-high-freq", type=int, default=8,
-            help="The number of heads for the high-frequency precipitation.")
-        self.parser.add_argument(
-            "--ff-dim-high-freq", type=int, default=32,
-            help="The feed-forward dimension for the high-frequency precipitation.")
-        self.parser.add_argument(
-            "--dropout-rate-high-freq", type=float, default=0.2,
-            help="The dropout rate for the high-frequency precipitation.")
-        self.parser.add_argument(
-            "--nb-transformer-blocks-attributes", type=int, default=2,
-            help="The number of transformer blocks for the attributes.")
-        self.parser.add_argument(
-            "--tx-model-dim-attributes", type=int, default=512,
-            help="The model dimension for the attributes.")
-        self.parser.add_argument(
-            "--num-heads-attributes", type=int, default=8,
-            help="The number of heads for the attributes.")
-        self.parser.add_argument(
-            "--ff-dim-attributes", type=int, default=32,
-            help="The feed-forward dimension for the attributes.")
-        self.parser.add_argument(
-            "--dropout-rate-attributes", type=float, default=0.2,
-            help="The dropout rate for the attributes.")
+            "--dropout-rate", type=float, default=0.2,
+            help="The dropout rate.")
 
     def parse_args(self):
         """
@@ -205,26 +115,11 @@ class ImpactTransformerOptions(ImpactDlOptions):
         self.precip_hf_days_after = args.precip_hf_days_after
         self.combined_transformer = args.combined_transformer
         self.use_cnn_in_tx = args.use_cnn_in_tx
-        self.nb_transformer_blocks_combined = args.nb_transformer_blocks_combined
-        self.tx_model_dim_combined = args.tx_model_dim_combined
-        self.num_heads_combined = args.num_heads_combined
-        self.ff_dim_combined = args.ff_dim_combined
-        self.dropout_rate_combined = args.dropout_rate_combined
-        self.nb_transformer_blocks_daily = args.nb_transformer_blocks_daily
-        self.tx_model_dim_daily = args.tx_model_dim_daily
-        self.num_heads_daily = args.num_heads_daily
-        self.ff_dim_daily = args.ff_dim_daily
-        self.dropout_rate_daily = args.dropout_rate_daily
-        self.nb_transformer_blocks_high_freq = args.nb_transformer_blocks_high_freq
-        self.tx_model_dim_high_freq = args.tx_model_dim_high_freq
-        self.num_heads_high_freq = args.num_heads_high_freq
-        self.ff_dim_high_freq = args.ff_dim_high_freq
-        self.dropout_rate_high_freq = args.dropout_rate_high_freq
-        self.nb_transformer_blocks_attributes = args.nb_transformer_blocks_attributes
-        self.tx_model_dim_attributes = args.tx_model_dim_attributes
-        self.num_heads_attributes = args.num_heads_attributes
-        self.ff_dim_attributes = args.ff_dim_attributes
-        self.dropout_rate_attributes = args.dropout_rate_attributes
+        self.nb_transformer_blocks = args.nb_transformer_blocks
+        self.tx_model_dim = args.tx_model_dim
+        self.num_heads = args.num_heads
+        self.ff_dim = args.ff_dim
+        self.dropout_rate = args.dropout_rate
 
         if self.optimize_with_optuna:
             print("Optimizing with Optuna; some options will be ignored.")
@@ -241,14 +136,8 @@ class ImpactTransformerOptions(ImpactDlOptions):
             The list of hyperparameters to optimize. Can be the string 'default'
             Options are: 'precip_daily_days_nb', 'precip_hf_time_step',
             'precip_hf_days_before', 'precip_hf_days_after', 'combined_transformer',
-            'use_cnn_in_tx', 'nb_transformer_blocks_combined', 'tx_model_dim_combined',
-            'num_heads_combined', 'ff_dim_combined', 'dropout_rate_combined',
-            'nb_transformer_blocks_daily', 'tx_model_dim_daily', 'num_heads_daily',
-            'ff_dim_daily', 'dropout_rate_daily', 'nb_transformer_blocks_high_freq',
-            'tx_model_dim_high_freq', 'num_heads_high_freq', 'ff_dim_high_freq',
-            'dropout_rate_high_freq', 'nb_transformer_blocks_attributes',
-            'tx_model_dim_attributes', 'num_heads_attributes', 'ff_dim_attributes',
-            'dropout_rate_attributes', 'dropout_rate_dense', 'inner_activation_dense',
+            'use_cnn_in_tx', 'nb_transformer_blocks', 'tx_model_dim', 'num_heads',
+            'ff_dim', 'dropout_rate', 'dropout_rate_dense', 'inner_activation_dense',
             'with_batchnorm_dense', 'batch_size', 'learning_rate'
 
         Returns
@@ -263,13 +152,7 @@ class ImpactTransformerOptions(ImpactDlOptions):
                     'precip_daily_days_nb', 'precip_hf_time_step',
                     'precip_hf_days_before', 'precip_hf_days_after',
                     'combined_transformer', 'use_cnn_in_tx',
-                    'nb_transformer_blocks_combined',
-                    'num_heads_combined', 'ff_dim_combined', 'dropout_rate_combined',
-                    'nb_transformer_blocks_daily', 'num_heads_daily', 'ff_dim_daily',
-                    'dropout_rate_daily', 'nb_transformer_blocks_high_freq',
-                    'num_heads_high_freq', 'ff_dim_high_freq', 'dropout_rate_high_freq',
-                    'nb_transformer_blocks_attributes', 'num_heads_attributes',
-                    'ff_dim_attributes', 'dropout_rate_attributes',
+                    'nb_transformer_blocks', 'num_heads', 'ff_dim', 'dropout_rate',
                     'dropout_rate_dense', 'inner_activation_dense',
                     'with_batchnorm_dense', 'batch_size', 'learning_rate']
             else:
@@ -300,71 +183,22 @@ class ImpactTransformerOptions(ImpactDlOptions):
             if 'use_cnn_in_tx' in hp_to_optimize:
                 self.use_cnn_in_tx = trial.suggest_categorical(
                     "use_cnn_in_tx", [True, False])
-            if self.combined_transformer:
-                if 'nb_transformer_blocks_combined' in hp_to_optimize:
-                    self.nb_transformer_blocks_combined = trial.suggest_int(
-                        "nb_transformer_blocks_combined", 1, 4)
-                if 'tx_model_dim_combined' in hp_to_optimize:
-                    self.tx_model_dim_combined = trial.suggest_categorical(
-                        "tx_model_dim_combined", [128, 256, 512, 1024])
-                if 'num_heads_combined' in hp_to_optimize:
-                    self.num_heads_combined = trial.suggest_categorical(
-                        "num_heads_combined", [1, 2, 4, 8])
-                if 'ff_dim_combined' in hp_to_optimize:
-                    self.ff_dim_combined = trial.suggest_categorical(
-                        "ff_dim_combined", [16, 32, 64, 128])
-                if 'dropout_rate_combined' in hp_to_optimize:
-                    self.dropout_rate_combined = trial.suggest_uniform(
-                        "dropout_rate_combined", 0.1, 0.5)
-            else:
-                if 'nb_transformer_blocks_daily' in hp_to_optimize:
-                    self.nb_transformer_blocks_daily = trial.suggest_int(
-                        "nb_transformer_blocks_daily", 1, 4)
-                if 'tx_model_dim_daily' in hp_to_optimize:
-                    self.tx_model_dim_daily = trial.suggest_categorical(
-                        "tx_model_dim_daily", [128, 256, 512, 1024])
-                if 'num_heads_daily' in hp_to_optimize:
-                    self.num_heads_daily = trial.suggest_categorical(
-                        "num_heads_daily", [1, 2, 4, 8])
-                if 'ff_dim_daily' in hp_to_optimize:
-                    self.ff_dim_daily = trial.suggest_categorical(
-                        "ff_dim_daily", [16, 32, 64, 128])
-                if 'dropout_rate_daily' in hp_to_optimize:
-                    self.dropout_rate_daily = trial.suggest_uniform(
-                        "dropout_rate_daily", 0.1, 0.5)
 
-                if 'nb_transformer_blocks_high_freq' in hp_to_optimize:
-                    self.nb_transformer_blocks_high_freq = trial.suggest_int(
-                        "nb_transformer_blocks_high_freq", 1, 4)
-                if 'tx_model_dim_high_freq' in hp_to_optimize:
-                    self.tx_model_dim_high_freq = trial.suggest_categorical(
-                        "tx_model_dim_high_freq", [128, 256, 512, 1024])
-                if 'num_heads_high_freq' in hp_to_optimize:
-                    self.num_heads_high_freq = trial.suggest_categorical(
-                        "num_heads_high_freq", [1, 2, 4, 8])
-                if 'ff_dim_high_freq' in hp_to_optimize:
-                    self.ff_dim_high_freq = trial.suggest_categorical(
-                        "ff_dim_high_freq", [16, 32, 64, 128])
-                if 'dropout_rate_high_freq' in hp_to_optimize:
-                    self.dropout_rate_high_freq = trial.suggest_uniform(
-                        "dropout_rate_high_freq", 0.1, 0.5)
-
-        if not self.combined_transformer:
-            if 'nb_transformer_blocks_attributes' in hp_to_optimize:
-                self.nb_transformer_blocks_attributes = trial.suggest_int(
-                    "nb_transformer_blocks_attributes", 1, 4)
-            if 'tx_model_dim_attributes' in hp_to_optimize:
-                self.tx_model_dim_attributes = trial.suggest_categorical(
-                    "tx_model_dim_attributes", [128, 256, 512, 1024])
-            if 'num_heads_attributes' in hp_to_optimize:
-                self.num_heads_attributes = trial.suggest_categorical(
-                    "num_heads_attributes", [1, 2, 4, 8])
-            if 'ff_dim_attributes' in hp_to_optimize:
-                self.ff_dim_attributes = trial.suggest_categorical(
-                    "ff_dim_attributes", [16, 32, 64, 128])
-            if 'dropout_rate_attributes' in hp_to_optimize:
-                self.dropout_rate_attributes = trial.suggest_uniform(
-                    "dropout_rate_attributes", 0.1, 0.5)
+        if 'nb_transformer_blocks' in hp_to_optimize:
+            self.nb_transformer_blocks = trial.suggest_int(
+                "nb_transformer_blocks", 1, 4)
+        if 'tx_model_dim' in hp_to_optimize:
+            self.tx_model_dim = trial.suggest_categorical(
+                "tx_model_dim", [64, 128, 256, 512, 1024])
+        if 'num_heads' in hp_to_optimize:
+            self.num_heads = trial.suggest_categorical(
+                "num_heads", [1, 2, 4, 8])
+        if 'ff_dim' in hp_to_optimize:
+            self.ff_dim = trial.suggest_categorical(
+                "ff_dim", [16, 32, 64, 128])
+        if 'dropout_rate' in hp_to_optimize:
+            self.dropout_rate = trial.suggest_uniform(
+                "dropout_rate", 0.1, 0.5)
 
         return True
 
@@ -393,31 +227,11 @@ class ImpactTransformerOptions(ImpactDlOptions):
             print("- combined_transformer:", self.combined_transformer)
             print("- use_cnn_in_tx:", self.use_cnn_in_tx)
 
-            if self.combined_transformer:
-                print("- nb_transformer_blocks_combined:", self.nb_transformer_blocks_combined)
-                print("- tx_model_dim_combined:", self.tx_model_dim_combined)
-                print("- num_heads_combined:", self.num_heads_combined)
-                print("- ff_dim_combined:", self.ff_dim_combined)
-                print("- dropout_rate_combined:", self.dropout_rate_combined)
-            else:
-                print("- nb_transformer_blocks_daily:", self.nb_transformer_blocks_daily)
-                print("- tx_model_dim_daily:", self.tx_model_dim_daily)
-                print("- num_heads_daily:", self.num_heads_daily)
-                print("- ff_dim_daily:", self.ff_dim_daily)
-                print("- dropout_rate_daily:", self.dropout_rate_daily)
-
-                print("- nb_transformer_blocks_high_freq:", self.nb_transformer_blocks_high_freq)
-                print("- tx_model_dim_high_freq:", self.tx_model_dim_high_freq)
-                print("- num_heads_high_freq:", self.num_heads_high_freq)
-                print("- ff_dim_high_freq:", self.ff_dim_high_freq)
-                print("- dropout_rate_high_freq:", self.dropout_rate_high_freq)
-
-        if not self.combined_transformer:
-            print("- nb_transformer_blocks_attributes:", self.nb_transformer_blocks_attributes)
-            print("- tx_model_dim_attributes:", self.tx_model_dim_attributes)
-            print("- num_heads_attributes:", self.num_heads_attributes)
-            print("- ff_dim_attributes:", self.ff_dim_attributes)
-            print("- dropout_rate_attributes:", self.dropout_rate_attributes)
+        print("- nb_transformer_blocks:", self.nb_transformer_blocks)
+        print("- tx_model_dim:", self.tx_model_dim)
+        print("- num_heads:", self.num_heads)
+        print("- ff_dim:", self.ff_dim)
+        print("- dropout_rate:", self.dropout_rate)
 
         print("-" * 80)
 
