@@ -141,7 +141,7 @@ class ImpactTxDataGenerator(ImpactDlDataGenerator):
 
         precip_daily_dim_size = 0
         if self.X_precip_daily is not None:
-            precip_daily_dim_size = self.precip_daily_days_nb + 1
+            precip_daily_dim_size = self.precip_daily_days_nb
 
         self.precip_daily_dim_size = precip_daily_dim_size
 
@@ -215,6 +215,9 @@ class ImpactTxDataGenerator(ImpactDlDataGenerator):
             for i_b, event in enumerate(self.event_props[idxs]):
                 x_precip_hf[i_b] = self._extract_precipitation_hf(event)
 
+            # Add the feature dimension
+            x_precip_hf = np.expand_dims(x_precip_hf, axis=-1)
+
         # Select the daily precipitation data
         if self.X_precip_daily is not None:
             x_precip_daily = np.zeros((self.batch_size,
@@ -223,9 +226,14 @@ class ImpactTxDataGenerator(ImpactDlDataGenerator):
             for i_b, event in enumerate(self.event_props[idxs]):
                 x_precip_daily[i_b] = self._extract_precipitation_daily(event)
 
+            # Add the feature dimension
+            x_precip_daily = np.expand_dims(x_precip_daily, axis=-1)
+
         # Select the static data
         if self.X_static is not None:
             x_static = self.X_static[idxs, :]
+            # Add the feature dimension
+            x_static = np.expand_dims(x_static, axis=-1)
 
         if self.X_static is None:
             if self.X_precip_hf is None:
@@ -295,7 +303,7 @@ class ImpactTxDataGenerator(ImpactDlDataGenerator):
     def _extract_precipitation_daily(self, event):
         # Temporal selection
         t_shift = np.timedelta64(self.precip_hf_days_before + 1, 'D')
-        t_days_nb = np.timedelta64(self.precip_daily_days_nb, 'D')
+        t_days_nb = np.timedelta64(self.precip_daily_days_nb - 1, 'D')
         t_start = event[0] - t_shift - t_days_nb
         t_end = event[0] - t_shift
 
