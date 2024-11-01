@@ -61,7 +61,11 @@ class ModelTransformer(models.Model):
                 name='dense_tx_proj_daily',
                 activation=None
             )(input_daily)
-            x_daily = AddPositionalEmbedding(self.options.tx_model_dim_daily)(x_daily)
+
+            x_daily = AddFixedPositionalEmbedding(
+                self.options.tx_model_dim_daily
+            )(x_daily)
+
             for _ in range(self.options.nb_transformer_blocks_daily):
                 x_daily = self.transformer_block(
                     x_daily,
@@ -78,8 +82,11 @@ class ModelTransformer(models.Model):
                 name='dense_tx_proj_high_freq',
                 activation=None
             )(input_high_freq)
-            x_high_freq = AddPositionalEmbedding(
-                self.options.tx_model_dim_high_freq)(x_high_freq)
+
+            x_high_freq = AddFixedPositionalEmbedding(
+                self.options.tx_model_dim_high_freq
+            )(x_high_freq)
+
             for _ in range(self.options.nb_transformer_blocks_high_freq):
                 x_high_freq = self.transformer_block(
                     x_high_freq,
@@ -96,6 +103,7 @@ class ModelTransformer(models.Model):
                 name='dense_tx_proj_attributes',
                 activation=None
             )(input_attributes)
+
             for _ in range(self.options.nb_transformer_blocks_attributes):
                 x_attributes = self.transformer_block(
                     x_attributes,
@@ -127,15 +135,20 @@ class ModelTransformer(models.Model):
                 name='dense_tx_proj_daily',
                 activation=None
             )(input_daily)
-            x_daily = AddPositionalEmbedding(self.options.tx_model_dim_daily)(x_daily)
+
+            x_daily = AddFixedPositionalEmbedding(
+                self.options.tx_model_dim_daily
+            )(x_daily)
 
             x_high_freq = layers.Dense(
                 self.options.tx_model_dim_high_freq,
                 name='dense_tx_proj_high_freq',
                 activation=None
             )(input_high_freq)
-            x_high_freq = AddPositionalEmbedding(
-                self.options.tx_model_dim_high_freq)(x_high_freq)
+
+            x_high_freq = AddFixedPositionalEmbedding(
+                self.options.tx_model_dim_high_freq
+            )(x_high_freq)
 
             x = layers.Concatenate(axis=1)([x_daily, x_high_freq])
             # Broadcast static attributes across timesteps
@@ -251,7 +264,7 @@ class ModelTransformer(models.Model):
         return self.model(inputs, **kwargs)
 
 
-class AddPositionalEmbedding(layers.Layer):
+class AddFixedPositionalEmbedding(layers.Layer):
     """
     Positional embedding layer.
     Source: https://pylessons.com/transformers-introduction
@@ -290,7 +303,7 @@ class AddPositionalEmbedding(layers.Layer):
         return tf.cast(position_enc, dtype=tf.float32)
 
     def call(self, x):
-        length = tf.shape(x)[1]
+        length = x.shape[1]
         pos = self.pos_encoding[tf.newaxis, :length, :]
         assert pos.shape[1:2] == x.shape[1:2]
         x = x + pos
