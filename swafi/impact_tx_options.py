@@ -12,7 +12,7 @@ class ImpactTransformerOptions(ImpactDlOptions):
 
     Attributes
     ----------
-    precip_daily_days_before: int
+    precip_daily_days_nb: int
         The number of days before the event to use for the daily precipitation.
     precip_hf_time_step: int
         The time step for the high-frequency precipitation [h].
@@ -70,7 +70,7 @@ class ImpactTransformerOptions(ImpactDlOptions):
         self._set_parser_arguments()
 
         # Data options
-        self.precip_daily_days_before = None
+        self.precip_daily_days_nb = None
         self.precip_hf_time_step = None
         self.precip_hf_days_before = None
         self.precip_hf_days_after = None
@@ -114,8 +114,8 @@ class ImpactTransformerOptions(ImpactDlOptions):
         Set the parser arguments.
         """
         self.parser.add_argument(
-            "--precip-daily-days-before", type=int, default=30,
-            help="The number of days before the event to use for the daily precipitation.")
+            "--precip-daily-days-nb", type=int, default=30,
+            help="The number of days to use for the daily precipitation.")
         self.parser.add_argument(
             "--precip-hf-time-step", type=int, default=60,
             help="The time step for the high-frequency precipitation [min].")
@@ -199,7 +199,7 @@ class ImpactTransformerOptions(ImpactDlOptions):
         args = self.parser.parse_args()
         self._parse_args(args)
 
-        self.precip_daily_days_before = args.precip_daily_days_before
+        self.precip_daily_days_nb = args.precip_daily_days_nb
         self.precip_hf_time_step = args.precip_hf_time_step
         self.precip_hf_days_before = args.precip_hf_days_before
         self.precip_hf_days_after = args.precip_hf_days_after
@@ -239,7 +239,7 @@ class ImpactTransformerOptions(ImpactDlOptions):
             The trial.
         hp_to_optimize: list|str
             The list of hyperparameters to optimize. Can be the string 'default'
-            Options are: 'precip_daily_days_before', 'precip_hf_time_step',
+            Options are: 'precip_daily_days_nb', 'precip_hf_time_step',
             'precip_hf_days_before', 'precip_hf_days_after', 'combined_transformer',
             'use_cnn_in_tx', 'nb_transformer_blocks_combined', 'tx_model_dim_combined',
             'num_heads_combined', 'ff_dim_combined', 'dropout_rate_combined',
@@ -260,7 +260,7 @@ class ImpactTransformerOptions(ImpactDlOptions):
             if self.use_precip:
                 hp_to_optimize = [
                     'transform_precip', 'log_transform_precip',
-                    'precip_daily_days_before', 'precip_hf_time_step',
+                    'precip_daily_days_nb', 'precip_hf_time_step',
                     'precip_hf_days_before', 'precip_hf_days_after',
                     'combined_transformer', 'use_cnn_in_tx',
                     'nb_transformer_blocks_combined',
@@ -281,9 +281,9 @@ class ImpactTransformerOptions(ImpactDlOptions):
         self._generate_for_optuna(trial, hp_to_optimize)
 
         if self.use_precip:
-            if 'precip_daily_days_before' in hp_to_optimize:
-                self.precip_daily_days_before = trial.suggest_int(
-                    "precip_daily_days_before", 1, 60)
+            if 'precip_daily_days_nb' in hp_to_optimize:
+                self.precip_daily_days_nb = trial.suggest_int(
+                    "precip_daily_days_nb", 1, 60)
             if 'precip_hf_time_step' in hp_to_optimize:
                 self.precip_hf_time_step = trial.suggest_categorical(
                     "precip_hf_time_step", [60, 120, 240, 360, 720])
@@ -386,7 +386,7 @@ class ImpactTransformerOptions(ImpactDlOptions):
             return
 
         if self.use_precip:
-            print("- precip_daily_days_before:", self.precip_daily_days_before)
+            print("- precip_daily_days_nb:", self.precip_daily_days_nb)
             print("- precip_hf_time_step:", self.precip_hf_time_step)
             print("- precip_hf_days_before:", self.precip_hf_days_before)
             print("- precip_hf_days_after:", self.precip_hf_days_after)

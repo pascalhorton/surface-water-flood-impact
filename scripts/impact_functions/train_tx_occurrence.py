@@ -56,7 +56,7 @@ def main():
     events = load_events_from_pickle(filename=events_filename)
 
     # Remove dates where the precipitation data is not available
-    precip_days_before = max(options.precip_daily_days_before,
+    precip_days_before = max(options.precip_daily_days_nb,
                              options.precip_hf_days_before)
     precip_days_after = options.precip_hf_days_after
     for date_range in MISSING_DATES:

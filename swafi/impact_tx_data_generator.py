@@ -8,7 +8,7 @@ import numpy as np
 
 class ImpactTxDataGenerator(ImpactDlDataGenerator):
     def __init__(self, event_props, x_static, x_precip_hf, x_precip_daily, y,
-                 batch_size=32, shuffle=True, precip_daily_days_before=30,
+                 batch_size=32, shuffle=True, precip_daily_days_nb=30,
                  precip_hf_time_step=60, precip_hf_days_before=1, precip_hf_days_after=1,
                  tmp_dir=None, transform_static='standardize', transform_precip='normalize',
                  log_transform_precip=True, mean_static=None, std_static=None,
@@ -34,8 +34,8 @@ class ImpactTxDataGenerator(ImpactDlDataGenerator):
             The batch size.
         shuffle: bool
             Whether to shuffle the data or not.
-        precip_daily_days_before: int
-            The number of days before the event to include in the daily precipitation data.
+        precip_daily_days_nb: int
+            The number of days of daily precipitation data.
         precip_hf_time_step: int
             The time step of the high-frequency precipitation data.
         precip_hf_days_before: int
@@ -89,7 +89,7 @@ class ImpactTxDataGenerator(ImpactDlDataGenerator):
                          debug=debug)
         self.precip_hf_dim_size = None
         self.precip_daily_dim_size = None
-        self.precip_daily_days_before = precip_daily_days_before
+        self.precip_daily_days_nb = precip_daily_days_nb
         self.precip_hf_time_step = precip_hf_time_step
         self.precip_hf_days_before = precip_hf_days_before
         self.precip_hf_days_after = precip_hf_days_after
@@ -141,7 +141,7 @@ class ImpactTxDataGenerator(ImpactDlDataGenerator):
 
         precip_daily_dim_size = 0
         if self.X_precip_daily is not None:
-            precip_daily_dim_size = self.precip_daily_days_before + 1
+            precip_daily_dim_size = self.precip_daily_days_nb + 1
 
         self.precip_daily_dim_size = precip_daily_dim_size
 
@@ -294,7 +294,9 @@ class ImpactTxDataGenerator(ImpactDlDataGenerator):
 
     def _extract_precipitation_daily(self, event):
         # Temporal selection
-        t_start = event[0] - np.timedelta64(self.precip_daily_days_before, 'D')
+        t_shift = (np.timedelta64(self.precip_hf_days_before, 'D') +
+                   np.timedelta64(self.precip_daily_days_nb, 'D'))
+        t_start = event[0] - t_shift
         t_end = event[0]
 
         # Spatial domain
