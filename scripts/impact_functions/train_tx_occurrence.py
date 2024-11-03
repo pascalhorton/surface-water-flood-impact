@@ -23,10 +23,10 @@ except ImportError:
 USE_SQLITE = False
 USE_TXTFILE = True
 OPTUNA_RANDOM = True
-DATASET = 'gvz'  # 'mobiliar' or 'gvz'
+DATASET = 'mobiliar'  # 'mobiliar' or 'gvz'
 LABEL_EVENT_FILE = 'original_w_prior_pluvial_occurrence'
 SAVE_MODEL = True
-SHOW_PLOTS = True
+SHOW_PLOTS = False
 
 config = Config()
 
