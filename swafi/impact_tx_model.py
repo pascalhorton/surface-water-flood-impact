@@ -58,7 +58,7 @@ class ModelTransformer(models.Model):
         input_high_freq = keras.ops.expand_dims(input_high_freq, axis=-1)
 
         if not self.options.combined_transformer:
-            input_attributes = keras.ops.expand_dims(input_attributes, axis=1)
+            input_attributes = keras.ops.expand_dims(input_attributes, axis=-1)
 
             x_daily = self.project_to_model_dim(input_daily)
             x_daily = AddFixedPositionalEmbedding(
