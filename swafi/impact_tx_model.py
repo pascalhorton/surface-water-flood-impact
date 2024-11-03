@@ -3,6 +3,7 @@ Class for the Transformer model.
 """
 
 from keras import layers, models
+import keras
 import tensorflow as tf
 import numpy as np
 
@@ -50,7 +51,7 @@ class ModelTransformer(models.Model):
             shape=(self.input_high_freq_prec_size, 1),
             name='input_high_freq')
         input_attributes = layers.Input(
-            shape=(self.input_attributes_size, 1),
+            shape=(self.input_attributes_size,),
             name='input_attributes')
 
         if not self.options.combined_transformer:
@@ -82,30 +83,43 @@ class ModelTransformer(models.Model):
             x = layers.Concatenate(axis=1)([x_daily, x_high_freq, x_attributes])
 
         else:
+            # Project and concatenate the precipitation inputs
             x_daily = self.project_to_model_dim(input_daily)
             x_high_freq = self.project_to_model_dim(input_high_freq)
-
-
-
-            x_daily = AddFixedPositionalEmbedding(
-                self.options.tx_model_dim
-            )(x_daily)
-
-            x_high_freq = AddFixedPositionalEmbedding(
-                self.options.tx_model_dim
-            )(x_high_freq)
-
             x = layers.Concatenate(axis=1)([x_daily, x_high_freq])
-            # Broadcast static attributes across timesteps
-            x_attributes = tf.expand_dims(
-                input_attributes,
-                axis=1)  # Shape becomes (batch_size, 1, num_static_features)
-            x_attributes = tf.tile(
-                x_attributes,
-                [1, max_length, 1])  # Broadcast static features across timesteps
+
+            # Add positional embeddings
+            x = AddLearnedPositionalEmbedding(
+                model_dim=self.options.tx_model_dim,
+                daily_prec_size=self.input_daily_prec_size,
+                high_freq_prec_size=self.input_high_freq_prec_size,
+                embeddings_activation=self.options.embeddings_activation,
+                embeddings_2_layers=self.options.embeddings_2_layers
+            )(x)
+
+            # Project the attributes input into the model dimension
+            single_attributes_vector = True
+            if single_attributes_vector:
+                x_attributes = layers.Dense(
+                    self.options.tx_model_dim,
+                    name=f'dense_proj_{int(1e4 * np.random.uniform())}',
+                    activation=self.options.embeddings_activation
+                )(input_attributes)
+
+                if self.options.embeddings_2_layers:
+                    x_attributes = layers.Dense(
+                        self.options.tx_model_dim,
+                        name=f'dense_proj_{int(1e4 * np.random.uniform())}',
+                        activation=self.options.embeddings_activation
+                    )(x_attributes)
+
+                #x_attributes = tf.expand_dims(x_attributes, axis=1)
+                x_attributes = keras.ops.expand_dims(x_attributes, axis=1)
+            else:
+                x_attributes = self.project_to_model_dim(input_attributes)
 
             # Combine time series and static attributes into a single sequence
-            x = layers.Concatenate(axis=-1)([x, x_attributes])
+            x = layers.Concatenate(axis=1)([x, x_attributes])
 
             for _ in range(self.options.nb_transformer_blocks):
                 x = self.transformer_block(x, use_cnn=self.options.use_cnn_in_tx)
@@ -153,14 +167,14 @@ class ModelTransformer(models.Model):
         """
         x = layers.Dense(
             self.options.tx_model_dim,
-            name=f'dense_proj_{int(1e4 * tf.random.uniform([]))}',
+            name=f'dense_proj_{int(1e4 * np.random.uniform())}',
             activation=self.options.embeddings_activation
         )(inputs)
 
         if self.options.embeddings_2_layers:
             x = layers.Dense(
                 self.options.tx_model_dim,
-                name=f'dense_proj_{int(1e4 * tf.random.uniform([]))}',
+                name=f'dense_proj_{int(1e4 * np.random.uniform())}',
                 activation=self.options.embeddings_activation
             )(x)
 
@@ -192,7 +206,7 @@ class ModelTransformer(models.Model):
             key_dim=key_dim
         )(x, x)
         x = layers.Dropout(self.options.dropout_rate)(x)
-        res = inputs + x
+        res = layers.Add()([inputs, x])
 
         # Feed-forward network
         x = layers.LayerNormalization(epsilon=1e-6)(res)
@@ -211,11 +225,11 @@ class ModelTransformer(models.Model):
             x = layers.Dense(
                 self.options.ff_dim,
                 activation='relu',
-                name=f'dense_tx_{int(1e4 * tf.random.uniform([]))}'
+                name=f'dense_tx_{int(1e4 * np.random.uniform())}'
             )(x)
             x = layers.Dense(
                 self.options.tx_model_dim,
-                name=f'dense_tx_{int(1e4 * tf.random.uniform([]))}'
+                name=f'dense_tx_{int(1e4 * np.random.uniform())}'
             )(x)
             x = layers.Dropout(self.options.dropout_rate)(x)
 
@@ -238,6 +252,107 @@ class ModelTransformer(models.Model):
         The output.
         """
         return self.model(inputs, **kwargs)
+
+
+class AddLearnedPositionalEmbedding(layers.Layer):
+    """
+    learned positional embedding layer.
+    """
+    def __init__(self, model_dim, daily_prec_size, high_freq_prec_size,
+                 embeddings_activation, embeddings_2_layers):
+        super().__init__()
+        self.model_dim = model_dim
+        self.daily_prec_size = daily_prec_size
+        self.high_freq_prec_size = high_freq_prec_size
+        self.embeddings_activation = embeddings_activation
+        self.embeddings_2_layers = embeddings_2_layers
+        self.temporal_embedding = self.get_temporal_embedding()
+        self.flag_embedding = self.get_flag_embedding()
+
+    def get_temporal_embedding(self):
+        """
+        Get the temporal (positional) embedding. This allows the model to learn
+        the position of the input data (in time).
+
+        Returns
+        -------
+        The temporal embedding.
+        """
+        l_dims = self.daily_prec_size + self.high_freq_prec_size
+        t_emb = np.arange(l_dims) / l_dims
+        t_emb = np.expand_dims(t_emb, axis=-1)
+        t_emb = tf.convert_to_tensor(t_emb, dtype=tf.float32)
+        t_emb = self.project_to_model_dim(t_emb)
+        t_emb = tf.expand_dims(t_emb, axis=0)
+
+        return t_emb
+
+    def get_flag_embedding(self):
+        """
+        Get the flag embedding. This allows the model to learn the difference
+        between daily and high-frequency precipitation data.
+
+        Returns
+        -------
+        The flag embedding.
+        """
+        flag_daily = np.ones((self.daily_prec_size,))
+        flag_hourly = np.zeros((self.high_freq_prec_size,))
+        flags = np.concatenate([flag_daily, flag_hourly], axis=0)
+        flags = tf.convert_to_tensor(flags, dtype=tf.int32)
+        flags = layers.Embedding(
+            input_dim=2,
+            output_dim=self.model_dim
+        )(flags)
+        flags = tf.expand_dims(flags, axis=0)
+
+        return flags
+
+    def project_to_model_dim(self, inputs):
+        """
+        Project the input into the model dimension.
+
+        Parameters
+        ----------
+        inputs: tensor
+            The input tensor.
+
+        Returns
+        -------
+        The output tensor.
+        """
+        x = layers.Dense(
+            self.model_dim,
+            name=f'dense_proj_{int(1e4 * np.random.uniform())}',
+            activation=self.embeddings_activation
+        )(inputs)
+
+        if self.embeddings_2_layers:
+            x = layers.Dense(
+                self.model_dim,
+                name=f'dense_proj_{int(1e4 * np.random.uniform())}',
+                activation=self.embeddings_activation
+            )(x)
+
+        return x
+
+    def call(self, x):
+        """
+        Call the layer.
+
+        Parameters
+        ----------
+        x: tensor
+            The input tensor.
+
+        Returns
+        -------
+        The output tensor.
+        """
+        x_emb = self.temporal_embedding
+        x_flags = self.flag_embedding
+
+        return layers.Add()([x, x_emb, x_flags])
 
 
 class AddFixedPositionalEmbedding(layers.Layer):
@@ -277,9 +392,20 @@ class AddFixedPositionalEmbedding(layers.Layer):
         return tf.cast(position_enc, dtype=tf.float32)
 
     def call(self, x):
+        """
+        Call the layer.
+
+        Parameters
+        ----------
+        x: tensor
+            The input tensor.
+
+        Returns
+        -------
+        The output tensor.
+        """
         length = x.shape[1]
         pos = self.pos_encoding[tf.newaxis, :length, :]
         assert pos.shape[1:2] == x.shape[1:2]
-        x = x + pos
 
-        return x
+        return layers.Add()([x, pos])
