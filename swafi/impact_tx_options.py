@@ -189,13 +189,12 @@ class ImpactTransformerOptions(ImpactDlOptions):
                 self.precip_hf_days_after = trial.suggest_int(
                     "precip_hf_days_after", 0, 1)
 
-            if 'combined_transformer' in hp_to_optimize:
-                self.combined_transformer = trial.suggest_categorical(
-                    "combined_transformer", [True, False])
-            if 'use_cnn_in_tx' in hp_to_optimize:
-                self.use_cnn_in_tx = trial.suggest_categorical(
-                    "use_cnn_in_tx", [True, False])
-
+        if 'combined_transformer' in hp_to_optimize:
+            self.combined_transformer = trial.suggest_categorical(
+                "combined_transformer", [True, False])
+        if 'use_cnn_in_tx' in hp_to_optimize:
+            self.use_cnn_in_tx = trial.suggest_categorical(
+                "use_cnn_in_tx", [True, False])
         if 'embeddings_2_layers' in hp_to_optimize:
             self.embeddings_2_layers = trial.suggest_categorical(
                 "embeddings_2_layers", [True, False])

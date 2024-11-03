@@ -45,16 +45,21 @@ class ModelTransformer(models.Model):
         Build the model.
         """
         input_daily = layers.Input(
-            shape=(self.input_daily_prec_size, 1),
+            shape=(self.input_daily_prec_size,),
             name='input_daily')
         input_high_freq = layers.Input(
-            shape=(self.input_high_freq_prec_size, 1),
+            shape=(self.input_high_freq_prec_size,),
             name='input_high_freq')
         input_attributes = layers.Input(
             shape=(self.input_attributes_size,),
             name='input_attributes')
 
+        input_daily = keras.ops.expand_dims(input_daily, axis=-1)
+        input_high_freq = keras.ops.expand_dims(input_high_freq, axis=-1)
+
         if not self.options.combined_transformer:
+            input_attributes = keras.ops.expand_dims(input_attributes, axis=1)
+
             x_daily = self.project_to_model_dim(input_daily)
             x_daily = AddFixedPositionalEmbedding(
                 self.options.tx_model_dim
@@ -113,7 +118,6 @@ class ModelTransformer(models.Model):
                         activation=self.options.embeddings_activation
                     )(x_attributes)
 
-                #x_attributes = tf.expand_dims(x_attributes, axis=1)
                 x_attributes = keras.ops.expand_dims(x_attributes, axis=1)
             else:
                 x_attributes = self.project_to_model_dim(input_attributes)
