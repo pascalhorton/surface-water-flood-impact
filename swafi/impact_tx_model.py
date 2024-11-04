@@ -287,6 +287,7 @@ class AddLearnedPositionalEmbedding(layers.Layer):
         t_emb = np.expand_dims(t_emb, axis=-1)
         t_emb = tf.convert_to_tensor(t_emb, dtype=tf.float32)
         t_emb = self.project_to_model_dim(t_emb)
+        t_emb = tf.expand_dims(t_emb, axis=0)
 
         return t_emb
 
@@ -307,6 +308,7 @@ class AddLearnedPositionalEmbedding(layers.Layer):
             input_dim=2,
             output_dim=self.model_dim
         )(flags)
+        flags = tf.expand_dims(flags, axis=0)
 
         return flags
 
@@ -407,6 +409,7 @@ class AddFixedPositionalEmbedding(layers.Layer):
         The output tensor.
         """
         length = x.shape[1]
-        pos = self.pos_encoding[:length, :]
+        pos = self.pos_encoding[tf.newaxis, :length, :]
+        assert pos.shape[1:2] == x.shape[1:2]
 
         return layers.Add()([x, pos])
