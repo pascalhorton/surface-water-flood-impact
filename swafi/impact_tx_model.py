@@ -353,10 +353,14 @@ class AddLearnedPositionalEmbedding(layers.Layer):
         -------
         The output tensor.
         """
-        x_emb = self.temporal_embedding
-        x_flags = self.flag_embedding
+        t_emb = self.temporal_embedding
+        flags = self.flag_embedding
 
-        return layers.Add()([x, x_emb, x_flags])
+        embedding = t_emb + flags
+        target_shape = tf.shape(x)
+        embedding = tf.broadcast_to(embedding, target_shape)
+
+        return layers.Add()([x, embedding])
 
 
 class AddFixedPositionalEmbedding(layers.Layer):
@@ -411,5 +415,8 @@ class AddFixedPositionalEmbedding(layers.Layer):
         length = x.shape[1]
         pos = self.pos_encoding[tf.newaxis, :length, :]
         assert pos.shape[1:2] == x.shape[1:2]
+
+        target_shape = tf.shape(x)
+        pos = tf.broadcast_to(pos, target_shape)
 
         return layers.Add()([x, pos])
