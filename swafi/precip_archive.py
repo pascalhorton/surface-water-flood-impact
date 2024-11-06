@@ -562,10 +562,20 @@ class PrecipitationArchive(Precipitation):
             The precipitation data for the temporal and spatial chunk
         """
         if self.cid_time_series is not None and cid is not None:
-            ts = self.cid_time_series.sel(
-                time=slice(t_start, t_end),
-                cid=cid
-            ).to_numpy()
+            try:
+                ts = self.cid_time_series.sel(
+                    time=slice(t_start, t_end),
+                    cid=cid
+                ).to_numpy()
+            except KeyError as e:
+                print(f"Error with CID {cid} and time {t_start} to {t_end}")
+                print(f"File: {self.pickle_files[0]}")
+                print(e)
+
+                if self.cid_time_series['time'].duplicated().any():
+                    print("Duplicate timestamps found.")
+                    print(self.cid_time_series['time'][
+                              self.cid_time_series['time'].duplicated()])
 
             # If the time series is 1D, add 2 dimensions
             if len(ts.shape) == 1:
@@ -642,6 +652,11 @@ class PrecipitationArchive(Precipitation):
             subset = self._fill_missing_values(subset)
             subset = self._resample(subset)
             subset = subset.compute()
+
+            # Check for duplicates
+            if subset['time'].duplicated().any():
+                raise ValueError(
+                    f"Duplicate timestamps found in subset for {t.year}-{t.month:02}")
 
             assert len(subset.dims) == 3, "Precipitation must be 3D"
 
