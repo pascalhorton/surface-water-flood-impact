@@ -196,13 +196,13 @@ class ImpactDlDataGenerator(keras.utils.Sequence):
                   f" got: {data_length}")
             print(f"Event: {event}")
 
-        if self.warning_counter in [10, 50, 100, 500]:
+        if self.warning_counter in [10, 50, 100, 500, 1000]:
             print(f"Shape mismatch: expected: {expected_length} !="
                   f" got: {precip_ev.shape[0]}")
             print(f"Warning: {self.warning_counter} events with "
                   f"shape mismatch (e.g., missing precipitation data).")
 
-        if self.warning_counter > 500:
+        if self.warning_counter > 1000:
             raise ValueError("Too many issues with precipitation data.")
 
     def __len__(self):
