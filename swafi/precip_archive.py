@@ -572,10 +572,9 @@ class PrecipitationArchive(Precipitation):
                 print(f"File: {self.pickle_files[0]}")
                 print(e)
 
-                if self.cid_time_series['time'].duplicated().any():
+                if np.any(self.cid_time_series['time'].values != np.unique(
+                        self.cid_time_series['time'].values)):
                     print("Duplicate timestamps found.")
-                    print(self.cid_time_series['time'][
-                              self.cid_time_series['time'].duplicated()])
 
             # If the time series is 1D, add 2 dimensions
             if len(ts.shape) == 1:
@@ -654,7 +653,7 @@ class PrecipitationArchive(Precipitation):
             subset = subset.compute()
 
             # Check for duplicates
-            if subset['time'].duplicated().any():
+            if np.any(subset['time'].values != np.unique(subset['time'].values)):
                 raise ValueError(
                     f"Duplicate timestamps found in subset for {t.year}-{t.month:02}")
 
