@@ -71,13 +71,13 @@ class ImpactTransformerOptions(ImpactDlOptions):
         Set the parser arguments.
         """
         self.parser.add_argument(
-            "--precip-daily-days-nb", type=int, default=30,
+            "--precip-daily-days-nb", type=int, default=60,
             help="The number of days to use for the daily precipitation.")
         self.parser.add_argument(
             "--precip-hf-time-step", type=int, default=60,
             help="The time step for the high-frequency precipitation [min].")
         self.parser.add_argument(
-            "--precip-hf-days-before", type=int, default=1,
+            "--precip-hf-days-before", type=int, default=3,
             help="The number of days before the event to use for the high-frequency precipitation.")
         self.parser.add_argument(
             "--precip-hf-days-after", type=int, default=1,
@@ -160,13 +160,13 @@ class ImpactTransformerOptions(ImpactDlOptions):
             if self.use_precip:
                 hp_to_optimize = [
                     'transform_precip', 'log_transform_precip',
-                    'precip_daily_days_nb', 'precip_hf_time_step',
-                    'precip_hf_days_before', 'precip_hf_days_after',
                     'combined_transformer', 'embeddings_2_layers',
                     'embeddings_activation', 'use_cnn_in_tx',
                     'nb_transformer_blocks', 'num_heads', 'ff_dim', 'dropout_rate',
                     'dropout_rate_dense', 'inner_activation_dense',
                     'with_batchnorm_dense', 'batch_size', 'learning_rate']
+                # Left out: 'precip_hf_time_step', 'precip_daily_days_nb',
+                # 'precip_hf_days_before', 'precip_hf_days_after'
             else:
                 hp_to_optimize = [
                     'batch_size', 'dropout_rate_dense', 'nb_dense_layers',
