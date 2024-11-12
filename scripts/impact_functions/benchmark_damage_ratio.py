@@ -20,19 +20,19 @@ def main():
 
     # Create the impact function
     print("\nBenchmark model (always false):")
-    bench = Impact(events, target_type='damage_ratio', random_state=42)
+    bench = Impact(events, target_type='damage_ratio', random_state=None)
     bench.create_benchmark_model('always_false')
     bench.split_sample()
     bench.assess_model_on_all_periods()
 
     print("\nBenchmark model (always true):")
-    bench = Impact(events, target_type='damage_ratio', random_state=42)
+    bench = Impact(events, target_type='damage_ratio', random_state=None)
     bench.create_benchmark_model('always_true')
     bench.split_sample()
     bench.assess_model_on_all_periods()
 
     print("\nBenchmark model (random):")
-    bench = Impact(events, target_type='damage_ratio', random_state=42)
+    bench = Impact(events, target_type='damage_ratio', random_state=None)
     bench.create_benchmark_model('random')
     bench.split_sample()
     bench.assess_model_on_all_periods()

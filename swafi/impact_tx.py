@@ -58,7 +58,7 @@ class ImpactTransformer(ImpactDl):
             y=self.y_train,
             batch_size=self.options.batch_size,
             shuffle=True,
-            precip_daily_days_before=self.options.precip_daily_days_before,
+            precip_daily_days_nb=self.options.precip_daily_days_nb,
             precip_hf_time_step=self.options.precip_hf_time_step,
             precip_hf_days_before=self.options.precip_hf_days_before,
             precip_hf_days_after=self.options.precip_hf_days_after,
@@ -91,7 +91,7 @@ class ImpactTransformer(ImpactDl):
             y=self.y_valid,
             batch_size=self.options.batch_size,
             shuffle=True,
-            precip_daily_days_before=self.options.precip_daily_days_before,
+            precip_daily_days_nb=self.options.precip_daily_days_nb,
             precip_hf_time_step=self.options.precip_hf_time_step,
             precip_hf_days_before=self.options.precip_hf_days_before,
             precip_hf_days_after=self.options.precip_hf_days_after,
@@ -124,7 +124,7 @@ class ImpactTransformer(ImpactDl):
             y=self.y_test,
             batch_size=self.options.batch_size,
             shuffle=True,
-            precip_daily_days_before=self.options.precip_daily_days_before,
+            precip_daily_days_nb=self.options.precip_daily_days_nb,
             precip_hf_time_step=self.options.precip_hf_time_step,
             precip_hf_days_before=self.options.precip_hf_days_before,
             precip_hf_days_after=self.options.precip_hf_days_after,
@@ -249,7 +249,7 @@ class ImpactTransformer(ImpactDl):
         p_start = max(p_hf_start, p_daily_start)
         p_end = min(p_hf_end, p_daily_end)
 
-        precip_days_before = max(self.options.precip_daily_days_before,
+        precip_days_before = max(self.options.precip_daily_days_nb,
                                  self.options.precip_hf_days_before)
         precip_days_after = self.options.precip_hf_days_after
 

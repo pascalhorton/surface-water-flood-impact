@@ -155,7 +155,7 @@ class Events:
         """
         return (self.events['target'] > 0).sum()
 
-    def reduce_number_of_negatives(self, nb_keep, random_state=42):
+    def reduce_number_of_negatives(self, nb_keep, random_state=None):
         """
         Reduce the number of events with target = 0.
 

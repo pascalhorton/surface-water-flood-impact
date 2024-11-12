@@ -104,6 +104,7 @@ class PrecipitationArchive(Precipitation):
         cids: list
             The list of cell IDs
         """
+        self.cid_time_series = None  # Necessary to reset the data !
         hash_tag = hashlib.md5(
             pickle.dumps(self.pickle_files) + pickle.dumps(cids)).hexdigest()
 
@@ -562,10 +563,15 @@ class PrecipitationArchive(Precipitation):
             The precipitation data for the temporal and spatial chunk
         """
         if self.cid_time_series is not None and cid is not None:
-            ts = self.cid_time_series.sel(
-                time=slice(t_start, t_end),
-                cid=cid
-            ).to_numpy()
+            try:
+                ts = self.cid_time_series.sel(
+                    time=slice(t_start, t_end),
+                    cid=cid
+                ).to_numpy()
+            except KeyError as e:
+                print(f"Error with CID {cid} and time {t_start} to {t_end}")
+                print(f"File: precip_{self.dataset_name.lower()}_all_cids_[hash].pickle")
+                print(e)
 
             # If the time series is 1D, add 2 dimensions
             if len(ts.shape) == 1:
@@ -642,6 +648,11 @@ class PrecipitationArchive(Precipitation):
             subset = self._fill_missing_values(subset)
             subset = self._resample(subset)
             subset = subset.compute()
+
+            # Check for duplicates
+            if len(subset['time'].values) != len(np.unique(subset['time'].values)):
+                raise ValueError(
+                    f"Duplicate timestamps found in subset for {t.year}-{t.month:02}")
 
             assert len(subset.dims) == 3, "Precipitation must be 3D"
 

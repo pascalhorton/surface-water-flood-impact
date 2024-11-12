@@ -28,10 +28,10 @@ class Impact:
         The target type. Options are: 'occurrence', 'damage_ratio'
     random_state: int|None
         The random state to use for the random number generator.
-        Default: 42. Set to None to not set the random seed.
+        Default: None. Set to None to not set the random seed.
     """
 
-    def __init__(self, events, target_type='occurrence', random_state=42):
+    def __init__(self, events, target_type='occurrence', random_state=None):
         self.df = events.events
         self.target_type = target_type
         self.model = None
@@ -175,9 +175,11 @@ class Impact:
         self.df = self.df[(self.df['nb_claims'] == 0) |
                           (self.df['nb_claims'] >= threshold)]
 
-    def split_sample(self, valid_test_size=0.5, test_size=0.5, stratify=True):
+    def split_sample(self, valid_test_size=0.5, test_size=0.5):
         """
-        Split the sample into training, validation and test sets.
+        Split the sample into training, validation and test sets. The split is
+        stratified on the target, i.e. the proportion of events with and without
+        damages will be approximately the same in each split.
 
         Parameters
         ----------
@@ -186,46 +188,60 @@ class Impact:
         test_size: float
             The size of the set for testing proportionally to the length of the
             validation and testing split (default: 0.6)
-        stratify: bool
-            Whether to stratify the split on the target (default: True). Only
-            available for the occurrence target type. If True, the proportion of
-            events with and without damages will be the same in each split.
-            It will be balanced by removing events without damages from the
-            corresponding split.
         """
-        # Sort the dataframe by date
-        self.df.sort_values(by=['e_end'], inplace=True)
-        x = self.df[self.features].to_numpy()
-        events = self.df[['target', 'e_end', 'date_claim', 'x', 'y', 'cid']].copy()
-        # Rename the column date_claim to date
-        events.rename(columns={'date_claim': 'date'}, inplace=True)
-        # Transform the dates to a date without time
-        events['e_end'] = pd.to_datetime(events['e_end']).dt.date
-        events['date'] = pd.to_datetime(events['date']).dt.date
+        df = self.df.copy()
 
+        # Rename the column date_claim to date
+        df.rename(columns={'date_claim': 'date'}, inplace=True)
+        # Transform the dates to a date without time
+        df['e_end'] = pd.to_datetime(df['e_end']).dt.date
+        df['date'] = pd.to_datetime(df['date']).dt.date
         # Fill NaN values with the event end date (as date, not datetime)
-        events['date'] = events['date'].fillna(events['e_end'])
-        events = events[['target', 'date', 'x', 'y', 'cid']].to_numpy()
+        df['date'] = df['date'].fillna(df['e_end'])
+
+        # Add a column to flag any claim (1 if there is a damage, 0 otherwise)
+        df['damage_class'] = (df['target'] > 0).astype(int)
 
         # Remove lines with NaN values
-        x_nan = np.argwhere(np.isnan(x))
+        x_nan = np.argwhere(np.isnan(df[self.features].to_numpy()))
         rows_with_nan = np.unique(x_nan[:, 0])
         if len(rows_with_nan) > 0:
             print(f"Removing {len(rows_with_nan)} rows with NaN values")
-            x = np.delete(x, rows_with_nan, axis=0)
-            events = np.delete(events, rows_with_nan, axis=0)
+            df = df.drop(rows_with_nan)
 
-        # Split the sample into training and test sets
-        # Do not shuffle to avoid having the same dates in train and test
-        # Stratification on the target (stratify=events[:, 0]) in order to have the
-        # same proportion of events with and without damages in each split is only
-        # possible when using the shuffle option.
-        self.x_train, x_tmp, self.y_train, y_tmp = train_test_split(
-            x, events, test_size=valid_test_size, random_state=self.random_state,
-            shuffle=False)
-        self.x_test, self.x_valid, self.y_test, self.y_valid = train_test_split(
-            x_tmp, y_tmp, test_size=test_size, random_state=self.random_state,
-            shuffle=False)
+        # Group all events by date and damage class to split by date without mixing.
+        date_label_df = df.groupby('date')['damage_class'].max().reset_index()
+
+        # Split by dates while stratifying on `damage_class`
+        train_dates, temp_dates = train_test_split(
+            date_label_df['date'],
+            test_size=valid_test_size,
+            stratify=date_label_df['damage_class'],
+            random_state=self.random_state,
+            shuffle=True
+        )
+        val_dates, test_dates = train_test_split(
+            temp_dates,
+            test_size=test_size,
+            stratify=date_label_df.loc[
+                date_label_df['date'].isin(temp_dates), 'damage_class'],
+            random_state=self.random_state,
+            shuffle=True
+        )
+
+        # Filter the original df to get train, validation, and test sets
+        train_df = df[df['date'].isin(train_dates)]
+        val_df = df[df['date'].isin(val_dates)]
+        test_df = df[df['date'].isin(test_dates)]
+
+        self.x_train = train_df[self.features].to_numpy()
+        self.x_valid = val_df[self.features].to_numpy()
+        self.x_test = test_df[self.features].to_numpy()
+
+        y_fields = ['target', 'date', 'x', 'y', 'cid']
+        self.y_train = train_df[y_fields].to_numpy()
+        self.y_valid = val_df[y_fields].to_numpy()
+        self.y_test = test_df[y_fields].to_numpy()
 
         # Set the event properties in a separate variable
         self.events_train = self.y_train[:, 1:5]
@@ -246,27 +262,6 @@ class Impact:
         self.y_valid = val_y_valid
         self.y_test = val_y_test
 
-        # Stratify the split on the target. Applied by removing events without
-        # damages from the corresponding split.
-        if stratify:
-            if self.target_type != 'occurrence':
-                raise NotImplemented("Stratification is only available for occurrence")
-
-            # Find the highest ratio of events with damages in the different splits
-            ratios = []
-            for y in [self.y_train, self.y_valid, self.y_test]:
-                n_damages = len(y[y > 0])
-                ratios.append(n_damages / len(y))
-            max_ratio = max(ratios)
-
-            # Remove events without damages from the training split
-            self.x_train, self.y_train, self.events_train = self._stratify_split(
-                self.x_train, self.y_train, self.events_train, max_ratio)
-            self.x_valid, self.y_valid, self.events_valid = self._stratify_split(
-                self.x_valid, self.y_valid, self.events_valid, max_ratio)
-            self.x_test, self.y_test, self.events_test = self._stratify_split(
-                self.x_test, self.y_test, self.events_test, max_ratio)
-
         # Print the percentage of events with and without damages
         self.show_target_stats()
         print(f"Theoretical split ratios: train={100 * (1 - valid_test_size):.1f}%, "
@@ -276,23 +271,6 @@ class Impact:
         print(f"Actual split ratios: train={100 * len(self.y_train) / y_len:.1f}%, "
               f"valid={100 * len(self.y_valid) / y_len:.1f}%, "
               f"test={100 * len(self.y_test) / y_len:.1f}%")
-
-    @staticmethod
-    def _stratify_split(x, y, events, max_ratio):
-        n_damages = len(y[y > 0])
-        ratio = n_damages / len(y)
-        if ratio < max_ratio:
-            n_to_remove = int(len(y) - n_damages / max_ratio)
-            ev_no_damages = y == 0
-            # Get the corresponding random indices
-            rows_to_remove = np.random.choice(
-                np.where(ev_no_damages)[0], n_to_remove,
-                replace=False)
-            print(f"Removing {len(rows_to_remove)} events without damages (stratify)")
-            x = np.delete(x, rows_to_remove, axis=0)
-            y = np.delete(y, rows_to_remove, axis=0)
-            events = np.delete(events, rows_to_remove, axis=0)
-        return x, y, events
 
     def normalize_features(self):
         """
