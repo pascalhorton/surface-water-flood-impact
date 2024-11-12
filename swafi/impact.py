@@ -28,10 +28,10 @@ class Impact:
         The target type. Options are: 'occurrence', 'damage_ratio'
     random_state: int|None
         The random state to use for the random number generator.
-        Default: 42. Set to None to not set the random seed.
+        Default: None. Set to None to not set the random seed.
     """
 
-    def __init__(self, events, target_type='occurrence', random_state=42):
+    def __init__(self, events, target_type='occurrence', random_state=None):
         self.df = events.events
         self.target_type = target_type
         self.model = None

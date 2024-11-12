@@ -37,7 +37,7 @@ class ImpactDlOptions:
         The weight denominator to reduce the negative class weights.
     random_state: int|None
         The random state to use for the random number generator.
-        Default: 42. Set to None to not set the random seed.
+        Default: None. Set to None to not set the random seed.
     use_precip: bool
         Whether to use precipitation data (CombiPrecip) or not.
     use_simple_features: bool
@@ -138,7 +138,7 @@ class ImpactDlOptions:
             '--weight-denominator', type=int, default=40,
             help='The weight denominator to reduce the negative class weights')
         self.parser.add_argument(
-            '--random-state', type=int, default=42,
+            '--random-state', type=int, default=None,
             help='The random state to use for the random number generator')
         self.parser.add_argument(
             '--do-not-use-precip', action='store_true',
