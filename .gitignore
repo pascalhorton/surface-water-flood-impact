@@ -134,3 +134,4 @@ config.yaml
 *.whl
 *.pdf
 *.png
+*.pickle

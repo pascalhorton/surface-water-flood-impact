@@ -104,6 +104,7 @@ class PrecipitationArchive(Precipitation):
         cids: list
             The list of cell IDs
         """
+        self.cid_time_series = None  # Necessary to reset the data !
         hash_tag = hashlib.md5(
             pickle.dumps(self.pickle_files) + pickle.dumps(cids)).hexdigest()
 
@@ -569,12 +570,8 @@ class PrecipitationArchive(Precipitation):
                 ).to_numpy()
             except KeyError as e:
                 print(f"Error with CID {cid} and time {t_start} to {t_end}")
-                print(f"File: {self.pickle_files[0]}")
+                print(f"File: precip_{self.dataset_name.lower()}_all_cids_[hash].pickle")
                 print(e)
-
-                if np.any(self.cid_time_series['time'].values != np.unique(
-                        self.cid_time_series['time'].values)):
-                    print("Duplicate timestamps found.")
 
             # If the time series is 1D, add 2 dimensions
             if len(ts.shape) == 1:
@@ -653,7 +650,7 @@ class PrecipitationArchive(Precipitation):
             subset = subset.compute()
 
             # Check for duplicates
-            if np.any(subset['time'].values != np.unique(subset['time'].values)):
+            if len(subset['time'].values) != len(np.unique(subset['time'].values)):
                 raise ValueError(
                     f"Duplicate timestamps found in subset for {t.year}-{t.month:02}")
 
