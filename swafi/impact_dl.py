@@ -104,7 +104,10 @@ class ImpactDl(Impact):
 
         # Clear session and set the seed
         keras.backend.clear_session()
-        keras.utils.set_random_seed(self.options.random_state)
+        if self.options.random_state is not None:
+            np.random.seed(self.options.random_state)
+            tf.random.set_seed(self.options.random_state)
+            keras.utils.set_random_seed(self.options.random_state)
 
         # Define the optimizer
         optimizer = self._define_optimizer(
