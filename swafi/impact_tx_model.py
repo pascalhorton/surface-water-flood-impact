@@ -88,6 +88,10 @@ class ModelTransformer(models.Model):
             x = layers.Concatenate(axis=1)([x_daily, x_high_freq, x_attributes])
 
         else:
+            embeddings_activation = self.options.embeddings_activation
+            if embeddings_activation == 'None':
+                embeddings_activation = None
+
             # Project and concatenate the precipitation inputs
             x_daily = self.project_to_model_dim(input_daily)
             x_high_freq = self.project_to_model_dim(input_high_freq)
@@ -98,7 +102,7 @@ class ModelTransformer(models.Model):
                 model_dim=self.options.tx_model_dim,
                 daily_prec_size=self.input_daily_prec_size,
                 high_freq_prec_size=self.input_high_freq_prec_size,
-                embeddings_activation=self.options.embeddings_activation,
+                embeddings_activation=embeddings_activation,
                 embeddings_2_layers=self.options.embeddings_2_layers
             )(x)
 
@@ -108,14 +112,14 @@ class ModelTransformer(models.Model):
                 x_attributes = layers.Dense(
                     self.options.tx_model_dim,
                     name=f'dense_proj_{int(1e4 * np.random.uniform())}',
-                    activation=self.options.embeddings_activation
+                    activation=embeddings_activation
                 )(input_attributes)
 
                 if self.options.embeddings_2_layers:
                     x_attributes = layers.Dense(
                         self.options.tx_model_dim,
                         name=f'dense_proj_{int(1e4 * np.random.uniform())}',
-                        activation=self.options.embeddings_activation
+                        activation=embeddings_activation
                     )(x_attributes)
 
                 x_attributes = keras.ops.expand_dims(x_attributes, axis=1)
@@ -169,17 +173,21 @@ class ModelTransformer(models.Model):
         -------
         The output tensor.
         """
+        embeddings_activation = self.options.embeddings_activation
+        if embeddings_activation == 'None':
+            embeddings_activation = None
+
         x = layers.Dense(
             self.options.tx_model_dim,
             name=f'dense_proj_{int(1e4 * np.random.uniform())}',
-            activation=self.options.embeddings_activation
+            activation=embeddings_activation
         )(inputs)
 
         if self.options.embeddings_2_layers:
             x = layers.Dense(
                 self.options.tx_model_dim,
                 name=f'dense_proj_{int(1e4 * np.random.uniform())}',
-                activation=self.options.embeddings_activation
+                activation=embeddings_activation
             )(x)
 
         return x

@@ -248,10 +248,10 @@ class ImpactDlOptions:
 
         if 'batch_size' in hp_to_optimize:
             self.batch_size = trial.suggest_categorical(
-                'batch_size', [16, 32, 64, 128, 256, 512])
+                'batch_size', [16, 32, 64, 128, 256])
         if 'learning_rate' in hp_to_optimize:
             self.learning_rate = trial.suggest_float(
-                'learning_rate', 5e-4, 5e-3, log=True)
+                'learning_rate', 5e-4, 3e-3, log=True)
         if 'dropout_rate_dense' in hp_to_optimize:
             self.dropout_rate_dense = trial.suggest_float(
                 'dropout_rate_dense', 0.2, 0.5)
@@ -270,8 +270,8 @@ class ImpactDlOptions:
         if 'inner_activation_dense' in hp_to_optimize:
             self.inner_activation_dense = trial.suggest_categorical(
                 'inner_activation_dense',
-                ['relu', 'tanh', 'sigmoid', 'silu', 'elu', 'selu', 'leaky_relu',
-                 'linear', 'gelu', 'hard_sigmoid', 'hard_silu', 'softplus'])
+                ['relu', 'silu', 'elu', 'selu', 'leaky_relu',
+                 'linear', 'gelu', 'softplus'])
 
         return True
 

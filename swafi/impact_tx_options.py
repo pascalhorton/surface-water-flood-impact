@@ -200,7 +200,9 @@ class ImpactTransformerOptions(ImpactDlOptions):
                 "embeddings_2_layers", [True, False])
         if 'embeddings_activation' in hp_to_optimize:
             self.embeddings_activation = trial.suggest_categorical(
-                "embeddings_activation", ["relu", None])
+                "embeddings_activation",
+                ['relu', 'silu', 'elu', 'selu', 'leaky_relu',
+                 'linear', 'gelu', 'softplus', 'None'])
         if 'nb_transformer_blocks' in hp_to_optimize:
             self.nb_transformer_blocks = trial.suggest_int(
                 "nb_transformer_blocks", 1, 4)
@@ -209,7 +211,7 @@ class ImpactTransformerOptions(ImpactDlOptions):
                 "tx_model_dim", [64, 128, 256, 512, 1024])
         if 'num_heads' in hp_to_optimize:
             self.num_heads = trial.suggest_categorical(
-                "num_heads", [1, 2, 4, 8])
+                "num_heads", [4, 8, 16])
         if 'ff_dim' in hp_to_optimize:
             self.ff_dim = trial.suggest_categorical(
                 "ff_dim", [16, 32, 64, 128])
