@@ -176,7 +176,7 @@ class ImpactDlOptions:
             '--learning-rate', type=float, default=0.001,
             help='The learning rate')
         self.parser.add_argument(
-            '--dropout-rate-dense', type=float, default=0.2,
+            '--dropout-rate-dense', type=float, default=0.4,
             help='The dropout rate for the dense layers')
         self.parser.add_argument(
             '--no-batchnorm-dense', action='store_true',

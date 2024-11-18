@@ -100,7 +100,7 @@ class ImpactDl(Impact):
 
         # Early stopping
         callback = keras.callbacks.EarlyStopping(
-            monitor='val_loss', patience=30, restore_best_weights=True)
+            monitor='val_loss', patience=20, restore_best_weights=True)
 
         # Clear session and set the seed
         keras.backend.clear_session()
