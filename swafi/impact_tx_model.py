@@ -98,6 +98,7 @@ class ModelTransformer(models.Model):
 
             # Project the attributes input into the model dimension
             x_attributes = self.project_to_model_dim(input_attributes)
+            x_attributes = keras.ops.expand_dims(x_attributes, axis=1)
 
             # Combine time series and static attributes into a single sequence
             x = layers.Concatenate(axis=1)([x, x_attributes])
