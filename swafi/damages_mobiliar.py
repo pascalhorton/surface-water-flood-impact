@@ -141,6 +141,8 @@ class DamagesMobiliar(Damages):
             types = [types]
 
         for cat_type in types:
+            if cat_type.lower() == 'all':
+                continue
             if cat_type.lower() == 'external':
                 columns = [i for i in columns if 'ext' in i]
                 continue
@@ -186,7 +188,9 @@ class DamagesMobiliar(Damages):
             types = [types]
 
         for cat_type in types:
-            if cat_type.lower() == 'external':
+            if cat_type.lower() == 'all':
+                continue
+            elif cat_type.lower() == 'external':
                 columns = [i for i in columns if 'ext' in i]
                 continue
             elif cat_type.lower() == 'internal':
