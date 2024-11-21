@@ -61,6 +61,8 @@ class Damages:
 
         self.claim_categories = []
         self.exposure_categories = []
+        self.selected_claim_categories = []
+        self.selected_exposure_categories = []
 
     def load_from_pickle(self, filename):
         """

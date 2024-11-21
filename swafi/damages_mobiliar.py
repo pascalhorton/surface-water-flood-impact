@@ -57,12 +57,6 @@ class DamagesMobiliar(Damages):
             'priv_int_cont',  # Private, internal, content
             'priv_int_struc']  # Private, internal, structure
 
-        self.selected_exposure_categories = [
-            'sme_ext_cont',
-            'sme_ext_struc',
-            'priv_ext_cont',
-            'priv_ext_struc']
-
         self.exposure_tags = [
             'KMU_ES_FH',
             'KMU_ES_GB',
@@ -86,12 +80,6 @@ class DamagesMobiliar(Damages):
             'priv_ext_struc_fluv',  # Private, external, structure, fluvial
             'priv_int_cont',  # Private, internal, content
             'priv_int_struc']  # Private, internal, structure
-
-        self.selected_claim_categories = [
-            'sme_ext_cont_pluv',
-            'sme_ext_struc_pluv',
-            'priv_ext_cont_pluv',
-            'priv_ext_struc_pluv']
 
         self.claim_tags = [
             'Ueberschwemmung_pluvial_KMU_FH',

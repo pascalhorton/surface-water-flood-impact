@@ -51,19 +51,12 @@ class DamagesGvz(Damages):
         self.exposure_categories = [
             'all_buildings']
 
-        self.selected_exposure_categories = [
-            'all_buildings']
-
         self.claim_categories = [
             'A',  # most likely surface flood
             'B',
             'C',
             'D',
             'E']  # most likely fluvial flood
-
-        self.selected_claim_categories = [
-            'A',
-            'B']
 
         self._create_exposure_claims_df()
         self._load_from_dump('damages_gvz.pickle')
