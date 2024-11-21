@@ -50,11 +50,17 @@ else:
 
 def main():
     # Compute the claims and events link
-    damages = get_damages_linked_to_events()
+    damages, events_to_remove = get_damages_linked_to_events()
 
     # Check that the damage categories are the same
-    assert damages.claim_categories_are_for_type(CLAIM_CATEGORIES)
-    assert damages.exposure_categories_are_for_type(EXPOSURE_CATEGORIES)
+    if not damages.claim_categories_are_for_type(CLAIM_CATEGORIES):
+        print("Error: the claim categories are not the same as the ones used for the "
+              "events extraction.")
+        return
+    if not damages.exposure_categories_are_for_type(EXPOSURE_CATEGORIES):
+        print("Error: the exposure categories are not the same as the ones used for the "
+              "events extraction.")
+        return
 
     # Set the target variable value (occurrence or ratio)
     damages.set_target_variable_value(mode=TARGET_TYPE)
@@ -64,6 +70,7 @@ def main():
     events.load_events_and_select_those_with_contracts(EVENTS_PATH, damages, DATASET)
     events.set_target_values_from_damages(damages)
     events.set_contracts_number(damages)
+    events.remove_events(events_to_remove)
 
     # Save the events with target values to a pickle file
     filename = f'events_{DATASET}_with_target_values_{LABEL_RESULTING_FILE}'
@@ -112,10 +119,10 @@ def get_damages_linked_to_events():
     events = Events()
     events.load_events_and_select_those_with_contracts(EVENTS_PATH, damages, DATASET)
 
-    damages.link_with_events(events, criteria=CRITERIA, filename=filename,
-                             window_days=WINDOW_DAYS)
+    events_to_remove = damages.link_with_events(
+        events, criteria=CRITERIA, filename=filename, window_days=WINDOW_DAYS)
 
-    return damages
+    return damages, events_to_remove
 
 
 if __name__ == '__main__':

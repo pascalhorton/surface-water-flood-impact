@@ -207,6 +207,7 @@ class Damages:
             Options are dependent on the dataset.
         """
         columns_exposure = self.get_exposure_categories_from_type(exposure_types)
+        self.selected_exposure_categories = columns_exposure
         columns_claims = self.get_claim_categories_from_type(claim_types)
         self.exposure['selection'] = self.exposure[columns_exposure].sum(axis=1)
         self._apply_claim_categories_selection(columns_claims)
@@ -262,6 +263,10 @@ class Damages:
             Default to [5, 3, 1]
         filename: str
             File name to save the results (pickle format)
+
+        Returns
+        -------
+        The list of events to remove from the events dataframe
         """
         if window_days is None:
             window_days = [5, 3, 1]
@@ -273,6 +278,8 @@ class Damages:
         self._add_event_matching_fields(events, window_days, criteria)
         stats = dict(none=0, single=0, two=0, three=0, multiple=0,
                      conflicts=0, unresolved=0)
+
+        events_to_remove = []
 
         for i_claim in tqdm(range(len(self.claims)), desc=f"Matching claims / events"):
             claim = self.claims.iloc[i_claim]
@@ -291,9 +298,21 @@ class Damages:
             best_matches = self._get_best_candidate(pot_events, window_days, stats)
             self._record_best_event(best_matches, i_claim)
 
+            # Remove the events that have been matched
+            if len(pot_events) > 1:
+                ev_to_remove = pot_events.eid.tolist()
+                best_eid = best_matches.eid.tolist()[0]
+                ev_to_remove.remove(best_eid)
+                events_to_remove.extend(ev_to_remove)
+
+        # Check again that the events to remove were not selected in the claims
+        events_to_remove = [ev for ev in events_to_remove if ev not in self.claims.eid.tolist()]
+
         self._print_matches_stats(stats)
         self._remove_claims_with_no_event()
         self._dump_object(filename)
+
+        return events_to_remove
 
     def merge_with_events(self, events):
         """

@@ -145,6 +145,17 @@ class Events:
             (self.events['e_end'] > end_date)
             ]
 
+    def remove_events(self, events_to_remove):
+        """
+        Remove specific events from the events dataframe.
+
+        Parameters
+        ----------
+        events_to_remove: list
+            A list of event IDs to remove.
+        """
+        self.events = self.events[~self.events['eid'].isin(events_to_remove)]
+
     def count_positives(self):
         """
         Count the number of positive events.
