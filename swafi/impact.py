@@ -56,6 +56,7 @@ class Impact:
         self.random_state = random_state
 
         # Initialize the data properties
+        self.use_all_tabular_features = True
         self._define_potential_features()
 
     def select_features(self, features):
@@ -418,20 +419,93 @@ class Impact:
         return tmp_filename
 
     def _define_potential_features(self):
-        self.tabular_features = {
-            'event': ['i_max_q', 'p_sum_q', 'e_tot', 'i_mean_q', 'apireg_q',
-                      'nb_contracts'],
-            'terrain': ['dem_010m_curv_plan_std', 'dem_010m_slope_min',
-                        'dem_010m_curv_plan_mean', 'dem_010m_slope_median'],
-            'swf_map': ['area_low', 'area_med', 'area_high',
-                        'n_buildings', 'n_buildings_high'],
-            'flowacc': ['dem_025m_flowacc_norivers_max',
-                        'dem_010m_flowacc_norivers_max',
-                        'dem_050m_flowacc_norivers_max',
-                        'dem_100m_flowacc_norivers_max',
-                        'dem_010m_flowacc_norivers_median'],
-            'twi': ['dem_010m_twi_max', 'dem_050m_twi_max'],
-            'land_cover': ['land_cover_cat_7', 'land_cover_cat_11',
-                           'land_cover_cat_12'],
-            'runoff_coeff': ['runoff_coeff_mean']
-        }
+        if self.use_all_tabular_features:
+            self.tabular_features = {
+                'event': ['i_max_q', 'p_sum_q', 'e_tot', 'i_mean_q', 'apireg_q',
+                          'nb_contracts'],
+                'terrain': ['dem_010m_curv_plan_min', 'dem_010m_curv_plan_max',
+                            'dem_010m_curv_plan_mean', 'dem_010m_curv_plan_std',
+                            'dem_010m_curv_plan_median', 'dem_010m_curv_prof_min',
+                            'dem_010m_curv_prof_max', 'dem_010m_curv_prof_mean',
+                            'dem_010m_curv_prof_std', 'dem_010m_curv_prof_median',
+                            'dem_010m_curv_tot_min', 'dem_010m_curv_tot_max',
+                            'dem_010m_curv_tot_mean', 'dem_010m_curv_tot_std',
+                            'dem_010m_curv_tot_median', 'dem_010m_slope_min',
+                            'dem_010m_slope_max', 'dem_010m_slope_mean',
+                            'dem_010m_slope_std', 'dem_010m_slope_median',
+                            'dem_025m_curv_plan_min', 'dem_025m_curv_plan_max',
+                            'dem_025m_curv_plan_mean', 'dem_025m_curv_plan_std',
+                            'dem_025m_curv_plan_median', 'dem_025m_curv_prof_min',
+                            'dem_025m_curv_prof_max', 'dem_025m_curv_prof_mean',
+                            'dem_025m_curv_prof_std', 'dem_025m_curv_prof_median',
+                            'dem_025m_curv_tot_min', 'dem_025m_curv_tot_max',
+                            'dem_025m_curv_tot_mean', 'dem_025m_curv_tot_std',
+                            'dem_025m_curv_tot_median', 'dem_025m_slope_min',
+                            'dem_025m_slope_max', 'dem_025m_slope_mean',
+                            'dem_025m_slope_std', 'dem_025m_slope_median',
+                            'dem_050m_curv_plan_min', 'dem_050m_curv_plan_max',
+                            'dem_050m_curv_plan_mean', 'dem_050m_curv_plan_std',
+                            'dem_050m_curv_plan_median', 'dem_050m_curv_prof_min',
+                            'dem_050m_curv_prof_max', 'dem_050m_curv_prof_mean',
+                            'dem_050m_curv_prof_std', 'dem_050m_curv_prof_median',
+                            'dem_050m_curv_tot_min', 'dem_050m_curv_tot_max',
+                            'dem_050m_curv_tot_mean', 'dem_050m_curv_tot_std',
+                            'dem_050m_curv_tot_median', 'dem_050m_slope_min',
+                            'dem_050m_slope_max', 'dem_050m_slope_mean',
+                            'dem_050m_slope_std', 'dem_050m_slope_median',
+                            'dem_100m_curv_plan_min', 'dem_100m_curv_plan_max',
+                            'dem_100m_curv_plan_mean', 'dem_100m_curv_plan_std',
+                            'dem_100m_curv_plan_median', 'dem_100m_curv_prof_min',
+                            'dem_100m_curv_prof_max', 'dem_100m_curv_prof_mean',
+                            'dem_100m_curv_prof_std', 'dem_100m_curv_prof_median',
+                            'dem_100m_curv_tot_min', 'dem_100m_curv_tot_max',
+                            'dem_100m_curv_tot_mean', 'dem_100m_curv_tot_std',
+                            'dem_100m_curv_tot_median', 'dem_100m_slope_min',
+                            'dem_100m_slope_max', 'dem_100m_slope_mean',
+                            'dem_100m_slope_std', 'dem_100m_slope_median',
+                            'dem_250m_curv_plan_min', 'dem_250m_curv_plan_max',
+                            'dem_250m_curv_plan_mean', 'dem_250m_curv_plan_std',
+                            'dem_250m_curv_plan_median', 'dem_250m_curv_prof_min',
+                            'dem_250m_curv_prof_max', 'dem_250m_curv_prof_mean',
+                            'dem_250m_curv_prof_std', 'dem_250m_curv_prof_median',
+                            'dem_250m_curv_tot_min', 'dem_250m_curv_tot_max',
+                            'dem_250m_curv_tot_mean', 'dem_250m_curv_tot_std',
+                            'dem_250m_curv_tot_median', 'dem_250m_slope_min',
+                            'dem_250m_slope_max', 'dem_250m_slope_mean',
+                            'dem_250m_slope_std', 'dem_250m_slope_median'],
+                'swf_map': ['area_low', 'area_med', 'area_high', 'area_exposed',
+                            'n_buildings_low', 'n_buildings_med', 'n_buildings_high',
+                            'n_buildings_exposed'],
+                'flowacc': ['dem_010m_flowacc_max', 'dem_010m_flowacc_mean',
+                            'dem_010m_flowacc_std', 'dem_010m_flowacc_median',
+                            'dem_025m_flowacc_max', 'dem_025m_flowacc_mean',
+                            'dem_025m_flowacc_std', 'dem_025m_flowacc_median',
+                            'dem_050m_flowacc_max', 'dem_050m_flowacc_mean',
+                            'dem_050m_flowacc_std', 'dem_050m_flowacc_median',
+                            'dem_100m_flowacc_max', 'dem_100m_flowacc_mean',
+                            'dem_100m_flowacc_std', 'dem_100m_flowacc_median',
+                            'dem_250m_flowacc_max', 'dem_250m_flowacc_mean',
+                            'dem_250m_flowacc_std', 'dem_250m_flowacc_median'],
+                'twi': ['dem_010m_twi_max', 'dem_010m_twi_mean',
+                        'dem_010m_twi_std', 'dem_010m_twi_median'],
+                'land_cover': ['land_cover_cat_7', 'land_cover_cat_11',
+                               'land_cover_cat_12']
+            }
+        else:
+            self.tabular_features = {
+                'event': ['i_max_q', 'p_sum_q', 'e_tot', 'i_mean_q', 'apireg_q',
+                          'nb_contracts'],
+                'terrain': ['dem_010m_curv_plan_std', 'dem_010m_slope_min',
+                            'dem_010m_curv_plan_mean', 'dem_010m_slope_median'],
+                'swf_map': ['area_low', 'area_med', 'area_high',
+                            'n_buildings', 'n_buildings_high'],
+                'flowacc': ['dem_025m_flowacc_norivers_max',
+                            'dem_010m_flowacc_norivers_max',
+                            'dem_050m_flowacc_norivers_max',
+                            'dem_100m_flowacc_norivers_max',
+                            'dem_010m_flowacc_norivers_median'],
+                'twi': ['dem_010m_twi_max', 'dem_050m_twi_max'],
+                'land_cover': ['land_cover_cat_7', 'land_cover_cat_11',
+                               'land_cover_cat_12'],
+                'runoff_coeff': ['runoff_coeff_mean']
+            }
