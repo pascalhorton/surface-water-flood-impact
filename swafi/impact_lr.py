@@ -27,5 +27,5 @@ class ImpactLogisticRegression(Impact):
         """
         Train the model.
         """
-        self.model = LogisticRegression(class_weight=self.class_weight)
+        self.model = LogisticRegression(class_weight=self.class_weight, max_iter=1000)
         self.model.fit(self.x_train, self.y_train)
