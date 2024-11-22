@@ -133,11 +133,13 @@ class Impact:
         # Create unique hash for the data dataframe
         tmp_filename = self._create_data_tmp_file_name(feature_files)
 
-        if tmp_filename.exists():
-            print(f"Loading data from {tmp_filename}")
-            self.df = pd.read_pickle(tmp_filename)
-
-        else:
+        try:
+            if tmp_filename.exists():
+                print(f"Loading data from {tmp_filename}")
+                self.df = pd.read_pickle(tmp_filename)
+            else:
+                raise FileNotFoundError
+        except (pickle.UnpicklingError, FileNotFoundError):
             print(f"Creating dataframe and saving to {tmp_filename}")
             for f in feature_files:
                 df_features = pd.read_csv(f)
