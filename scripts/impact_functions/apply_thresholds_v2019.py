@@ -29,11 +29,11 @@ def main():
 
     print(f"Threshold 2019 method (union):")
     thr.set_thresholds(thr_i_max=0.9, thr_p_sum=0.98, method='union')
-    thr.assess_model_on_all_periods()
+    thr.assess_model_on_all_periods(save_results=True, file_tag='thr2019_union')
 
     print(f"Threshold 2019 method (intersection):")
     thr.set_thresholds(thr_i_max=0.9, thr_p_sum=0.98, method='intersection')
-    thr.assess_model_on_all_periods()
+    thr.assess_model_on_all_periods(save_results=True, file_tag='thr2019_intersect')
 
 
 if __name__ == '__main__':
