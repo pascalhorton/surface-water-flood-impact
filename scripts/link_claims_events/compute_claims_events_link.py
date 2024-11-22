@@ -27,7 +27,7 @@ EVENTS_PATH = CONFIG.get('EVENTS_PATH')
 TARGET_TYPE = 'occurrence'  # 'occurrence' or 'damage_ratio'
 LABEL_RESULTING_FILE = 'original_w_prior_pluvial_' + TARGET_TYPE
 SAVE_AS_CSV = False
-WITH_INTERNAL_DAMAGES = False
+WITH_INTERNAL_DAMAGES = True
 
 DATASET = 'mobiliar'  # 'mobiliar' or 'gvz'
 
@@ -75,7 +75,11 @@ def main():
     events.load_events_and_select_those_with_contracts(EVENTS_PATH, damages, DATASET)
     events.set_target_values_from_damages(damages)
     events.set_contracts_number(damages)
-    events.remove_events(events_to_remove)
+    if events_to_remove is not None:
+        events.remove_events(events_to_remove)
+    else:
+        print("Warning: no events to remove because the damages where loaded from pickle files.")
+    events.remove_events_without_contracts()
 
     # Save the events with target values to a pickle file
     filename = f'events_{DATASET}_with_target_values_{LABEL_RESULTING_FILE}'
@@ -103,7 +107,7 @@ def get_damages_linked_to_events():
                                  year_end=CONFIG.get('YEAR_END'))
         else:
             raise ValueError(f"Unknown damage dataset: {DATASET}")
-        return damages
+        return damages, None
 
     print(f"Computing link for {CRITERIA}")
     if DATASET == 'mobiliar':
