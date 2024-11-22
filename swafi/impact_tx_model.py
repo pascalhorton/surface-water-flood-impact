@@ -148,14 +148,14 @@ class ModelTransformer(models.Model):
             if single_attributes_vector:
                 x_attributes = layers.Dense(
                     self.options.tx_model_dim,
-                    name=f'dense_proj_{int(1e4 * np.random.uniform())}',
+                    name=f'dense_proj_{int(1e6 * np.random.uniform())}',
                     activation=embeddings_activation
                 )(input_attributes)
 
                 if self.options.embeddings_2_layers:
                     x_attributes = layers.Dense(
                         self.options.tx_model_dim,
-                        name=f'dense_proj_{int(1e4 * np.random.uniform())}',
+                        name=f'dense_proj_{int(1e6 * np.random.uniform())}',
                         activation=embeddings_activation
                     )(x_attributes)
 
@@ -248,14 +248,14 @@ class ModelTransformer(models.Model):
 
         x = layers.Dense(
             self.options.tx_model_dim,
-            name=f'dense_proj_{int(1e4 * np.random.uniform())}',
+            name=f'dense_proj_{int(1e6 * np.random.uniform())}',
             activation=embeddings_activation
         )(inputs)
 
         if self.options.embeddings_2_layers:
             x = layers.Dense(
                 self.options.tx_model_dim,
-                name=f'dense_proj_{int(1e4 * np.random.uniform())}',
+                name=f'dense_proj_{int(1e6 * np.random.uniform())}',
                 activation=embeddings_activation
             )(x)
 
@@ -306,11 +306,11 @@ class ModelTransformer(models.Model):
             x = layers.Dense(
                 self.options.ff_dim,
                 activation=self.options.inner_activation_tx,
-                name=f'dense_tx_{int(1e4 * np.random.uniform())}'
+                name=f'dense_tx_{int(1e6 * np.random.uniform())}'
             )(x)
             x = layers.Dense(
                 self.options.tx_model_dim,
-                name=f'dense_tx_{int(1e4 * np.random.uniform())}'
+                name=f'dense_tx_{int(1e6 * np.random.uniform())}'
             )(x)
             x = layers.Dropout(self.options.dropout_rate)(x)
 
@@ -404,14 +404,14 @@ class AddLearnedPositionalEmbedding(layers.Layer):
         """
         x = layers.Dense(
             self.model_dim,
-            name=f'dense_proj_{int(1e4 * np.random.uniform())}',
+            name=f'dense_proj_{int(1e6 * np.random.uniform())}',
             activation=self.embeddings_activation
         )(inputs)
 
         if self.embeddings_2_layers:
             x = layers.Dense(
                 self.model_dim,
-                name=f'dense_proj_{int(1e4 * np.random.uniform())}',
+                name=f'dense_proj_{int(1e6 * np.random.uniform())}',
                 activation=self.embeddings_activation
             )(x)
 
