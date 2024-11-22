@@ -1,7 +1,6 @@
 """
 Class to compute the impact function.
 """
-
 from .config import Config
 
 import pickle
@@ -139,7 +138,7 @@ class Impact:
                 self.df = pd.read_pickle(tmp_filename)
             else:
                 raise FileNotFoundError
-        except (pickle.UnpicklingError, FileNotFoundError):
+        except (pickle.UnpicklingError, FileNotFoundError, EOFError, Exception):
             print(f"Creating dataframe and saving to {tmp_filename}")
             for f in feature_files:
                 df_features = pd.read_csv(f)
