@@ -160,12 +160,7 @@ class Events:
         """
         Remove events without contracts.
         """
-        # Remove lines with NaN values
-        x_nan = np.argwhere(np.isnan(self.events['nb_contracts'].to_numpy()))
-        rows_with_nan = np.unique(x_nan[:, 0])
-        if len(rows_with_nan) > 0:
-            print(f"Removing {len(rows_with_nan)} rows with contracts nb = NaN.")
-            self.events = self.events.drop(rows_with_nan)
+        self.events.dropna(subset=['nb_contracts'], inplace=True)
 
     def count_positives(self):
         """

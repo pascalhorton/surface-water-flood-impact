@@ -205,11 +205,10 @@ class Impact:
         df['damage_class'] = (df['target'] > 0).astype(int)
 
         # Remove lines with NaN values
-        x_nan = np.argwhere(np.isnan(df[self.features].to_numpy()))
-        rows_with_nan = np.unique(x_nan[:, 0])
-        if len(rows_with_nan) > 0:
-            print(f"Removing {len(rows_with_nan)} rows with NaN values")
-            df = df.drop(rows_with_nan)
+        len_before = len(df)
+        df.dropna(subset=self.features, inplace=True)
+        len_after = len(df)
+        print(f"Number of NaN values removed: {len_before - len_after}")
 
         # Group all events by date and damage class to split by date without mixing.
         date_label_df = df.groupby('date')['damage_class'].max().reset_index()
