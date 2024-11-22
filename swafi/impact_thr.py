@@ -2,9 +2,11 @@
 Class to compute the impact function.
 """
 import numpy as np
+import pandas as pd
 
 from .impact import Impact
-from .utils.verification import compute_confusion_matrix, print_classic_scores
+from .utils.verification import compute_confusion_matrix, print_classic_scores, \
+    store_classic_scores, assess_roc_auc
 
 
 class ImpactThresholds(Impact):
@@ -37,7 +39,7 @@ class ImpactThresholds(Impact):
         self.thr_p_sum = thr_p_sum
         self.method = method
 
-    def _assess_model(self, x, y, period_name):
+    def _assess_model(self, x, y, period_name, df_res):
         """
         Assess the model on a single period.
         """
@@ -51,7 +53,20 @@ class ImpactThresholds(Impact):
 
         print(f"\nSplit: {period_name}")
 
+        df_tmp = pd.DataFrame(columns=df_res.columns)
+        df_tmp['split'] = [period_name]
+
         # Compute the scores
-        tp, tn, fp, fn = compute_confusion_matrix(y, y_pred)
-        print_classic_scores(tp, tn, fp, fn)
-        print(f"\n----------------------------------------")
+        if self.target_type == 'occurrence':
+            tp, tn, fp, fn = compute_confusion_matrix(y, y_pred)
+            print_classic_scores(tp, tn, fp, fn)
+            store_classic_scores(tp, tn, fp, fn, df_tmp)
+        else:
+            rmse = np.sqrt(np.mean((y - y_pred) ** 2))
+            print(f"RMSE: {rmse}")
+            df_tmp['RMSE'] = [rmse]
+        print(f"----------------------------------------")
+
+        df_res = pd.concat([df_res, df_tmp])
+
+        return df_res

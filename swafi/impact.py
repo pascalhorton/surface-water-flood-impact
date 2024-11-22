@@ -12,7 +12,7 @@ from pathlib import Path
 from sklearn.model_selection import train_test_split
 
 from .utils.verification import compute_confusion_matrix, print_classic_scores, \
-    assess_roc_auc, compute_score_binary
+    assess_roc_auc, compute_score_binary, store_classic_scores
 
 
 class Impact:
@@ -366,15 +366,30 @@ class Impact:
 
         self.model = BenchmarkModel(model_type, self.target_type)
 
-    def assess_model_on_all_periods(self):
+    def assess_model_on_all_periods(self, save_results=False, file_tag=''):
         """
         Assess the model on all periods.
-        """
-        self._assess_model(self.x_train, self.y_train, 'Train period')
-        self._assess_model(self.x_valid, self.y_valid, 'Validation period')
-        self._assess_model(self.x_test, self.y_test, 'Test period')
 
-    def _assess_model(self, x, y, period_name):
+        Parameters
+        ----------
+        save_results: bool
+            Save the results to a file.
+        file_tag: str
+            The tag to add to the file name.
+        """
+        df_res = pd.DataFrame(columns=['split'])
+        df_res = self._assess_model(self.x_train, self.y_train, 'train', df_res)
+        df_res = self._assess_model(self.x_valid, self.y_valid, 'valid', df_res)
+        df_res = self._assess_model(self.x_test, self.y_test, 'test', df_res)
+
+        if save_results:
+            output_dir = self.config.output_dir
+            date_tag = pd.Timestamp.now().strftime('%Y-%m-%d_%H%M%S')
+            file_name = f'{output_dir}/results_{file_tag}_{date_tag}.csv'
+            df_res.to_csv(file_name, index=False)
+            print(f"Results saved to {file_name}")
+
+    def _assess_model(self, x, y, period_name, df_res):
         """
         Assess the model on a single period.
         """
@@ -385,16 +400,26 @@ class Impact:
 
         print(f"\nSplit: {period_name}")
 
+        df_tmp = pd.DataFrame(columns=df_res.columns)
+        df_tmp['split'] = [period_name]
+
         # Compute the scores
         if self.target_type == 'occurrence':
             tp, tn, fp, fn = compute_confusion_matrix(y, y_pred)
             print_classic_scores(tp, tn, fp, fn)
+            store_classic_scores(tp, tn, fp, fn, df_tmp)
             y_pred_prob = self.model.predict_proba(x)
-            assess_roc_auc(y, y_pred_prob[:, 1])
+            roc = assess_roc_auc(y, y_pred_prob[:, 1])
+            df_tmp['ROC_AUC'] = [roc]
         else:
             rmse = np.sqrt(np.mean((y - y_pred) ** 2))
             print(f"RMSE: {rmse}")
+            df_tmp['RMSE'] = [rmse]
         print(f"----------------------------------------")
+
+        df_res = pd.concat([df_res, df_tmp])
+
+        return df_res
 
     def _create_data_tmp_file_name(self, feature_files):
         """
