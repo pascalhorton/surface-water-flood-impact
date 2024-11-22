@@ -177,7 +177,7 @@ class Impact:
         self.df = self.df[(self.df['nb_claims'] == 0) |
                           (self.df['nb_claims'] >= threshold)]
 
-    def split_sample(self, valid_test_size=0.4, test_size=0.3):
+    def split_sample(self, valid_test_size=0.4, test_size=0.25):
         """
         Split the sample into training, validation and test sets. The split is
         stratified on the target, i.e. the proportion of events with and without
@@ -189,7 +189,7 @@ class Impact:
             The size of the set for validation and testing (default: 0.4)
         test_size: float
             The size of the set for testing proportionally to the length of the
-            validation and testing split (default: 0.3)
+            validation and testing split (default: 0.25)
         """
         df = self.df.copy()
 
