@@ -8,6 +8,7 @@ import gc
 import numpy as np
 import pandas as pd
 import xarray as xr
+import dask.array as da
 from tqdm import tqdm
 
 from .config import Config
@@ -47,7 +48,7 @@ class PrecipitationArchive(Precipitation):
     def prepare_data(self):
         raise NotImplementedError("This method must be implemented in the child class.")
 
-    def get_time_series(self, cid, start, end, size=1):
+    def get_time_series(self, cid, start, end, size=1, as_xr=False):
         """
         Extract the precipitation time series for the given cell ID and the given
         period (between start and end).
@@ -62,6 +63,8 @@ class PrecipitationArchive(Precipitation):
             The end of the period to extract
         size: int
             The number of pixels to average on (default: 1x1)
+        as_xr: bool
+            Return as xarray dataset (default: False)
 
         Returns
         -------
@@ -79,16 +82,24 @@ class PrecipitationArchive(Precipitation):
             try:
                 with open(f, 'rb') as file:
                     data = pickle.load(file)
+                    data = data.chunk({'time': -1, self.x_axis: 'auto',
+                                       self.y_axis: 'auto'})  # Chunk the data
                     dat = data.sel(
                         {self.x_axis: slice(x - dx * dpx, x + dx * dpx),
                          self.y_axis: slice(y + dy * dpx, y - dy * dpx)
-                         })
+                         }).compute()  # Compute only the selected data
+
                     ts.append(dat)
+                    del data
+                    gc.collect()
             except EOFError:
                 raise EOFError(f"Error: {f} is empty or corrupted.")
 
         ts = xr.concat(ts, dim=self.time_axis)
         ts = ts.sel({self.time_axis: slice(start, end)})
+
+        if as_xr:
+            return ts
 
         if size == 1:
             return ts[self.precip_var].to_numpy()
