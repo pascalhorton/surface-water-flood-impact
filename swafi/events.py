@@ -4,6 +4,7 @@ Class to handle the events.
 
 import pickle
 from pathlib import Path
+from tqdm import tqdm
 
 import numpy as np
 import pandas as pd
@@ -144,20 +145,24 @@ class Events:
         -------
         The events for the removed claims.
         """
-        events_to_remove = []
+        print("Extracting events for the removed claims.")
+
+        cids = removed_claims['cid'].unique()
+
+        # Select the event cids for the removed claims
+        events = self.events.copy()
+        events = events[events['cid'].isin(cids)]
 
         # Compute the middle-date of the events
-        self.events['mid_date'] = self.events['e_start'] + (self.events['e_end'] - self.events['e_start']) / 2
+        events['mid_date'] = events['e_start'] + (events['e_end'] - events['e_start']) / 2
 
-        # Create a mask for events with the same CID and time period (-+ 2 days)
-        mask = self.events.apply(lambda event: any(
-            (event['cid'] == row['cid']) and
-            (event['mid_date'] >= row['date_claim'] - pd.Timedelta(days=2)) and
-            (event['mid_date'] <= row['date_claim'] + pd.Timedelta(days=2))
-            for _, row in removed_claims.iterrows()), axis=1)
-
-        # Get the event IDs to remove
-        events_to_remove = self.events.loc[mask, 'eid'].tolist()
+        events_to_remove = []
+        for i_claim in tqdm(range(len(removed_claims)), desc=f"Checking events"):
+            claim = removed_claims.iloc[i_claim]
+            mask = (events['cid'] == claim['cid']) & \
+                   (events['mid_date'] >= claim['date_claim'] - pd.Timedelta(days=2)) & \
+                   (events['mid_date'] <= claim['date_claim'] + pd.Timedelta(days=2))
+            events_to_remove.extend(events.loc[mask, 'eid'].tolist())
 
         # Filter out the events that are associated with damages
         events_to_remove = [ev for ev in events_to_remove if
