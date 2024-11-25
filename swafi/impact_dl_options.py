@@ -217,7 +217,7 @@ class ImpactDlOptions:
         self.epochs = args.epochs
         self.learning_rate = args.learning_rate
         self.dropout_rate_dense = args.dropout_rate_dense
-        self.with_batchnorm_dense = args.batchnorm_dense
+        self.with_batchnorm_dense = args.with_batchnorm_dense
         self.nb_dense_layers = args.nb_dense_layers
         self.nb_dense_units = args.nb_dense_units
         self.nb_dense_units_decreasing = args.dense_units_decreasing
