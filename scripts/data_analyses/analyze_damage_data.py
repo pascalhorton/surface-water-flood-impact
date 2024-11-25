@@ -13,14 +13,18 @@ output_dir = config.output_dir
 
 PICKLES_DIR = config.get('PICKLES_DIR')
 DATASET = 'mobiliar'  # 'mobiliar' or 'gvz'
+WITH_INTERNAL_DAMAGES = False
 
 if DATASET == 'mobiliar':
-    EXPOSURE_CATEGORIES = ['external']
-    CLAIM_CATEGORIES = ['external', 'pluvial']
+    if WITH_INTERNAL_DAMAGES:
+        EXPOSURE_CATEGORIES = ['all']
+        CLAIM_CATEGORIES = ['pluvial']
+    else:
+        EXPOSURE_CATEGORIES = ['external']
+        CLAIM_CATEGORIES = ['external', 'pluvial']
 elif DATASET == 'gvz':
     EXPOSURE_CATEGORIES = ['all_buildings']
     CLAIM_CATEGORIES = ['likely_pluvial']
-
 
 def main():
     if DATASET == 'mobiliar':

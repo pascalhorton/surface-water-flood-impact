@@ -15,7 +15,7 @@ config = Config(output_dir='analysis_precip_claims')
 DATASET = 'mobiliar'  # 'mobiliar' or 'gvz'
 PRECIP_DAYS_BEFORE = 2
 PRECIP_DAYS_AFTER = 2
-WITH_INTERNAL_DAMAGES = True
+WITH_INTERNAL_DAMAGES = False
 
 
 if DATASET == 'mobiliar':

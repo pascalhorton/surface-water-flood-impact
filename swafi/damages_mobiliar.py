@@ -150,7 +150,7 @@ class DamagesMobiliar(Damages):
                 columns = [i for i in columns if 'struc' in i]
                 continue
             elif cat_type.lower() == 'pluvial':
-                columns = [i for i in columns if 'pluv' in i]
+                columns = [i for i in columns if 'fluv' not in i]
             else:
                 raise ValueError(f"Unknown claim type: {cat_type}")
 
