@@ -141,10 +141,10 @@ class ImpactDlOptions:
             '--random-state', type=int, default=None,
             help='The random state to use for the random number generator')
         self.parser.add_argument(
-            '--do-not-use-precip', action='store_true',
+            '--use-precip', type=bool, default=True,
             help='Do not use precipitation data')
         self.parser.add_argument(
-            '--do-not-use-simple-features', action='store_true',
+            '--use-simple-features',  type=bool, default=True,
             help='Do not use simple features (event properties and static attributes)')
         self.parser.add_argument(
             '--simple-feature-classes', nargs='+',
@@ -158,11 +158,11 @@ class ImpactDlOptions:
                  'If specified, the default class features will be overridden for'
                  'this class only (e.g. event).')
         self.parser.add_argument(
-            '--no-log-transform-precip', action='store_true',
-            help='Do not log-transform the precipitation')
+            '--log-transform-precip', type=bool, default=True,
+            help='Log-transform the precipitation')
         self.parser.add_argument(
             '--transform-precip', type=str, default='normalize',
-            help='The transformation to apply to the 3D data')
+            help='The transformation to apply to the precipitation data')
         self.parser.add_argument(
             '--transform-static', type=str, default='standardize',
             help='The transformation to apply to the static data')
@@ -179,7 +179,7 @@ class ImpactDlOptions:
             '--dropout-rate-dense', type=float, default=0.4,
             help='The dropout rate for the dense layers')
         self.parser.add_argument(
-            '--no-batchnorm-dense', action='store_true',
+            '--with-batchnorm-dense', type=bool, default=True,
             help='Do not use batch normalization for the dense layers')
         self.parser.add_argument(
             '--nb-dense-layers', type=int, default=5,
@@ -188,10 +188,10 @@ class ImpactDlOptions:
             '--nb-dense-units', type=int, default=256,
             help='The number of dense units')
         self.parser.add_argument(
-            '--dense-units-decreasing', action='store_true',
+            '--dense-units-decreasing', type=bool, default=False,
             help='The number of dense units should decrease')
         self.parser.add_argument(
-            '--inner-activation-dense', type=str, default='leaky_relu',
+            '--inner-activation-dense', type=str, default='relu',
             help='The inner activation function for the dense layers')
 
     def _parse_args(self, args):
@@ -206,18 +206,18 @@ class ImpactDlOptions:
         self.factor_neg_reduction = args.factor_neg_reduction
         self.weight_denominator = args.weight_denominator
         self.random_state = args.random_state
-        self.use_precip = not args.do_not_use_precip
-        self.use_simple_features = not args.do_not_use_simple_features
+        self.use_precip = args.use_precip
+        self.use_simple_features = args.use_simple_features
         self.simple_feature_classes = args.simple_feature_classes
         self.simple_features = args.simple_features
-        self.log_transform_precip = not args.no_log_transform_precip
+        self.log_transform_precip = args.log_transform_precip
         self.transform_precip = args.transform_precip
         self.transform_static = args.transform_static
         self.batch_size = args.batch_size
         self.epochs = args.epochs
         self.learning_rate = args.learning_rate
         self.dropout_rate_dense = args.dropout_rate_dense
-        self.with_batchnorm_dense = not args.no_batchnorm_dense
+        self.with_batchnorm_dense = args.batchnorm_dense
         self.nb_dense_layers = args.nb_dense_layers
         self.nb_dense_units = args.nb_dense_units
         self.nb_dense_units_decreasing = args.dense_units_decreasing

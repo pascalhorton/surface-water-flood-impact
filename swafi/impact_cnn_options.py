@@ -85,7 +85,7 @@ class ImpactCnnOptions(ImpactDlOptions):
         Set the parser arguments.
         """
         self.parser.add_argument(
-            '--use-dem', action='store_true',
+            '--use-dem', type=bool, default=False,
             help='Use DEM data')
         self.parser.add_argument(
             '--precip-window-size', type=int, default=1,
@@ -106,10 +106,10 @@ class ImpactCnnOptions(ImpactDlOptions):
             '--dropout-rate-cnn', type=float, default=0.4,
             help='The dropout rate for the CNN')
         self.parser.add_argument(
-            '--no-spatial-dropout', action='store_true',
+            '--with-spatial-dropout', type=bool, default=True,
             help='Do not use spatial dropout')
         self.parser.add_argument(
-            '--no-batchnorm-cnn', action='store_true',
+            '--with-batchnorm-cnn', type=bool, default=True,
             help='Do not use batch normalization for the CNN')
         self.parser.add_argument(
             '--kernel-size-spatial', type=int, default=3,
@@ -147,8 +147,8 @@ class ImpactCnnOptions(ImpactDlOptions):
         self.precip_days_before = args.precip_days_before
         self.precip_days_after = args.precip_days_after
         self.dropout_rate_cnn = args.dropout_rate_cnn
-        self.with_spatial_dropout = not args.no_spatial_dropout
-        self.with_batchnorm_cnn = not args.no_batchnorm_cnn
+        self.with_spatial_dropout = args.with_spatial_dropout
+        self.with_batchnorm_cnn = args.with_batchnorm_cnn
         self.kernel_size_spatial = args.kernel_size_spatial
         self.kernel_size_temporal = args.kernel_size_temporal
         self.nb_filters = args.nb_filters

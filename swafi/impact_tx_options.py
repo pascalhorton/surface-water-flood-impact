@@ -90,22 +90,22 @@ class ImpactTransformerOptions(ImpactDlOptions):
             "--precip-hf-days-after", type=int, default=1,
             help="The number of days after the event to use for the high-frequency precipitation.")
         self.parser.add_argument(
-            "--architecture", type=str, default="hybrid",
+            "--architecture", type=str, default="combined_fixed_embeddings",
             help="The architecture of the Transformer.")
         self.parser.add_argument(
             "--embeddings-2-layers", type=bool, default=False,
             help="Whether to use two dense layers for the embeddings.")
         self.parser.add_argument(
-            "--embeddings-activation", type=str, default="None",
+            "--embeddings-activation", type=str, default="elu",
             help="The activation function for the embeddings.")
         self.parser.add_argument(
             "--inner-activation-tx", type=str, default="relu",
             help="The activation function for the Transformer.")
         self.parser.add_argument(
-            "--use-cnn-in-tx", type=bool, default=True,
+            "--use-cnn-in-tx", type=bool, default=False,
             help="Whether to use a CNN in the transformer instead of the dense layers.")
         self.parser.add_argument(
-            "--nb-transformer-blocks", type=int, default=2,
+            "--nb-transformer-blocks", type=int, default=3,
             help="The number of transformer blocks.")
         self.parser.add_argument(
             "--tx-model-dim", type=int, default=128,
@@ -171,9 +171,8 @@ class ImpactTransformerOptions(ImpactDlOptions):
 
         if isinstance(hp_to_optimize, str) and hp_to_optimize == 'default':
             hp_to_optimize = [
-                'transform_precip', 'log_transform_precip', 'architecture',
-                'embeddings_2_layers', 'embeddings_activation',
-                'inner_activation_tx', 'use_cnn_in_tx',
+                'log_transform_precip', 'architecture', 'embeddings_2_layers',
+                'embeddings_activation', 'inner_activation_tx', 'use_cnn_in_tx',
                 'nb_transformer_blocks', 'num_heads', 'ff_dim', 'dropout_rate',
                 'dropout_rate_dense', 'inner_activation_dense',
                 'with_batchnorm_dense', 'batch_size', 'learning_rate']
