@@ -205,12 +205,17 @@ class Damages:
         claim_types: list|str
             The types of the exposure categories to select. The type are exclusive.
             Options are dependent on the dataset.
+
+        Returns
+        -------
+        The claims that have been removed from the dataset.
         """
         columns_exposure = self.get_exposure_categories_from_type(exposure_types)
         self.selected_exposure_categories = columns_exposure
         columns_claims = self.get_claim_categories_from_type(claim_types)
         self.exposure['selection'] = self.exposure[columns_exposure].sum(axis=1)
-        self._apply_claim_categories_selection(columns_claims)
+
+        return self._apply_claim_categories_selection(columns_claims)
 
     def select_claim_categories(self, categories):
         """
@@ -223,8 +228,12 @@ class Damages:
             the possible categories are: 'sme_ext_cont', 'sme_ext_struc',
             'sme_int_cont', 'sme_int_struc', 'priv_ext_cont', 'priv_ext_struc',
             'priv_int_cont', 'priv_int_struc'
+
+        Returns
+        -------
+        The claims that have been removed from the dataset.
         """
-        self._apply_claim_categories_selection(categories)
+        return self._apply_claim_categories_selection(categories)
 
     def select_exposure_categories(self, categories):
         """
@@ -306,7 +315,9 @@ class Damages:
                 events_to_remove.extend(ev_to_remove)
 
         # Check again that the events to remove were not selected in the claims
-        events_to_remove = [ev for ev in events_to_remove if ev not in self.claims.eid.tolist()]
+        events_to_remove = [ev for ev in events_to_remove if
+                            ev not in self.claims.eid.tolist()]
+        print(f"Events to remove due to claim/event link: {len(events_to_remove)}")
 
         self._print_matches_stats(stats)
         self._remove_claims_with_no_event()
@@ -373,9 +384,12 @@ class Damages:
         self.exposure = self.exposure[self.exposure.selection != 0]
         self.exposure.reset_index(inplace=True, drop=True)
         self.claims['selection'] = self.claims[categories].sum(axis=1)
+        removed_claims = self.claims[self.claims.selection == 0]
         self.claims = self.claims[self.claims.selection != 0]
         self.claims.reset_index(inplace=True, drop=True)
         self.selected_claim_categories = categories
+
+        return removed_claims
 
     def _compute_claim_exposure_ratio(self):
         # Check for duplicate keys in self.exposure

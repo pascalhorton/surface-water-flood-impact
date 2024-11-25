@@ -129,6 +129,43 @@ class Events:
         self.events['target'] = self.events['target'].fillna(0)
         self.events['nb_claims'] = self.events['nb_claims'].fillna(0)
 
+    def get_events_for_removed_claims(self, removed_claims, damages):
+        """
+        Get the events for the removed claims.
+
+        Parameters
+        ----------
+        removed_claims: pd.DataFrame
+            The removed claims.
+        damages: Damages instance
+            An object containing the damages properties.
+
+        Returns
+        -------
+        The events for the removed claims.
+        """
+        events_to_remove = []
+
+        # Compute the middle-date of the events
+        self.events['mid_date'] = self.events['e_start'] + (self.events['e_end'] - self.events['e_start']) / 2
+
+        # Create a mask for events with the same CID and time period (-+ 2 days)
+        mask = self.events['cid'].isin(removed_claims['cid']) & \
+               self.events['mid_date'].between(
+                   removed_claims['date_claim'] - pd.Timedelta(days=2),
+                   removed_claims['date_claim'] + pd.Timedelta(days=2))
+
+        # Get the event IDs to remove
+        events_to_remove = self.events.loc[mask, 'eid'].tolist()
+
+        # Filter out the events that are associated with damages
+        events_to_remove = [ev for ev in events_to_remove if
+                            ev not in damages.claims.eid.tolist()]
+
+        print(f"Events to remove dues to claim classes: {len(events_to_remove)}")
+
+        return events_to_remove
+
     def remove_period(self, start_date, end_date):
         """
         Remove a period of time from the events.

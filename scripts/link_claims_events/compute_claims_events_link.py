@@ -27,7 +27,7 @@ EVENTS_PATH = CONFIG.get('EVENTS_PATH')
 TARGET_TYPE = 'occurrence'  # 'occurrence' or 'damage_ratio'
 LABEL_RESULTING_FILE = 'original_w_prior_pluvial_' + TARGET_TYPE
 SAVE_AS_CSV = False
-WITH_INTERNAL_DAMAGES = True
+WITH_INTERNAL_DAMAGES = False
 
 DATASET = 'mobiliar'  # 'mobiliar' or 'gvz'
 
@@ -123,13 +123,16 @@ def get_damages_linked_to_events():
     else:
         raise ValueError(f"Unknown damage dataset: {DATASET}")
 
-    damages.select_categories_type(EXPOSURE_CATEGORIES, CLAIM_CATEGORIES)
+    removed_claims = damages.select_categories_type(EXPOSURE_CATEGORIES, CLAIM_CATEGORIES)
 
     events = Events()
     events.load_events_and_select_those_with_contracts(EVENTS_PATH, damages, DATASET)
 
     events_to_remove = damages.link_with_events(
         events, criteria=CRITERIA, filename=filename, window_days=WINDOW_DAYS)
+
+    events_removed_claims = events.get_events_for_removed_claims(removed_claims, damages)
+    events_to_remove.extend(events_removed_claims)
 
     return damages, events_to_remove
 
