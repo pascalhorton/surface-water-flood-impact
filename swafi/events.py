@@ -150,10 +150,11 @@ class Events:
         self.events['mid_date'] = self.events['e_start'] + (self.events['e_end'] - self.events['e_start']) / 2
 
         # Create a mask for events with the same CID and time period (-+ 2 days)
-        mask = self.events['cid'].isin(removed_claims['cid']) & \
-               self.events['mid_date'].between(
-                   removed_claims['date_claim'] - pd.Timedelta(days=2),
-                   removed_claims['date_claim'] + pd.Timedelta(days=2))
+        mask = self.events.apply(lambda event: any(
+            (event['cid'] == row['cid']) and
+            (event['mid_date'] >= row['date_claim'] - pd.Timedelta(days=2)) and
+            (event['mid_date'] <= row['date_claim'] + pd.Timedelta(days=2))
+            for _, row in removed_claims.iterrows()), axis=1)
 
         # Get the event IDs to remove
         events_to_remove = self.events.loc[mask, 'eid'].tolist()
