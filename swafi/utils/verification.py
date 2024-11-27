@@ -75,6 +75,7 @@ def compute_score_binary(metric, tp, tn, fp, fn):
         return frate
 
     elif metric in ['bias']:
+        # Represents the positive bias of the forecast -> if > 1, over-predict
         # Frequency Bias (bias) = (a+b) / (a+c)
         # [0, inf]
         bias = (tp + fp) / (tp + fn)

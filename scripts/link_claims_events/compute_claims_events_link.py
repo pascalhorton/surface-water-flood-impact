@@ -27,12 +27,12 @@ EVENTS_PATH = CONFIG.get('EVENTS_PATH')
 TARGET_TYPE = 'occurrence'  # 'occurrence' or 'damage_ratio'
 LABEL_RESULTING_FILE = 'original_w_prior_pluvial_' + TARGET_TYPE
 SAVE_AS_CSV = False
-WITH_INTERNAL_DAMAGES = False
+WITH_BACKWATER_DAMAGES = False
 
 DATASET = 'mobiliar'  # 'mobiliar' or 'gvz'
 
 if DATASET == 'mobiliar':
-    if WITH_INTERNAL_DAMAGES:
+    if WITH_BACKWATER_DAMAGES:
         EXPOSURE_CATEGORIES = ['all']
         CLAIM_CATEGORIES = ['pluvial']
     else:
@@ -80,6 +80,9 @@ def main():
     else:
         print("Warning: no events to remove because the damages where loaded from pickle files.")
     events.remove_events_without_contracts()
+
+    nb_events = len(events.events)
+    print(f"Final number of events: {nb_events}")
 
     # Save the events with target values to a pickle file
     filename = f'events_{DATASET}_with_target_values_{LABEL_RESULTING_FILE}'
