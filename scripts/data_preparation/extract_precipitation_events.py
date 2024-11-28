@@ -71,16 +71,16 @@ def get_events(coords_row):
                         event_groups.CPC.agg(["sum", "max", "mean", "std"]),
                         event_groups.api.first()], axis=1)
     events = events.rename(
-        columns={"first": "e_start", "last": "e_end", "size": "e_tot", "sum": "p_sum",
-                 "max": "i_max", "mean": "i_mean", "std": "i_sd", "api": "apireg"})
-    events = events.astype({"e_tot": "int16", "i_sd": "float32", "apireg": "float32"})
+        columns={"first": "e_start", "last": "e_end", "size": "duration", "sum": "p_sum",
+                 "max": "i_max", "mean": "i_mean", "std": "i_sd", "api": "api"})
+    events = events.astype({"duration": "int16", "i_sd": "float32", "api": "float32"})
 
     # Drop events that do not fulfill the condition of minimal precipitation
     events = events[events.p_sum >= 10].reset_index(drop=True)
 
     # Calculate percentiles of score for each event characteristics
     ranks = events.iloc[:, 2:].rank(pct=True).astype("float32")
-    ranks.columns = ["e_tot_q", "p_sum_q", "i_max_q", "i_mean_q", "i_sd_q", "apireg_q"]
+    ranks.columns = ["duration_q", "p_sum_q", "i_max_q", "i_mean_q", "i_sd_q", "api_q"]
     events = pd.concat([events, ranks], axis=1)
 
     # Add coordinates to the DataFrame and round all float values

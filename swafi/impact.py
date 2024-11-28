@@ -446,7 +446,7 @@ class Impact:
     def _define_potential_features(self):
         if self.use_all_tabular_features:
             self.tabular_features = {
-                'event': ['i_max_q', 'p_sum_q', 'e_tot', 'i_mean_q', 'apireg_q',
+                'event': ['i_max_q', 'p_sum_q', 'duration', 'i_mean_q', 'api_q',
                           'nb_contracts'],
                 'terrain': ['dem_010m_curv_plan_min', 'dem_010m_curv_plan_max',
                             'dem_010m_curv_plan_mean', 'dem_010m_curv_plan_std',
@@ -518,7 +518,7 @@ class Impact:
             }
         else:
             self.tabular_features = {
-                'event': ['i_max_q', 'p_sum_q', 'e_tot', 'i_mean_q', 'apireg_q',
+                'event': ['i_max_q', 'p_sum_q', 'duration', 'i_mean_q', 'api_q',
                           'nb_contracts'],
                 'terrain': ['dem_010m_curv_plan_std', 'dem_010m_slope_min',
                             'dem_010m_curv_plan_mean', 'dem_010m_slope_median'],

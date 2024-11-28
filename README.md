@@ -48,8 +48,8 @@ These are managed by the `Events` class in `swafi/events.py` and are handled int
 Different characteristics are calculated for each event:
 - `e_start`: start date of the event
 - `e_end`: end date of the event
-- `e_tot`: duration of the event in hours
-- `e_tot_q`: quantile equivalent for the duration
+- `duration`: duration of the event in hours
+- `duration_q`: quantile equivalent for the duration
 - `p_sum`: total precipitation of the event in mm
 - `p_sum_q`: quantile equivalent for the total precipitation
 - `i_max`: maximum precipitation intensity of the event in mm/h
@@ -58,8 +58,8 @@ Different characteristics are calculated for each event:
 - `i_mean_q`: quantile equivalent for the mean precipitation intensity
 - `i_sd`: standard deviation of the precipitation intensity of the event in mm/h
 - `i_sd_q`: quantile equivalent for the standard deviation of the precipitation intensity
-- `apireg`: antecedent precipitation index for the event
-- `apireg_q`: quantile equivalent for the antecedent precipitation index
+- `api`: antecedent precipitation index for the event
+- `api_q`: quantile equivalent for the antecedent precipitation index
 
 ### Damages
 

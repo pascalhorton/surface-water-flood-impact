@@ -491,7 +491,7 @@ class Damages:
             if 'r_ts_win' in criteria or 'r_ts_evt' in criteria:
                 self._compute_temporal_overlap(claim['date_claim'], pot_events, window)
                 pot_events['r_ts_win'] = pot_events['overlap_hrs'] / (window * 24)
-                pot_events['r_ts_evt'] = pot_events['overlap_hrs'] / pot_events['e_tot']
+                pot_events['r_ts_evt'] = pot_events['overlap_hrs'] / pot_events['duration']
             for criterion in criteria:
                 if criterion == 'prior':
                     continue
