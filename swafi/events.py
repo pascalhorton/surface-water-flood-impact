@@ -80,7 +80,7 @@ class Events:
             (self.events['e_start'].dt.year <= damages.year_end)
             ]
 
-        print(f"Number of events with contracts in "
+        print(f"Number of events with potential contracts in "
               f"the selected years: {len(self.events)}")
 
     def select_locations_with_contracts(self, damages):
@@ -106,7 +106,7 @@ class Events:
                 (self.events['e_start'].dt.year != row['year'])
                 ]
 
-        print(f"Number of events with contracts: {len(self.events)}")
+        print(f"Number of events with potential contracts: {len(self.events)}")
 
     def set_target_values_from_damages(self, damages):
         """
@@ -203,7 +203,10 @@ class Events:
         """
         Remove events without contracts.
         """
+        len_before = len(self.events)
         self.events.dropna(subset=['nb_contracts'], inplace=True)
+        len_after = len(self.events)
+        print(f"Number of events without actual contracts: {len_before - len_after}")
 
     def count_positives(self):
         """

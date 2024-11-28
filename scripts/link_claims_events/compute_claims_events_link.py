@@ -26,7 +26,7 @@ PICKLES_DIR = CONFIG.get('PICKLES_DIR')
 EVENTS_PATH = CONFIG.get('EVENTS_PATH')
 TARGET_TYPE = 'occurrence'  # 'occurrence' or 'damage_ratio'
 LABEL_RESULTING_FILE = 'original_w_prior_pluvial_' + TARGET_TYPE
-SAVE_AS_CSV = False
+SAVE_AS_CSV = True
 WITH_BACKWATER_DAMAGES = False
 
 DATASET = 'mobiliar'  # 'mobiliar' or 'gvz'
@@ -136,6 +136,8 @@ def get_damages_linked_to_events():
 
     events_removed_claims = events.get_events_for_removed_claims(removed_claims, damages)
     events_to_remove.extend(events_removed_claims)
+    events_to_remove = list(set(events_to_remove))
+    print(f"Total number of events to remove: {len(events_to_remove)}")
 
     return damages, events_to_remove
 
