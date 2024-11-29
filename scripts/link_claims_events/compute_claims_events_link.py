@@ -20,12 +20,12 @@ from pathlib import Path
 CONFIG = Config()
 
 CRITERIA = ['prior', 'i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt']
-LABEL_DAMAGE_LINK = 'original_w_prior_pluvial'
+LABEL_DAMAGE_LINK = 'default'
 WINDOW_DAYS = [5, 3, 1]
 PICKLES_DIR = CONFIG.get('PICKLES_DIR')
 EVENTS_PATH = CONFIG.get('EVENTS_PATH')
 TARGET_TYPE = 'occurrence'  # 'occurrence' or 'damage_ratio'
-LABEL_RESULTING_FILE = 'original_w_prior_pluvial_' + TARGET_TYPE
+LABEL_RESULTING_FILE = 'default_' + TARGET_TYPE
 SAVE_AS_CSV = True
 
 DATASET = 'mobiliar'  # 'mobiliar' or 'gvz'
@@ -80,7 +80,7 @@ def main():
     print(f"Final number of events: {nb_events}")
 
     # Save the events with target values to a pickle file
-    filename = f'events_{DATASET}_with_target_values_{LABEL_RESULTING_FILE}'
+    filename = f'events_{DATASET}_with_target_{LABEL_RESULTING_FILE}'
     events.save_to_pickle(filename=filename + '.pickle')
     if SAVE_AS_CSV:
         events.save_to_csv(filename=filename + '.csv')

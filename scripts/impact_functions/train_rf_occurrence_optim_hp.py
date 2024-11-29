@@ -22,7 +22,7 @@ def main():
     print("config: ", args.config)
 
     # Load events
-    events_filename = f'events_{options.dataset}_with_target_values_{options.event_file_label}.pickle'
+    events_filename = f'events_{options.dataset}_with_target_{options.event_file_label}.pickle'
     events = load_events_from_pickle(filename=events_filename)
 
     # Create the impact function

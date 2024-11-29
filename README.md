@@ -179,7 +179,7 @@ This script will:
 
 6. From the selection of events on step 3, assign the target value to the events based on the corresponding damages.
    All events not linked to damages are assigned a target value of 0.
-   The selected events are saved as pickle files with the name `events_{DATASET}_with_target_values_{LABEL_RESULTING_FILE}`.
+   The selected events are saved as pickle files with the name `events_{DATASET}_with_target_{LABEL_RESULTING_FILE}`.
 
 The file resulting from this step is a pickle file with the events and the assigned target values.
 This file is needed to train or assess the impact functions.
@@ -229,7 +229,7 @@ from swafi.events import load_events_from_pickle
 from swafi.impact_lr import ImpactLogisticRegression
 
 # Load the events with the target values
-events_filename = f'events_mobiliar_with_target_values_pluvial_occurrence.pickle'
+events_filename = f'events_mobiliar_with_target_pluvial_occurrence.pickle'
 events = load_events_from_pickle(filename=events_filename)
 
 # Create the impact function

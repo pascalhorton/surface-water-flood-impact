@@ -19,7 +19,7 @@ class ImpactBasicOptions:
     dataset: str
         The name of the dataset (mobiliar or gvz).
     event_file_label: str
-        The event file label (default: 'original_w_prior_pluvial_occurrence').
+        The event file label (default: 'default_occurrence').
     target_type : str
         The target type. Options are: 'occurrence', 'damage_ratio'
     random_state: int|None
@@ -68,8 +68,8 @@ class ImpactBasicOptions:
             "--dataset", type=str, default='',
             help="The name of the dataset (mobiliar or gvz).")
         self.parser.add_argument(
-            "--event-file-label", type=str, default='original_w_prior_pluvial_occurrence',
-            help="The event file label (default: 'original_w_prior_pluvial_occurrence').")
+            "--event-file-label", type=str, default='default_occurrence',
+            help="The event file label (default: 'default_occurrence').")
         self.parser.add_argument(
             '--target-type', type=str, default='occurrence',
             help='The target type. Options are: occurrence, damage_ratio')
