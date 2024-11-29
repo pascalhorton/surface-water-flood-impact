@@ -27,17 +27,12 @@ EVENTS_PATH = CONFIG.get('EVENTS_PATH')
 TARGET_TYPE = 'occurrence'  # 'occurrence' or 'damage_ratio'
 LABEL_RESULTING_FILE = 'original_w_prior_pluvial_' + TARGET_TYPE
 SAVE_AS_CSV = True
-WITH_BACKWATER_DAMAGES = False
 
 DATASET = 'mobiliar'  # 'mobiliar' or 'gvz'
 
 if DATASET == 'mobiliar':
-    if WITH_BACKWATER_DAMAGES:
-        EXPOSURE_CATEGORIES = ['all']
-        CLAIM_CATEGORIES = ['pluvial']
-    else:
-        EXPOSURE_CATEGORIES = ['external']
-        CLAIM_CATEGORIES = ['external', 'pluvial']
+    EXPOSURE_CATEGORIES = ['external']
+    CLAIM_CATEGORIES = ['external', 'pluvial']
     CONFIG.set('DIR_EXPOSURE', CONFIG.get('DIR_EXPOSURE_MOBILIAR'))
     CONFIG.set('DIR_CLAIMS', CONFIG.get('DIR_CLAIMS_MOBILIAR'))
     CONFIG.set('YEAR_START', CONFIG.get('YEAR_START_MOBILIAR'))

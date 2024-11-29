@@ -125,7 +125,7 @@ class ImpactTransformerOptions(ImpactDlOptions):
         Parse the arguments.
         """
         args = self.parser.parse_args()
-        self._parse_args(args)
+        self._parse_dl_args(args)
 
         self.precip_daily_days_nb = args.precip_daily_days_nb
         self.precip_hf_time_step = args.precip_hf_time_step
@@ -275,6 +275,9 @@ class ImpactTransformerOptions(ImpactDlOptions):
         bool
             Whether the options are ok or not.
         """
+        if not super().is_ok():
+            return False
+
         assert self.use_precip, "Precipitation data is required for the Transformer model."
 
         return True

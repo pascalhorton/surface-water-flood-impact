@@ -2,8 +2,9 @@
 Class to handle the DL options for models based on deep learning.
 It is not meant to be used directly, but to be inherited by other classes.
 """
-import argparse
 import datetime
+
+from swafi.impact_basic_options import ImpactBasicOptions
 
 has_optuna = False
 try:
@@ -13,39 +14,24 @@ except ImportError:
     pass
 
 
-class ImpactDlOptions:
+class ImpactDlOptions(ImpactBasicOptions):
     """
-    The DL basic options.
+    The DL shared options.
 
     Attributes
     ----------
-    parser : argparse.ArgumentParser
-        The parser object.
-    run_name : str
-        Name of the run.
     optimize_with_optuna : str
         Optimize with Optuna.
     optuna_trials_nb : int
         Number of Optuna trials.
     optuna_study_name : str
         Optuna study name.
-    target_type : str
-        The target type. Options are: 'occurrence', 'damage_ratio'
     factor_neg_reduction: int
         The factor to reduce the number of negatives only for training.
     weight_denominator: int
         The weight denominator to reduce the negative class weights.
-    random_state: int|None
-        The random state to use for the random number generator.
-        Default: None. Set to None to not set the random seed.
     use_precip: bool
         Whether to use precipitation data (CombiPrecip) or not.
-    use_simple_features: bool
-        Whether to use simple features (event properties and static attributes) or not.
-    simple_feature_classes: list
-        The list of simple feature classes to use.
-    simple_features: list
-        The list of simple features to use.
     log_transform_precip: bool
         Whether to log-transform the precipitation or not.
     transform_precip: str
@@ -73,26 +59,19 @@ class ImpactDlOptions:
     inner_activation_dense: str
         The inner activation function for the dense layers.
     """
-
     def __init__(self):
-        self.parser = argparse.ArgumentParser(description="SWAFI DL")
-        self._set_parser_shared_arguments()
+        super().__init__()
+        self._set_parser_dl_shared_arguments()
 
         # General options
-        self.run_name = None
         self.optimize_with_optuna = None
         self.optuna_trials_nb = None
         self.optuna_study_name = None
-        self.target_type = None
         self.factor_neg_reduction = None
         self.weight_denominator = None
-        self.random_state = None
 
         # Data options
         self.use_precip = None
-        self.use_simple_features = None
-        self.simple_feature_classes = None
-        self.simple_features = None
         self.log_transform_precip = None
         self.transform_precip = None
         self.transform_static = None
@@ -110,14 +89,10 @@ class ImpactDlOptions:
         self.nb_dense_units_decreasing = None
         self.inner_activation_dense = None
 
-    def _set_parser_shared_arguments(self):
+    def _set_parser_dl_shared_arguments(self):
         """
         Set the parser arguments.
         """
-        self.parser.add_argument(
-            '--run-name', type=str,
-            default=datetime.datetime.now().strftime("%Y%m%d_%H%M%S"),
-            help='The run name')
         self.parser.add_argument(
             '--optimize-with-optuna', action='store_true',
             help='Optimize the hyperparameters with Optuna')
@@ -129,34 +104,14 @@ class ImpactDlOptions:
             default=datetime.datetime.now().strftime("%Y%m%d_%H%M%S"),
             help='The Optuna study name (default: using the date and time'),
         self.parser.add_argument(
-            '--target-type', type=str, default='occurrence',
-            help='The target type. Options are: occurrence, damage_ratio')
-        self.parser.add_argument(
             '--factor-neg-reduction', type=int, default=10,
             help='The factor to reduce the number of negatives only for training')
         self.parser.add_argument(
             '--weight-denominator', type=int, default=40,
             help='The weight denominator to reduce the negative class weights')
         self.parser.add_argument(
-            '--random-state', type=int, default=None,
-            help='The random state to use for the random number generator')
-        self.parser.add_argument(
             '--use-precip', type=bool, default=True,
             help='Do not use precipitation data')
-        self.parser.add_argument(
-            '--use-simple-features',  type=bool, default=True,
-            help='Do not use simple features (event properties and static attributes)')
-        self.parser.add_argument(
-            '--simple-feature-classes', nargs='+',
-            default=['event', 'terrain', 'swf_map', 'flowacc', 'twi'],
-            help='The list of simple feature classes to use (e.g. event terrain)')
-        self.parser.add_argument(
-            '--simple-features', nargs='+',
-            default=[],
-            help='The list of specific simple features to use (e.g. event:i_max_q).'
-                 'If not specified, the default class features will be used.'
-                 'If specified, the default class features will be overridden for'
-                 'this class only (e.g. event).')
         self.parser.add_argument(
             '--log-transform-precip', type=bool, default=True,
             help='Log-transform the precipitation')
@@ -194,22 +149,18 @@ class ImpactDlOptions:
             '--inner-activation-dense', type=str, default='relu',
             help='The inner activation function for the dense layers')
 
-    def _parse_args(self, args):
+    def _parse_dl_args(self, args):
         """
         Parse the arguments.
         """
-        self.run_name = args.run_name
-        self.target_type = args.target_type
+        self._parse_basic_args(args)
+
         self.optimize_with_optuna = args.optimize_with_optuna
         self.optuna_trials_nb = args.optuna_trials_nb
         self.optuna_study_name = args.optuna_study_name
         self.factor_neg_reduction = args.factor_neg_reduction
         self.weight_denominator = args.weight_denominator
-        self.random_state = args.random_state
         self.use_precip = args.use_precip
-        self.use_simple_features = args.use_simple_features
-        self.simple_feature_classes = args.simple_feature_classes
-        self.simple_features = args.simple_features
         self.log_transform_precip = args.log_transform_precip
         self.transform_precip = args.transform_precip
         self.transform_static = args.transform_static
@@ -276,16 +227,9 @@ class ImpactDlOptions:
         return True
 
     def _print_shared_options(self, show_optuna_params=False):
-        print(f"Options (run {self.run_name}):")
-        print("- target_type: ", self.target_type)
-        print("- random_state: ", self.random_state)
+        self._print_basic_options()
         print("- factor_neg_reduction: ", self.factor_neg_reduction)
         print("- use_precip: ", self.use_precip)
-        print("- use_simple_features: ", self.use_simple_features)
-
-        if self.use_simple_features:
-            print("- simple_feature_classes: ", self.simple_feature_classes)
-            print("- simple_features: ", self.simple_features)
 
         if self.optimize_with_optuna:
             print("- optimize_with_optuna: ", self.optimize_with_optuna)
@@ -313,3 +257,32 @@ class ImpactDlOptions:
         print("- nb_dense_units: ", self.nb_dense_units)
         print("- nb_dense_units_decreasing: ", self.nb_dense_units_decreasing)
         print("- inner_activation_dense: ", self.inner_activation_dense)
+
+    def is_ok(self):
+        """
+        Check if the options are ok.
+
+        Returns
+        -------
+        bool
+            Whether the options are ok or not.
+        """
+        if not super().is_ok():
+            return False
+
+        assert self.factor_neg_reduction is not None, "factor_neg_reduction is not set"
+        assert self.weight_denominator is not None, "weight_denominator is not set"
+        assert isinstance(self.use_precip, bool), "use_precip is not set"
+        assert isinstance(self.log_transform_precip, bool), "log_transform_precip is not set"
+        assert self.transform_precip in ['standardize', 'normalize'], "transform_precip is not set"
+        assert self.transform_static in ['standardize', 'normalize'], "transform_static is not set"
+        assert self.batch_size is not None, "batch_size is not set"
+        assert self.epochs is not None, "epochs is not set"
+        assert self.learning_rate is not None, "learning_rate is not set"
+        assert self.dropout_rate_dense is not None, "dropout_rate_dense is not set"
+        assert isinstance(self.with_batchnorm_dense, bool), "with_batchnorm_dense is not set"
+        assert self.nb_dense_layers is not None, "nb_dense_layers is not set"
+        assert self.nb_dense_units is not None, "nb_dense_units is not set"
+        assert isinstance(self.nb_dense_units_decreasing, bool), "nb_dense_units_decreasing is not set"
+        assert self.inner_activation_dense is not None, "inner_activation_dense is not set"
+

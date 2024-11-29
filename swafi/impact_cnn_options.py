@@ -138,7 +138,7 @@ class ImpactCnnOptions(ImpactDlOptions):
         Parse the arguments.
         """
         args = self.parser.parse_args()
-        self._parse_args(args)
+        self._parse_dl_args(args)
 
         self.use_dem = args.use_dem
         self.precip_window_size = args.precip_window_size
@@ -319,6 +319,9 @@ class ImpactCnnOptions(ImpactDlOptions):
         bool
             Whether the options are ok or not.
         """
+        if not super().is_ok():
+            return False
+
         # Check the precipitation parameters
         if self.use_precip:
             assert self.precip_window_size % self.precip_resolution == 0, \
