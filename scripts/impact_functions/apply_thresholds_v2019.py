@@ -8,8 +8,6 @@ from swafi.impact_basic_options import ImpactBasicOptions
 from swafi.impact_thr import ImpactThresholds
 
 
-LABEL_EVENT_FILE = 'original_w_prior_pluvial_occurrence'
-
 config = Config()
 
 
@@ -19,7 +17,7 @@ def main():
     options.print_options()
     assert options.is_ok()
 
-    events_filename = f'events_{options.dataset}_with_target_values_{LABEL_EVENT_FILE}.pickle'
+    events_filename = f'events_{options.dataset}_with_target_values_{options.event_file_label}.pickle'
     events = load_events_from_pickle(filename=events_filename)
 
     # Create the impact function

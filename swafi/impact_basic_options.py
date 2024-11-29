@@ -18,6 +18,8 @@ class ImpactBasicOptions:
         The name of the run.
     dataset: str
         The name of the dataset (mobiliar or gvz).
+    event_file_label: str
+        The event file label (default: 'original_w_prior_pluvial_occurrence').
     target_type : str
         The target type. Options are: 'occurrence', 'damage_ratio'
     random_state: int|None
@@ -37,6 +39,7 @@ class ImpactBasicOptions:
         # Basic options
         self.run_name = None
         self.dataset = None
+        self.event_file_label = None
         self.target_type = None
         self.random_state = None
         self.use_simple_features = None
@@ -64,6 +67,9 @@ class ImpactBasicOptions:
         self.parser.add_argument(
             "--dataset", type=str, default='',
             help="The name of the dataset (mobiliar or gvz).")
+        self.parser.add_argument(
+            "--event-file-label", type=str, default='original_w_prior_pluvial_occurrence',
+            help="The event file label (default: 'original_w_prior_pluvial_occurrence').")
         self.parser.add_argument(
             '--target-type', type=str, default='occurrence',
             help='The target type. Options are: occurrence, damage_ratio')
@@ -100,6 +106,7 @@ class ImpactBasicOptions:
 
         self.run_name = args.run_name
         self.dataset = args.dataset
+        self.event_file_label = args.event_file_label
         self.target_type = args.target_type
         self.random_state = args.random_state
         self.use_simple_features = args.use_simple_features
@@ -120,6 +127,7 @@ class ImpactBasicOptions:
         """
         print(f"Options (run {self.run_name}):")
         print("- dataset: ", self.dataset)
+        print("- event_file_label: ", self.event_file_label)
         print("- target_type: ", self.target_type)
         print("- random_state: ", self.random_state)
         print("- use_simple_features: ", self.use_simple_features)

@@ -10,9 +10,6 @@ from swafi.impact_rf import ImpactRandomForest
 from swafi.events import load_events_from_pickle
 
 
-DATASET = 'mobiliar'  # 'mobiliar' or 'gvz'
-LABEL_EVENT_FILE = 'original_w_prior_pluvial_occurrence'
-
 config = Config()
 
 
@@ -25,7 +22,7 @@ def main():
     print("config: ", args.config)
 
     # Load events
-    events_filename = f'events_{DATASET}_with_target_values_{LABEL_EVENT_FILE}.pickle'
+    events_filename = f'events_{options.dataset}_with_target_values_{options.event_file_label}.pickle'
     events = load_events_from_pickle(filename=events_filename)
 
     # Create the impact function

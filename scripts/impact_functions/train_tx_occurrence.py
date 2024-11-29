@@ -23,8 +23,6 @@ except ImportError:
 USE_SQLITE = False
 USE_TXTFILE = True
 OPTUNA_RANDOM = True
-DATASET = 'mobiliar'  # 'mobiliar' or 'gvz'
-LABEL_EVENT_FILE = 'original_w_prior_pluvial_occurrence'
 SAVE_MODEL = True
 SHOW_PLOTS = False
 
@@ -42,17 +40,17 @@ def main():
 
     year_start = None
     year_end = None
-    if DATASET == 'mobiliar':
+    if options.dataset == 'mobiliar':
         year_start = config.get('YEAR_START_MOBILIAR')
         year_end = config.get('YEAR_END_MOBILIAR')
-    elif DATASET == 'gvz':
+    elif options.dataset == 'gvz':
         year_start = config.get('YEAR_START_GVZ')
         year_end = config.get('YEAR_END_GVZ')
     else:
-        raise ValueError(f'Dataset {DATASET} not recognized.')
+        raise ValueError(f'Dataset {options.dataset} not recognized.')
 
     # Load events
-    events_filename = f'events_{DATASET}_with_target_values_{LABEL_EVENT_FILE}.pickle'
+    events_filename = f'events_{options.dataset}_with_target_values_{options.event_file_label}.pickle'
     events = load_events_from_pickle(filename=events_filename)
 
     # Remove dates where the precipitation data is not available
