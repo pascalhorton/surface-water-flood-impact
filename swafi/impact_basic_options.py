@@ -84,17 +84,17 @@ class ImpactBasicOptions:
             '--random-state', type=int, default=None,
             help='The random state to use for the random number generator')
         self.parser.add_argument(
-            '--use-event-attributes',  type=bool, default=True,
+            '--use-event-attributes', type=bool, default=True,
             help='Use event attributes (i_max_q, p_sum_q, duration, ...)')
         self.parser.add_argument(
-            '--use-static-attributes',  type=bool, default=True,
+            '--use-static-attributes', type=bool, default=False,
             help='Use static attributes (terrain, swf_map, flowacc, twi)')
         self.parser.add_argument(
-            '--use-all-static-attributes',  type=bool, default=False,
+            '--use-all-static-attributes', type=bool, default=False,
             help='Use all static attributes.')
         self.parser.add_argument(
             '--simple-feature-classes', nargs='+',
-            default=['event', 'terrain', 'swf_map', 'flowacc', 'twi'],
+            default=['default'],
             help='The list of simple feature classes to use (e.g. event terrain)')
         self.parser.add_argument(
             '--replace-simple-features', nargs='+',
@@ -115,8 +115,6 @@ class ImpactBasicOptions:
         """
         Parse the arguments.
         """
-        args = self.parser.parse_args()
-
         self.run_name = args.run_name
         self.dataset = args.dataset
         self.event_file_label = args.event_file_label
@@ -125,7 +123,13 @@ class ImpactBasicOptions:
         self.use_event_attributes = args.use_event_attributes
         self.use_static_attributes = args.use_static_attributes
         self.use_all_static_attributes = args.use_all_static_attributes
-        self.simple_feature_classes = args.simple_feature_classes
+        if args.simple_feature_classes == ['default']:
+            classes = []
+            if self.use_event_attributes:
+                classes.append('event')
+            if self.use_static_attributes:
+                classes.extend(['terrain', 'swf_map', 'flowacc', 'twi'])
+            self.simple_feature_classes = classes
         self.replace_simple_features = args.replace_simple_features
 
     def print_options(self):
