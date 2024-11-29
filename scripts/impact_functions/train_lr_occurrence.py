@@ -4,6 +4,7 @@ Train a logistic regression model to predict the occurrence of damages.
 
 from swafi.config import Config
 from swafi.events import load_events_from_pickle
+from swafi.impact_basic_options import ImpactBasicOptions
 from swafi.impact_lr import ImpactLogisticRegression
 
 
@@ -11,7 +12,12 @@ config = Config()
 
 
 def main():
-    events_filename = f'events_{options.dataset}_with_target_values_{options.event_file_label}.pickle'
+    options = ImpactBasicOptions()
+    options.parse_args()
+    options.print_options()
+    assert options.is_ok()
+
+    events_filename = f'events_{options.dataset}_with_target_{options.event_file_label}.pickle'
     events = load_events_from_pickle(filename=events_filename)
 
     # Create the impact function

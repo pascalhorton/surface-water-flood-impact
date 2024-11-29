@@ -5,6 +5,7 @@ Train a random forest model to predict the occurrence of damages.
 import argparse
 
 from swafi.config import Config
+from swafi.impact_basic_options import ImpactBasicOptions
 from swafi.impact_rf import ImpactRandomForest
 from swafi.events import load_events_from_pickle
 
@@ -13,6 +14,11 @@ config = Config()
 
 
 def main():
+    options = ImpactBasicOptions()
+    options.parse_args()
+    options.print_options()
+    assert options.is_ok()
+
     parser = argparse.ArgumentParser(description="SWAFI RF")
     parser.add_argument("config", help="Configuration", type=int, default=10,
                         nargs='?')
