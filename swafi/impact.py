@@ -23,16 +23,14 @@ class Impact:
     ----------
     events: Events
         The events object.
-    target_type: str
-        The target type. Options are: 'occurrence', 'damage_ratio'
-    random_state: int|None
-        The random state to use for the random number generator.
-        Default: None. Set to None to not set the random seed.
+    options: ImpactBasicOptions|ImpactDlOptions
+        The model options.
     """
 
-    def __init__(self, events, target_type='occurrence', random_state=None):
+    def __init__(self, events, options):
+        self.options = options
         self.df = events.events
-        self.target_type = target_type
+        self.target_type = options.target_type
         self.model = None
         self.events_train = None
         self.events_valid = None
@@ -52,7 +50,7 @@ class Impact:
 
         # Computing options
         self.n_jobs = 20
-        self.random_state = random_state
+        self.random_state = options.random_state
 
         # Initialize the data properties
         self.use_all_tabular_features = True

@@ -85,6 +85,13 @@ class ImpactBasicOptions:
                  'If specified, the default class features will be overridden for'
                  'this class only (e.g. event).')
 
+    def parse_args(self):
+        """
+        Parse the arguments.
+        """
+        args = self.parser.parse_args()
+        self._parse_basic_args(args)
+
     def _parse_basic_args(self, args):
         """
         Parse the arguments.

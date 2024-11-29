@@ -14,8 +14,8 @@ class ImpactThresholds(Impact):
     The Impact class using simple thresholds.
     """
 
-    def __init__(self, events):
-        super().__init__(events, target_type='occurrence')
+    def __init__(self, events, options):
+        super().__init__(events, options=options)
 
         self.thr_i_max = 0.9
         self.thr_p_sum = 0.99

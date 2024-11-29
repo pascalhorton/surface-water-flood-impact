@@ -39,9 +39,7 @@ class ImpactDl(Impact):
     """
 
     def __init__(self, events, options, reload_trained_models=False):
-        super().__init__(events, target_type=options.target_type,
-                         random_state=options.random_state)
-        self.options = options
+        super().__init__(events, options=options)
         self.reload_trained_models = reload_trained_models
 
         self.precipitation_hf = None
