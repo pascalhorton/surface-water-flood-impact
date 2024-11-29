@@ -245,7 +245,7 @@ lr.normalize_features()
 # Compute the class weights (claim/no claim)
 lr.compute_balanced_class_weights()
 # Decrease the weight of the events with claims by a certain factor (otherwise it will be too high)
-lr.compute_corrected_class_weights(weight_denominator=27)
+lr.compute_corrected_class_weights(weight_denominator=30)
 # Train the model
 lr.fit()
 # Evaluate the model on all splits
@@ -303,7 +303,7 @@ train_cnn_occurrence.py [-h] [--run-id RUN_ID] [--optimize-with-optuna]
                        [--do-not-use-precip] [--do-not-use-dem]
                        [--do-not-use-simple-features]
                        [--simple-feature-classes SIMPLE_FEATURE_CLASSES [SIMPLE_FEATURE_CLASSES ...]]
-                       [--simple-features SIMPLE_FEATURES [SIMPLE_FEATURES ...]]
+                       [--replace-simple-features SIMPLE_FEATURES [SIMPLE_FEATURES ...]]
                        [--precip-window-size PRECIP_WINDOW_SIZE]
                        [--precip-resolution PRECIP_RESOLUTION]
                        [--precip-time-step PRECIP_TIME_STEP]
@@ -335,7 +335,7 @@ Options
 * `--do-not-use-dem`: Do not use DEM data
 * `--do-not-use-simple-features`: Do not use simple features (event properties and static attributes)
 * `--simple-feature-classes SIMPLE_FEATURE_CLASSES [SIMPLE_FEATURE_CLASSES ...]`: The list of simple feature classes to use (e.g. event terrain)
-* `--simple-features SIMPLE_FEATURES [SIMPLE_FEATURES ...]`: The list of specific simple features to use (e.g. event:i_max_q). If not specified, the default class features will be used. If specified, the default class features will be overridden for this class only (e.g. event).
+* `--replace-simple-features SIMPLE_FEATURES [SIMPLE_FEATURES ...]`: The list of specific simple features to use (e.g. event:i_max_q). If not specified, the default class features will be used. If specified, the default class features will be overridden for this class only (e.g. event).
 * `--precip-window-size PRECIP_WINDOW_SIZE`: The precipitation window size [km]
 * `--precip-resolution PRECIP_RESOLUTION`: The precipitation resolution [km]
 * `--precip-time-step PRECIP_TIME_STEP`: The precipitation time step [h]

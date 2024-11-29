@@ -97,8 +97,8 @@ def _setup_model(options, events, precip, dem):
     cnn.set_precipitation(precip)
     cnn.remove_events_without_precipitation_data()
     cnn.reduce_spatial_domain(options.precip_window_size)
-    if cnn.options.use_simple_features:
-        cnn.select_features(cnn.options.simple_features)
+    if cnn.options.use_static_attributes or cnn.options.use_event_attributes:
+        cnn.select_features(cnn.options.replace_simple_features)
         cnn.load_features(cnn.options.simple_feature_classes)
     cnn.split_sample()
     cnn.reduce_negatives_for_training(cnn.options.factor_neg_reduction)

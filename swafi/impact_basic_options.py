@@ -25,12 +25,17 @@ class ImpactBasicOptions:
     random_state: int|None
         The random state to use for the random number generator.
         Default: None. Set to None to not set the random seed.
-    use_simple_features: bool
-        Whether to use simple features (event properties and static attributes) or not.
+    use_event_attributes: bool
+        Whether to use event attributes or not.
+    use_static_attributes: bool
+        Whether to use and static attributes or not.
+    use_all_static_attributes: bool
+        Whether to use all static attributes or not.
+        If not, only the default class features will be used.
     simple_feature_classes: list
         The list of simple feature classes to use.
-    simple_features: list
-        The list of simple features to use.
+    replace_simple_features: list
+        The list of simple features to use instead of the default ones.
     """
     def __init__(self):
         self.parser = argparse.ArgumentParser(description="SWAFI")
@@ -42,9 +47,11 @@ class ImpactBasicOptions:
         self.event_file_label = None
         self.target_type = None
         self.random_state = None
-        self.use_simple_features = None
+        self.use_event_attributes = None
+        self.use_static_attributes = None
+        self.use_all_static_attributes = None
         self.simple_feature_classes = None
-        self.simple_features = None
+        self.replace_simple_features = None
 
     def copy(self):
         """
@@ -77,14 +84,20 @@ class ImpactBasicOptions:
             '--random-state', type=int, default=None,
             help='The random state to use for the random number generator')
         self.parser.add_argument(
-            '--use-simple-features',  type=bool, default=True,
-            help='Do not use simple features (event properties and static attributes)')
+            '--use-event-attributes',  type=bool, default=True,
+            help='Use event attributes (i_max_q, p_sum_q, duration, ...)')
+        self.parser.add_argument(
+            '--use-static-attributes',  type=bool, default=True,
+            help='Use static attributes (terrain, swf_map, flowacc, twi)')
+        self.parser.add_argument(
+            '--use-all-static-attributes',  type=bool, default=False,
+            help='Use all static attributes.')
         self.parser.add_argument(
             '--simple-feature-classes', nargs='+',
             default=['event', 'terrain', 'swf_map', 'flowacc', 'twi'],
             help='The list of simple feature classes to use (e.g. event terrain)')
         self.parser.add_argument(
-            '--simple-features', nargs='+',
+            '--replace-simple-features', nargs='+',
             default=[],
             help='The list of specific simple features to use (e.g. event:i_max_q).'
                  'If not specified, the default class features will be used.'
@@ -109,9 +122,11 @@ class ImpactBasicOptions:
         self.event_file_label = args.event_file_label
         self.target_type = args.target_type
         self.random_state = args.random_state
-        self.use_simple_features = args.use_simple_features
+        self.use_event_attributes = args.use_event_attributes
+        self.use_static_attributes = args.use_static_attributes
+        self.use_all_static_attributes = args.use_all_static_attributes
         self.simple_feature_classes = args.simple_feature_classes
-        self.simple_features = args.simple_features
+        self.replace_simple_features = args.replace_simple_features
 
     def print_options(self):
         """
@@ -130,11 +145,40 @@ class ImpactBasicOptions:
         print("- event_file_label: ", self.event_file_label)
         print("- target_type: ", self.target_type)
         print("- random_state: ", self.random_state)
-        print("- use_simple_features: ", self.use_simple_features)
+        print("- use_event_attributes: ", self.use_event_attributes)
+        print("- use_static_attributes: ", self.use_static_attributes)
+        print("- use_all_static_attributes: ", self.use_all_static_attributes)
 
-        if self.use_simple_features:
+        if self.use_static_attributes or self.use_event_attributes:
             print("- simple_feature_classes: ", self.simple_feature_classes)
-            print("- simple_features: ", self.simple_features)
+            print("- replace simple_features: ", self.replace_simple_features)
+
+    def get_attributes_tag(self):
+        """
+        Get the attributes tag.
+
+        Returns
+        -------
+        str
+            The attributes tag.
+        """
+        if not self.use_event_attributes and not self.use_static_attributes:
+            return 'no_atts'
+
+        if self.use_event_attributes and not self.use_static_attributes:
+            return 'event_atts'
+
+        tag = ''
+        if self.use_event_attributes:
+            tag = 'event_and_'
+
+        if self.use_static_attributes:
+            if self.use_all_static_attributes:
+                tag += 'all_static_atts'
+            else:
+                tag += 'static_atts'
+
+        return tag
 
     def is_ok(self):
         """
@@ -148,7 +192,9 @@ class ImpactBasicOptions:
         assert self.dataset in ['mobiliar', 'gvz'], "Invalid dataset"
         assert self.target_type in ['occurrence', 'damage_ratio'], "Invalid target type"
         assert self.random_state is None or isinstance(self.random_state, int), "Invalid random state"
-        assert isinstance(self.use_simple_features, bool), "Invalid use_simple_features"
+        assert isinstance(self.use_event_attributes, bool), "Invalid use_event_attributes"
+        assert isinstance(self.use_static_attributes, bool), "Invalid use_static_attributes"
+        assert isinstance(self.use_all_static_attributes, bool), "Invalid use_all_static_attributes"
         assert isinstance(self.simple_feature_classes, list), "Invalid simple_feature_classes"
 
         return True

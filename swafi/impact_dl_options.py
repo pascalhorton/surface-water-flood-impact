@@ -184,7 +184,7 @@ class ImpactDlOptions(ImpactBasicOptions):
             self.weight_denominator = trial.suggest_int(
                 'weight_denominator', 1, 100)
 
-        if self.use_simple_features:
+        if self.use_static_attributes:
             if 'transform_static' in hp_to_optimize:
                 self.transform_static = trial.suggest_categorical(
                     'transform_static', ['standardize', 'normalize'])
@@ -241,7 +241,7 @@ class ImpactDlOptions(ImpactBasicOptions):
 
         print("- weight_denominator: ", self.weight_denominator)
 
-        if self.use_simple_features:
+        if self.use_static_attributes:
             print("- transform_static: ", self.transform_static)
 
         if self.use_precip:

@@ -94,8 +94,8 @@ def _setup_model(options, events, precip_hf, precip_daily):
     tx.set_precipitation_daily(precip_daily)
     tx.remove_events_without_precipitation_data()
     tx.reduce_spatial_domain()
-    if tx.options.use_simple_features:
-        tx.select_features(tx.options.simple_features)
+    if tx.options.use_static_attributes or tx.options.use_event_attributes:
+        tx.select_features(tx.options.replace_simple_features)
         tx.load_features(tx.options.simple_feature_classes)
     tx.split_sample()
     tx.reduce_negatives_for_training(tx.options.factor_neg_reduction)

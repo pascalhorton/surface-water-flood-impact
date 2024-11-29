@@ -15,13 +15,12 @@ class ImpactLogisticRegression(Impact):
     ----------
     events: Events
         The events object.
-    random_state: int|None
-        The random state to use for the random number generator.
-        Default: None. Set to None to not set the random seed.
+    options: ImpactBasicOptions
+        The options.
     """
 
-    def __init__(self, events, random_state=None):
-        super().__init__(events, target_type='occurrence', random_state=random_state)
+    def __init__(self, events, options):
+        super().__init__(events, options)
 
     def fit(self):
         """

@@ -21,16 +21,20 @@ def main():
     events = load_events_from_pickle(filename=events_filename)
 
     # Create the impact function
-    lr = ImpactLogisticRegression(events)
+    lr = ImpactLogisticRegression(events, options)
 
-    lr.load_features(['event', 'terrain', 'swf_map', 'flowacc', 'twi'])
+    lr.select_features(options.replace_simple_features)
+    lr.load_features(options.simple_feature_classes)
 
     lr.split_sample()
     lr.normalize_features()
     lr.compute_balanced_class_weights()
-    lr.compute_corrected_class_weights(weight_denominator=27)
+    lr.compute_corrected_class_weights(weight_denominator=30)
     lr.fit()
-    lr.assess_model_on_all_periods(save_results=True, file_tag='lr')
+
+    tag_atts = options.get_attributes_tag()
+
+    lr.assess_model_on_all_periods(save_results=True, file_tag=f'lr_{tag_atts}')
 
 
 if __name__ == '__main__':
