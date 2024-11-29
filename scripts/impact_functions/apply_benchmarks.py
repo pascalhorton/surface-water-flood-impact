@@ -22,22 +22,22 @@ def main():
 
     # Create the impact function
     print("\nBenchmark model (always false):")
-    bench = Impact(events, target_type='damage_ratio', random_state=None)
+    bench = Impact(events, options)
     bench.create_benchmark_model('always_false')
     bench.split_sample()
-    bench.assess_model_on_all_periods()
+    bench.assess_model_on_all_periods(save_results=True, file_tag='bench_false')
 
     print("\nBenchmark model (always true):")
-    bench = Impact(events, target_type='damage_ratio', random_state=None)
+    bench = Impact(events, options)
     bench.create_benchmark_model('always_true')
     bench.split_sample()
-    bench.assess_model_on_all_periods()
+    bench.assess_model_on_all_periods(save_results=True, file_tag='bench_true')
 
     print("\nBenchmark model (random):")
-    bench = Impact(events, target_type='damage_ratio', random_state=None)
+    bench = Impact(events, options)
     bench.create_benchmark_model('random')
     bench.split_sample()
-    bench.assess_model_on_all_periods()
+    bench.assess_model_on_all_periods(save_results=True, file_tag='bench_rand')
 
 
 if __name__ == '__main__':
