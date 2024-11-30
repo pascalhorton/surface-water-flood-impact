@@ -130,6 +130,8 @@ class ImpactBasicOptions:
             if self.use_static_attributes:
                 classes.extend(['terrain', 'swf_map', 'flowacc', 'twi'])
             self.simple_feature_classes = classes
+        else:
+            self.simple_feature_classes = args.simple_feature_classes
         self.replace_simple_features = args.replace_simple_features
 
     def print_options(self):

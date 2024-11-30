@@ -34,7 +34,6 @@ MISSING_DATES = CombiPrecip.missing
 def main():
     options = ImpactTransformerOptions()
     options.parse_args()
-    # options.parser.print_help()
     options.print_options()
     assert options.is_ok()
 
