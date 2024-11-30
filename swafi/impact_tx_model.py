@@ -213,7 +213,7 @@ class ModelTransformer(models.Model):
             x = layers.Dense(nb_units, activation=self.options.inner_activation_dense,
                              name=f'dense_ffn_{i}')(x)
 
-            if self.options.with_batchnorm_dense:
+            if self.options.use_batchnorm_dense:
                 x = layers.BatchNormalization(name=f'batchnorm_dense_{i}')(x)
 
             if self.options.dropout_rate_dense > 0:

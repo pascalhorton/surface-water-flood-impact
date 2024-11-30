@@ -3,6 +3,7 @@ Class to handle the DL options for models based on deep learning.
 It is not meant to be used directly, but to be inherited by other classes.
 """
 import datetime
+import argparse
 
 from swafi.impact_basic_options import ImpactBasicOptions
 
@@ -48,7 +49,7 @@ class ImpactDlOptions(ImpactBasicOptions):
         The learning rate.
     dropout_rate_dense: float
         The dropout rate for the dense layers.
-    with_batchnorm_dense: bool
+    use_batchnorm_dense: bool
         Whether to use batch normalization or not for the dense layers.
     nb_dense_layers: int
         The number of dense layers.
@@ -83,7 +84,7 @@ class ImpactDlOptions(ImpactBasicOptions):
 
         # Model options for the dense layers
         self.dropout_rate_dense = None
-        self.with_batchnorm_dense = None
+        self.use_batchnorm_dense = None
         self.nb_dense_layers = None
         self.nb_dense_units = None
         self.nb_dense_units_decreasing = None
@@ -110,11 +111,11 @@ class ImpactDlOptions(ImpactBasicOptions):
             '--weight-denominator', type=int, default=40,
             help='The weight denominator to reduce the negative class weights')
         self.parser.add_argument(
-            '--use-precip', type=bool, default=True,
+            '--use-precip', action=argparse.BooleanOptionalAction, default=True,
             help='Do not use precipitation data')
         self.parser.add_argument(
-            '--log-transform-precip', type=bool, default=True,
-            help='Log-transform the precipitation')
+            '--log-transform-precip', action=argparse.BooleanOptionalAction,
+            default=True, help='Log-transform the precipitation')
         self.parser.add_argument(
             '--transform-precip', type=str, default='normalize',
             help='The transformation to apply to the precipitation data')
@@ -134,8 +135,8 @@ class ImpactDlOptions(ImpactBasicOptions):
             '--dropout-rate-dense', type=float, default=0.4,
             help='The dropout rate for the dense layers')
         self.parser.add_argument(
-            '--with-batchnorm-dense', type=bool, default=True,
-            help='Do not use batch normalization for the dense layers')
+            '--use-batchnorm-dense', action=argparse.BooleanOptionalAction,
+            default=True, help='Use batch normalization for the dense layers')
         self.parser.add_argument(
             '--nb-dense-layers', type=int, default=5,
             help='The number of dense layers')
@@ -143,8 +144,8 @@ class ImpactDlOptions(ImpactBasicOptions):
             '--nb-dense-units', type=int, default=256,
             help='The number of dense units')
         self.parser.add_argument(
-            '--dense-units-decreasing', type=bool, default=False,
-            help='The number of dense units should decrease')
+            '--dense-units-decreasing', action=argparse.BooleanOptionalAction,
+            default=False, help='The number of dense units should decrease')
         self.parser.add_argument(
             '--inner-activation-dense', type=str, default='relu',
             help='The inner activation function for the dense layers')
@@ -168,7 +169,7 @@ class ImpactDlOptions(ImpactBasicOptions):
         self.epochs = args.epochs
         self.learning_rate = args.learning_rate
         self.dropout_rate_dense = args.dropout_rate_dense
-        self.with_batchnorm_dense = args.with_batchnorm_dense
+        self.use_batchnorm_dense = args.use_batchnorm_dense
         self.nb_dense_layers = args.nb_dense_layers
         self.nb_dense_units = args.nb_dense_units
         self.nb_dense_units_decreasing = args.dense_units_decreasing
@@ -206,9 +207,9 @@ class ImpactDlOptions(ImpactBasicOptions):
         if 'dropout_rate_dense' in hp_to_optimize:
             self.dropout_rate_dense = trial.suggest_float(
                 'dropout_rate_dense', 0.2, 0.5)
-        if 'with_batchnorm_dense' in hp_to_optimize:
-            self.with_batchnorm_dense = trial.suggest_categorical(
-                'with_batchnorm_dense', [True, False])
+        if 'use_batchnorm_dense' in hp_to_optimize:
+            self.use_batchnorm_dense = trial.suggest_categorical(
+                'use_batchnorm_dense', [True, False])
         if 'nb_dense_layers' in hp_to_optimize:
             self.nb_dense_layers = trial.suggest_int(
                 'nb_dense_layers', 1, 10)
@@ -252,7 +253,7 @@ class ImpactDlOptions(ImpactBasicOptions):
         print("- epochs: ", self.epochs)
         print("- learning_rate: ", self.learning_rate)
         print("- dropout_rate_dense: ", self.dropout_rate_dense)
-        print("- with_batchnorm_dense: ", self.with_batchnorm_dense)
+        print("- use_batchnorm_dense: ", self.use_batchnorm_dense)
         print("- nb_dense_layers: ", self.nb_dense_layers)
         print("- nb_dense_units: ", self.nb_dense_units)
         print("- nb_dense_units_decreasing: ", self.nb_dense_units_decreasing)
@@ -280,7 +281,7 @@ class ImpactDlOptions(ImpactBasicOptions):
         assert self.epochs is not None, "epochs is not set"
         assert self.learning_rate is not None, "learning_rate is not set"
         assert self.dropout_rate_dense is not None, "dropout_rate_dense is not set"
-        assert isinstance(self.with_batchnorm_dense, bool), "with_batchnorm_dense is not set"
+        assert isinstance(self.use_batchnorm_dense, bool), "use_batchnorm_dense is not set"
         assert self.nb_dense_layers is not None, "nb_dense_layers is not set"
         assert self.nb_dense_units is not None, "nb_dense_units is not set"
         assert isinstance(self.nb_dense_units_decreasing, bool), "nb_dense_units_decreasing is not set"

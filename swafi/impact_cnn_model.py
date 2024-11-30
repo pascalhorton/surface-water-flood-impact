@@ -115,7 +115,7 @@ class ModelCnn(models.Model):
             x = layers.Dense(nb_units, activation=self.options.inner_activation_dense,
                              name=f'dense_{i}')(x)
 
-            if self.options.with_batchnorm_dense:
+            if self.options.use_batchnorm_dense:
                 x = layers.BatchNormalization(name=f'batchnorm_dense_{i}')(x)
 
             if self.options.dropout_rate_dense > 0:
@@ -185,7 +185,7 @@ class ModelCnn(models.Model):
             name=f'conv3d_{i}b',
         )(x)
 
-        if self.options.with_batchnorm_cnn:
+        if self.options.use_batchnorm_cnn:
             # Batch normalization should be before any dropout
             # https://stackoverflow.com/questions/59634780/correct-order-for-
             # spatialdropout2d-batchnormalization-and-activation-function
@@ -199,7 +199,7 @@ class ModelCnn(models.Model):
         )(x)
 
         if self.options.dropout_rate_cnn > 0:
-            if self.options.with_spatial_dropout and x.shape[1] > 1 and x.shape[2] > 1:
+            if self.options.use_spatial_dropout and x.shape[1] > 1 and x.shape[2] > 1:
                 x = layers.SpatialDropout3D(
                     rate=self.options.dropout_rate_cnn,
                     name=f'spatial_dropout_cnn_{i}',

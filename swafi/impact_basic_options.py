@@ -84,14 +84,14 @@ class ImpactBasicOptions:
             '--random-state', type=int, default=None,
             help='The random state to use for the random number generator')
         self.parser.add_argument(
-            '--use-event-attributes', type=bool, default=True,
-            help='Use event attributes (i_max_q, p_sum_q, duration, ...)')
+            '--use-event-attributes', action=argparse.BooleanOptionalAction,
+            default=True, help='Use event attributes (i_max_q, p_sum_q, duration, ...)')
         self.parser.add_argument(
-            '--use-static-attributes', type=bool, default=False,
-            help='Use static attributes (terrain, swf_map, flowacc, twi)')
+            '--use-static-attributes', action=argparse.BooleanOptionalAction,
+            default=False, help='Use static attributes (terrain, swf_map, flowacc, twi)')
         self.parser.add_argument(
-            '--use-all-static-attributes', type=bool, default=False,
-            help='Use all static attributes.')
+            '--use-all-static-attributes', action=argparse.BooleanOptionalAction,
+            default=False, help='Use all static attributes.')
         self.parser.add_argument(
             '--simple-feature-classes', nargs='+',
             default=['default'],

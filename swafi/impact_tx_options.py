@@ -4,6 +4,7 @@ Class to define the options for the Transformer-based impact function.
 from .impact_dl_options import ImpactDlOptions
 
 import copy
+import argparse
 
 
 class ImpactTransformerOptions(ImpactDlOptions):
@@ -93,8 +94,8 @@ class ImpactTransformerOptions(ImpactDlOptions):
             "--architecture", type=str, default="combined_fixed_embeddings",
             help="The architecture of the Transformer.")
         self.parser.add_argument(
-            "--embeddings-2-layers", type=bool, default=False,
-            help="Whether to use two dense layers for the embeddings.")
+            "--embeddings-2-layers", action=argparse.BooleanOptionalAction,
+            default=False, help="Whether to use two dense layers for the embeddings.")
         self.parser.add_argument(
             "--embeddings-activation", type=str, default="elu",
             help="The activation function for the embeddings.")
@@ -102,7 +103,7 @@ class ImpactTransformerOptions(ImpactDlOptions):
             "--inner-activation-tx", type=str, default="relu",
             help="The activation function for the Transformer.")
         self.parser.add_argument(
-            "--use-cnn-in-tx", type=bool, default=False,
+            "--use-cnn-in-tx", action=argparse.BooleanOptionalAction, default=False,
             help="Whether to use a CNN in the transformer instead of the dense layers.")
         self.parser.add_argument(
             "--nb-transformer-blocks", type=int, default=3,
@@ -160,7 +161,7 @@ class ImpactTransformerOptions(ImpactDlOptions):
             'embeddings_2_layers', 'embeddings_activation', 'inner_activation_tx',
             'use_cnn_in_tx', 'nb_transformer_blocks', 'tx_model_dim', 'num_heads',
             'ff_dim', 'dropout_rate', 'dropout_rate_dense', 'inner_activation_dense',
-            'with_batchnorm_dense', 'batch_size', 'learning_rate'
+            'use_batchnorm_dense', 'batch_size', 'learning_rate'
 
         Returns
         -------
@@ -175,7 +176,7 @@ class ImpactTransformerOptions(ImpactDlOptions):
                 'embeddings_activation', 'inner_activation_tx', 'use_cnn_in_tx',
                 'nb_transformer_blocks', 'num_heads', 'ff_dim', 'dropout_rate',
                 'dropout_rate_dense', 'inner_activation_dense',
-                'with_batchnorm_dense', 'batch_size', 'learning_rate']
+                'use_batchnorm_dense', 'batch_size', 'learning_rate']
             # Left out: 'precip_hf_time_step', 'precip_daily_days_nb',
             # 'precip_hf_days_before', 'precip_hf_days_after'
 
