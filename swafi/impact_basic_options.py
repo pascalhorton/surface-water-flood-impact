@@ -88,7 +88,7 @@ class ImpactBasicOptions:
             default=True, help='Use event attributes (i_max_q, p_sum_q, duration, ...)')
         self.parser.add_argument(
             '--use-static-attributes', action=argparse.BooleanOptionalAction,
-            default=False, help='Use static attributes (terrain, swf_map, flowacc, twi)')
+            default=True, help='Use static attributes (terrain, swf_map, flowacc, twi)')
         self.parser.add_argument(
             '--use-all-static-attributes', action=argparse.BooleanOptionalAction,
             default=False, help='Use all static attributes.')
@@ -199,6 +199,5 @@ class ImpactBasicOptions:
         assert isinstance(self.use_event_attributes, bool), "Invalid use_event_attributes"
         assert isinstance(self.use_static_attributes, bool), "Invalid use_static_attributes"
         assert isinstance(self.use_all_static_attributes, bool), "Invalid use_all_static_attributes"
-        assert isinstance(self.simple_feature_classes, list), "Invalid simple_feature_classes"
 
         return True
