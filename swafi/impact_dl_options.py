@@ -287,3 +287,4 @@ class ImpactDlOptions(ImpactBasicOptions):
         assert isinstance(self.nb_dense_units_decreasing, bool), "nb_dense_units_decreasing is not set"
         assert self.inner_activation_dense is not None, "inner_activation_dense is not set"
 
+        return True
