@@ -176,7 +176,9 @@ class ImpactTransformerOptions(ImpactDlOptions):
                 'embeddings_activation', 'inner_activation_tx', 'use_cnn_in_tx',
                 'nb_transformer_blocks', 'num_heads', 'ff_dim', 'dropout_rate',
                 'dropout_rate_dense', 'inner_activation_dense',
-                'use_batchnorm_dense', 'batch_size', 'learning_rate']
+                'use_batchnorm_dense', 'batch_size', 'learning_rate',
+                'weight_denominator', 'nb_dense_layers', 'nb_dense_units',
+                'nb_dense_units_decreasing']
             # Left out: 'precip_hf_time_step', 'precip_daily_days_nb',
             # 'precip_hf_days_before', 'precip_hf_days_after'
 
