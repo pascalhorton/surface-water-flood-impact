@@ -19,12 +19,11 @@ try:
     import optuna
 
     has_optuna = True
-    from optuna.storages import RDBStorage, JournalStorage, JournalFileStorage
+    from optuna.storages import JournalStorage, JournalFileStorage
 except ImportError:
     pass
 
-USE_SQLITE = False
-USE_TXTFILE = True
+OPTUNA_LOAD_STUDY = True
 OPTUNA_RANDOM = True
 SAVE_MODEL = True
 SHOW_PLOTS = False
@@ -128,17 +127,9 @@ def optimize_model_with_optuna(options, events, precip=None, dem=None, dir_plots
     if not has_optuna:
         raise ValueError("Optuna is not installed")
 
-    if USE_SQLITE:
-        storage = RDBStorage(
-            url=f'sqlite:///{options.optuna_study_name}.db',
-            engine_kwargs={"connect_args": {"timeout": 60.0}}
-        )
-    elif USE_TXTFILE:
-        storage = JournalStorage(
-            JournalFileStorage(f"{options.optuna_study_name}.log")
-        )
-    else:
-        raise ValueError("No storage specified")
+    storage = JournalStorage(
+        JournalFileStorage(f"{options.optuna_study_name}.log")
+    )
 
     def optuna_objective(trial):
         """
@@ -178,7 +169,7 @@ def optimize_model_with_optuna(options, events, precip=None, dem=None, dir_plots
     if OPTUNA_RANDOM:
         sampler = optuna.samplers.RandomSampler()
 
-    if USE_SQLITE or USE_TXTFILE:
+    if OPTUNA_LOAD_STUDY:
         study = optuna.load_study(
             study_name=options.optuna_study_name,
             storage=storage,
