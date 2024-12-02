@@ -165,8 +165,8 @@ class ImpactTransformerOptions(ImpactDlOptions):
 
         Returns
         -------
-        ImpactCnnOptions
-            The options.
+        bool
+            Whether the options are ok or not.
         """
         assert self.use_precip, "Precipitation data is required for the Transformer model."
 
