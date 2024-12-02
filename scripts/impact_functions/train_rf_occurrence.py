@@ -37,16 +37,24 @@ def main():
 
     if not options.optimize_with_optuna:
         rf = _setup_model(options, events)
-        rf.fit(dir_plots=config.get('OUTPUT_DIR'),
-               tag=options.run_name, show_plots=SHOW_PLOTS)
+        rf.fit()
         rf.assess_model_on_all_periods()
+        rf.plot_feature_importance(tag='feature_importance_' + rf.options.run_name,
+                                   dir_output=config.get('OUTPUT_DIR'))
         if SAVE_MODEL:
-            rf.save_model(dir_output=config.get('OUTPUT_DIR'), base_name='model_rf')
+            rf.save_model(dir_output=config.get('OUTPUT_DIR'),
+                          base_name='model_rf_' + rf.options.run_name)
             print(f"Model saved in {config.get('OUTPUT_DIR')}")
 
     else:
         rf = optimize_model_with_optuna(options, events, dir_plots=config.get('OUTPUT_DIR'))
         rf.assess_model_on_all_periods()
+        rf.plot_feature_importance(tag='feature_importance_optuna_' + rf.options.run_name,
+                                   dir_output=config.get('OUTPUT_DIR'))
+        if SAVE_MODEL:
+            rf.save_model(dir_output=config.get('OUTPUT_DIR'),
+                          base_name='model_rf_optuna_' + rf.options.run_name)
+            print(f"Model saved in {config.get('OUTPUT_DIR')}")
 
 
 def _setup_model(options, events):
@@ -105,7 +113,7 @@ def optimize_model_with_optuna(options, events, dir_plots=None):
         start_time = time.time()
 
         # Fit the model
-        rf_trial.fit(do_plot=False, silent=True)
+        rf_trial.fit()
 
         end_time = time.time()
         print(f"Model fitting took {end_time - start_time:.2f} seconds")
@@ -144,10 +152,10 @@ def optimize_model_with_optuna(options, events, dir_plots=None):
     # Fit the model with the best parameters
     options_best = options.copy()
     options_best.generate_for_optuna(best_trial)
-    tx = _setup_model(options_best, events)
-    tx.fit(dir_plots=dir_plots, tag='best_optuna_' + tx.options.run_name)
+    rf = _setup_model(options_best, events)
+    rf.fit()
 
-    return tx
+    return rf
 
 
 if __name__ == '__main__':
