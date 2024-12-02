@@ -6,11 +6,17 @@ from .impact import Impact
 
 import hashlib
 import pickle
-import optuna
-from enum import Enum, auto
+import copy
 from sklearn.metrics import f1_score
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
+
+has_optuna = False
+try:
+    import optuna
+    has_optuna = True
+except ImportError:
+    pass
 
 from .utils.plotting import plot_random_forest_feature_importance
 from .utils.verification import compute_confusion_matrix, compute_score_binary
@@ -24,60 +30,106 @@ class ImpactRandomForest(Impact):
     ----------
     events: Events
         The events object.
-    target_type: str
-        The target type. Options are: 'occurrence', 'damage_ratio'
-    random_state: int|None
-        The random state to use for the random number generator.
-        Default: None. Set to None to not set the random seed.
+    options: ImpactOptions
+        The model options.
     reload_trained_models: bool
         Whether to reload the previously trained models or not.
     """
 
-    class OptimApproach(Enum):
-        MANUAL = auto()
-        GRID_SEARCH_CV = auto()
-        RANDOM_SEARCH_CV = auto()
-        AUTO = auto()
+    def __init__(self, events, options, reload_trained_models=False):
+        super().__init__(events, options)
 
-    class OptimMetric(Enum):
-        F1 = auto()
-        F1_WEIGHTED = auto()
-        CSI = auto()
-
-    def __init__(self, events, target_type='occurrence', random_state=None,
-                 reload_trained_models=False):
-        super().__init__(events, target_type=target_type, random_state=random_state)
         self.reload_trained_models = reload_trained_models
+        self.n_jobs = -1
 
-        # Set default options
-        self.optim_approach = self.OptimApproach.MANUAL
-        self.optim_metric = self.OptimMetric.F1
+    def copy(self):
+        """
+        Make a copy of the object.
+        Returns
+        -------
+        ImpactRandomForest
+            The copy of the object.
+        """
+        return copy.deepcopy(self)
 
-        # Hyperparameters - set grid search parameters
-        self.param_grid = {
-            'n_estimators': [50, 100, 200],
-            'max_depth': [5, 10, 20, 30],
-            'min_samples_split': [2, 5, 10],
-            'min_samples_leaf': [1, 2, 4],
-            'max_features': [None, 'sqrt', 'log2']
-        }
+    def save_model(self, dir_output, base_name):
+        """
+        Save the model.
 
-        # Hyperparameters - set parameter ranges for Optuna
-        self.param_ranges = {
-            'weight_denominator': (15, 60),
-            'n_estimators': (50, 200),
-            'max_depth': (10, 25),
-            'min_samples_split': (4, 10),
-            'min_samples_leaf': (1, 4),
-            'max_features': [None, 'sqrt', 'log2']
-        }
+        Parameters
+        ----------
+        dir_output: str
+            The directory where to save the model.
+        base_name: str
+            The base name to use for the file.
+        """
+        if self.model is None:
+            raise ValueError("Model not defined")
 
-        # Hyperparameters - set default parameters
-        self.n_estimators = 150
-        self.max_depth = 15
-        self.min_samples_split = 5
-        self.min_samples_leaf = 4
-        self.max_features = None
+        filename = f'{dir_output}/{base_name}_{self.options.run_name}.pkl'
+
+        with open(filename, 'wb') as f:
+            pickle.dump(self.model, f)
+
+        print(f"Model saved: {filename}")
+
+    def _define_model(self):
+        """
+        Define the model.
+        """
+        if self.target_type == 'occurrence':
+            self.model = RandomForestClassifier(
+                n_estimators=self.options.n_estimators,
+                max_depth=self.options.max_depth,
+                min_samples_split=self.options.min_samples_split,
+                min_samples_leaf=self.options.min_samples_leaf,
+                max_features=self.options.max_features,
+                class_weight=self.class_weight,
+                random_state=self.random_state,
+                n_jobs=self.n_jobs)
+        elif self.target_type == 'damage_ratio':
+            self.model = RandomForestRegressor(
+                n_estimators=self.options.n_estimators,
+                max_depth=self.options.max_depth,
+                min_samples_split=self.options.min_samples_split,
+                min_samples_leaf=self.options.min_samples_leaf,
+                max_features=self.options.max_features,
+                random_state=self.random_state,
+                n_jobs=self.n_jobs)
+        else:
+            raise ValueError(f"Unknown target type: {self.target_type}")
+
+    def compute_f1_score(self, x_valid, y_valid):
+        """
+        Compute the F1 score on the given set.
+
+        Parameters
+        ----------
+        x_valid: np.array
+            The validation features.
+        y_valid: np.array
+            The validation target.
+
+        Returns
+        -------
+        float
+            The F1 score.
+        """
+        epsilon = 1e-7  # a small constant to avoid division by zero
+
+        y_pred = self.model.predict(x_valid, verbose=0)
+
+        y_pred_class = (y_pred > 0.5).astype(int)
+        tp, tn, fp, fn = compute_confusion_matrix(y_valid, y_pred_class)
+        f1 = 2 * tp / (2 * tp + fp + fn + epsilon)
+
+        return f1
+
+
+
+
+
+
 
     def fit(self, tag=None):
         """
@@ -291,32 +343,6 @@ class ImpactRandomForest(Impact):
             raise ValueError(f"Unknown optimizer metric: {self.optim_metric}")
 
         return scoring
-
-    def _define_model(self):
-        """
-        Define the model.
-        """
-        if self.target_type == 'occurrence':
-            self.model = RandomForestClassifier(
-                n_estimators=self.n_estimators,
-                max_depth=self.max_depth,
-                min_samples_split=self.min_samples_split,
-                min_samples_leaf=self.min_samples_leaf,
-                max_features=self.max_features,
-                class_weight=self.class_weight,
-                random_state=self.random_state,
-                n_jobs=self.n_jobs)
-        elif self.target_type == 'damage_ratio':
-            self.model = RandomForestRegressor(
-                n_estimators=self.n_estimators,
-                max_depth=self.max_depth,
-                min_samples_split=self.min_samples_split,
-                min_samples_leaf=self.min_samples_leaf,
-                max_features=self.max_features,
-                random_state=self.random_state,
-                n_jobs=self.n_jobs)
-        else:
-            raise ValueError(f"Unknown target type: {self.target_type}")
 
     def _create_model_tmp_file_name(self):
         """
