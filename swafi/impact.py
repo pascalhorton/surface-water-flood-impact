@@ -49,7 +49,6 @@ class Impact:
         self.tmp_dir = Path(self.config.get('TMP_DIR'))
 
         # Computing options
-        self.n_jobs = 20
         self.random_state = options.random_state
 
         # Initialize the data properties
@@ -189,6 +188,10 @@ class Impact:
             validation and testing split (default: 0.25)
         """
         df = self.df.copy()
+
+        if self.options.min_nb_claims > 1:
+            self.df = self.df[(self.df['nb_claims'] == 0) |
+                              (self.df['nb_claims'] >= self.options.min_nb_claims)]
 
         # Rename the column date_claim to date
         df.rename(columns={'date_claim': 'date'}, inplace=True)

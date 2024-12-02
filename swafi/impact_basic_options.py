@@ -45,6 +45,7 @@ class ImpactBasicOptions:
         self.run_name = None
         self.dataset = None
         self.event_file_label = None
+        self.min_nb_claims = None
         self.target_type = None
         self.random_state = None
         self.use_event_attributes = None
@@ -77,6 +78,9 @@ class ImpactBasicOptions:
         self.parser.add_argument(
             "--event-file-label", type=str, default='default_occurrence',
             help="The event file label (default: 'default_occurrence').")
+        self.parser.add_argument(
+            '--min-nb-claims', type=int, default=1,
+            help='The minimum number of claims for an event to be considered.')
         self.parser.add_argument(
             '--target-type', type=str, default='occurrence',
             help='The target type. Options are: occurrence, damage_ratio')
@@ -118,6 +122,7 @@ class ImpactBasicOptions:
         self.run_name = args.run_name
         self.dataset = args.dataset
         self.event_file_label = args.event_file_label
+        self.min_nb_claims = args.min_nb_claims
         self.target_type = args.target_type
         self.random_state = args.random_state
         self.use_event_attributes = args.use_event_attributes
@@ -149,6 +154,7 @@ class ImpactBasicOptions:
         print(f"Options (run {self.run_name}):")
         print("- dataset: ", self.dataset)
         print("- event_file_label: ", self.event_file_label)
+        print("- min_nb_claims: ", self.min_nb_claims)
         print("- target_type: ", self.target_type)
         print("- random_state: ", self.random_state)
         print("- use_event_attributes: ", self.use_event_attributes)
