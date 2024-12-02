@@ -8,6 +8,21 @@ except ImportError:
 
 
 def get_or_create_optuna_study(options, random_sampler=False):
+    """
+    Get or create an Optuna study.
+
+    Parameters
+    ----------
+    options: ImpactBasicOptions
+        The options.
+    random_sampler: bool
+        Whether to use a random sampler or not.
+
+    Returns
+    -------
+    optuna.study.Study
+        The Optuna study.
+    """
     if not has_optuna:
         raise ValueError("Optuna is not installed")
 
