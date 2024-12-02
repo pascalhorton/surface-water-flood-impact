@@ -36,6 +36,12 @@ class ImpactBasicOptions:
         The list of simple feature classes to use.
     replace_simple_features: list
         The list of simple features to use instead of the default ones.
+    optimize_with_optuna : str
+        Optimize with Optuna.
+    optuna_trials_nb : int
+        Number of Optuna trials.
+    optuna_study_name : str
+        Optuna study name.
     """
     def __init__(self):
         self.parser = argparse.ArgumentParser(description="SWAFI")
@@ -53,6 +59,11 @@ class ImpactBasicOptions:
         self.use_all_static_attributes = None
         self.simple_feature_classes = None
         self.replace_simple_features = None
+
+        # Optuna options
+        self.optimize_with_optuna = None
+        self.optuna_trials_nb = None
+        self.optuna_study_name = None
 
     def copy(self):
         """
@@ -107,6 +118,16 @@ class ImpactBasicOptions:
                  'If not specified, the default class features will be used.'
                  'If specified, the default class features will be overridden for'
                  'this class only (e.g. event).')
+        self.parser.add_argument(
+            '--optimize-with-optuna', action='store_true',
+            help='Optimize the hyperparameters with Optuna')
+        self.parser.add_argument(
+            '--optuna-trials-nb', type=int, default=100,
+            help='The number of trials for Optuna')
+        self.parser.add_argument(
+            '--optuna-study-name', type=str,
+            default=datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S"),
+            help='The Optuna study name (default: using the date and time'),
 
     def parse_args(self):
         """
@@ -138,6 +159,9 @@ class ImpactBasicOptions:
         else:
             self.simple_feature_classes = args.simple_feature_classes
         self.replace_simple_features = args.replace_simple_features
+        self.optimize_with_optuna = args.optimize_with_optuna
+        self.optuna_trials_nb = args.optuna_trials_nb
+        self.optuna_study_name = args.optuna_study_name
 
     def print_options(self):
         """
@@ -164,6 +188,11 @@ class ImpactBasicOptions:
         if self.use_static_attributes or self.use_event_attributes:
             print("- simple_feature_classes: ", self.simple_feature_classes)
             print("- replace simple_features: ", self.replace_simple_features)
+
+        if self.optimize_with_optuna:
+            print("- optimize_with_optuna: ", self.optimize_with_optuna)
+            print("- optuna_study_name: ", self.optuna_study_name)
+            print("- optuna_trials_nb: ", self.optuna_trials_nb)
 
     def get_attributes_tag(self):
         """

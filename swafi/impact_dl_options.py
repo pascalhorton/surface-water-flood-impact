@@ -21,12 +21,6 @@ class ImpactDlOptions(ImpactBasicOptions):
 
     Attributes
     ----------
-    optimize_with_optuna : str
-        Optimize with Optuna.
-    optuna_trials_nb : int
-        Number of Optuna trials.
-    optuna_study_name : str
-        Optuna study name.
     factor_neg_reduction: int
         The factor to reduce the number of negatives only for training.
     weight_denominator: int
@@ -65,9 +59,6 @@ class ImpactDlOptions(ImpactBasicOptions):
         self._set_parser_dl_shared_arguments()
 
         # General options
-        self.optimize_with_optuna = None
-        self.optuna_trials_nb = None
-        self.optuna_study_name = None
         self.factor_neg_reduction = None
         self.weight_denominator = None
 
@@ -94,16 +85,6 @@ class ImpactDlOptions(ImpactBasicOptions):
         """
         Set the parser arguments.
         """
-        self.parser.add_argument(
-            '--optimize-with-optuna', action='store_true',
-            help='Optimize the hyperparameters with Optuna')
-        self.parser.add_argument(
-            '--optuna-trials-nb', type=int, default=100,
-            help='The number of trials for Optuna')
-        self.parser.add_argument(
-            '--optuna-study-name', type=str,
-            default=datetime.datetime.now().strftime("%Y%m%d_%H%M%S"),
-            help='The Optuna study name (default: using the date and time'),
         self.parser.add_argument(
             '--factor-neg-reduction', type=int, default=10,
             help='The factor to reduce the number of negatives only for training')
@@ -156,9 +137,6 @@ class ImpactDlOptions(ImpactBasicOptions):
         """
         self._parse_basic_args(args)
 
-        self.optimize_with_optuna = args.optimize_with_optuna
-        self.optuna_trials_nb = args.optuna_trials_nb
-        self.optuna_study_name = args.optuna_study_name
         self.factor_neg_reduction = args.factor_neg_reduction
         self.weight_denominator = args.weight_denominator
         self.use_precip = args.use_precip
@@ -233,9 +211,6 @@ class ImpactDlOptions(ImpactBasicOptions):
         print("- use_precip: ", self.use_precip)
 
         if self.optimize_with_optuna:
-            print("- optimize_with_optuna: ", self.optimize_with_optuna)
-            print("- optuna_study_name: ", self.optuna_study_name)
-            print("- optuna_trials_nb: ", self.optuna_trials_nb)
             print("- epochs: ", self.epochs)
             if not show_optuna_params:
                 return  # Do not print the other options

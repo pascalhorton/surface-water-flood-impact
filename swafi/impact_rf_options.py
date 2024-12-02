@@ -20,12 +20,6 @@ class ImpactRFOptions(ImpactBasicOptions):
 
     Attributes
     ----------
-    optimize_with_optuna : str
-        Optimize with Optuna.
-    optuna_trials_nb : int
-        Number of Optuna trials.
-    optuna_study_name : str
-        Optuna study name.
     weight_denominator: int
         The weight denominator to reduce the negative class weights.
     n_estimators: int
@@ -44,9 +38,6 @@ class ImpactRFOptions(ImpactBasicOptions):
         self._set_parser_rf_arguments()
 
         # General options
-        self.optimize_with_optuna = None
-        self.optuna_trials_nb = None
-        self.optuna_study_name = None
         self.weight_denominator = None
 
         # RF options
@@ -70,16 +61,6 @@ class ImpactRFOptions(ImpactBasicOptions):
         """
         Set the parser arguments.
         """
-        self.parser.add_argument(
-            '--optimize-with-optuna', action='store_true',
-            help='Optimize the hyperparameters with Optuna')
-        self.parser.add_argument(
-            '--optuna-trials-nb', type=int, default=100,
-            help='The number of trials for Optuna')
-        self.parser.add_argument(
-            '--optuna-study-name', type=str,
-            default=datetime.datetime.now().strftime("%Y%m%d_%H%M%S"),
-            help='The Optuna study name (default: using the date and time'),
         self.parser.add_argument(
             '--weight-denominator', type=int, default=40,
             help='The weight denominator to reduce the negative class weights')
@@ -106,9 +87,6 @@ class ImpactRFOptions(ImpactBasicOptions):
         args = self.parser.parse_args()
         self._parse_basic_args(args)
 
-        self.optimize_with_optuna = args.optimize_with_optuna
-        self.optuna_trials_nb = args.optuna_trials_nb
-        self.optuna_study_name = args.optuna_study_name
         self.weight_denominator = args.weight_denominator
         self.n_estimators = args.n_estimators
         self.max_depth = args.max_depth
@@ -177,13 +155,9 @@ class ImpactRFOptions(ImpactBasicOptions):
         print("-" * 80)
         self._print_basic_options()
 
-        if self.optimize_with_optuna:
-            print("- optimize_with_optuna: ", self.optimize_with_optuna)
-            print("- optuna_study_name: ", self.optuna_study_name)
-            print("- optuna_trials_nb: ", self.optuna_trials_nb)
-            if not show_optuna_params:
-                print("-" * 80)
-                return  # Do not print the other options
+        if self.optimize_with_optuna and not show_optuna_params:
+            print("-" * 80)
+            return  # Do not print the other options
 
         print("- weight_denominator: ", self.weight_denominator)
         print("- n_estimators: ", self.n_estimators)

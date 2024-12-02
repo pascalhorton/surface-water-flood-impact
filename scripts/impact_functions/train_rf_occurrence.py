@@ -7,6 +7,7 @@ from swafi.config import Config
 from swafi.impact_rf import ImpactRandomForest
 from swafi.impact_rf_options import ImpactRFOptions
 from swafi.events import load_events_from_pickle
+from swafi.utils.optuna import get_or_create_optuna_study
 
 has_optuna = False
 try:
@@ -116,7 +117,7 @@ def optimize_model_with_optuna(options, events, dir_plots=None):
 
         return score
 
-    study = _get_or_create_study(options, OPTUNA_RANDOM)
+    study = get_or_create_optuna_study(options, OPTUNA_RANDOM)
     study.optimize(optuna_objective, n_trials=options.optuna_trials_nb)
 
     print("Number of finished trials: ", len(study.trials))
@@ -134,36 +135,6 @@ def optimize_model_with_optuna(options, events, dir_plots=None):
     rf.fit()
 
     return rf
-
-def _get_or_create_study(options, random_sampler = False):
-    file_path = f"./{options.optuna_study_name}.log"
-    lock_obj = optuna.storages.journal.JournalFileOpenLock(file_path)  # For Windows
-    storage = optuna.storages.JournalStorage(
-        optuna.storages.journal.JournalFileBackend(file_path, lock_obj=lock_obj)
-    )
-
-    sampler = None
-    if random_sampler:
-        sampler = optuna.samplers.RandomSampler()
-
-    try:
-        study = optuna.load_study(
-            study_name=options.optuna_study_name,
-            storage=storage,
-            sampler=sampler
-        )
-        print(f"Study '{options.optuna_study_name}' already exists.")
-    except KeyError:
-        # If the study does not exist, create it
-        study = optuna.create_study(
-            study_name=options.optuna_study_name,
-            storage=storage,
-            direction="maximize",
-            sampler=sampler
-        )
-        print(f"Study '{options.optuna_study_name}' created successfully.")
-
-    return study
 
 if __name__ == '__main__':
     main()

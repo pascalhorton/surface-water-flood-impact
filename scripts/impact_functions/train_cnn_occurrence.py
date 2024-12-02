@@ -13,17 +13,8 @@ from swafi.impact_cnn import ImpactCnn
 from swafi.impact_cnn_options import ImpactCnnOptions
 from swafi.events import load_events_from_pickle
 from swafi.precip_combiprecip import CombiPrecip
+from swafi.utils.optuna import get_or_create_optuna_study
 
-has_optuna = False
-try:
-    import optuna
-
-    has_optuna = True
-    from optuna.storages import JournalStorage, JournalFileBackend
-except ImportError:
-    pass
-
-OPTUNA_LOAD_STUDY = True
 OPTUNA_RANDOM = True
 SAVE_MODEL = True
 SHOW_PLOTS = False
@@ -124,12 +115,6 @@ def optimize_model_with_optuna(options, events, precip=None, dem=None, dir_plots
     dir_plots: str
         The directory where to save the plots.
     """
-    if not has_optuna:
-        raise ValueError("Optuna is not installed")
-
-    storage = JournalStorage(
-        JournalFileBackend(f"{options.optuna_study_name}.log")
-    )
 
     def optuna_objective(trial):
         """
@@ -165,22 +150,7 @@ def optimize_model_with_optuna(options, events, precip=None, dem=None, dir_plots
 
         return score
 
-    sampler = None
-    if OPTUNA_RANDOM:
-        sampler = optuna.samplers.RandomSampler()
-
-    if OPTUNA_LOAD_STUDY:
-        study = optuna.load_study(
-            study_name=options.optuna_study_name,
-            storage=storage,
-            sampler=sampler
-        )
-    else:
-        study = optuna.create_study(
-            study_name=options.optuna_study_name,
-            direction='maximize',
-            sampler=sampler
-        )
+    study = get_or_create_optuna_study(options, OPTUNA_RANDOM)
     study.optimize(optuna_objective, n_trials=options.optuna_trials_nb)
 
     print("Number of finished trials: ", len(study.trials))
