@@ -144,43 +144,6 @@ class ImpactDl(Impact):
         if do_plot:
             self._plot_training_history(hist, dir_plots, show_plots, tag)
 
-    def optimize_model_with_optuna(self, n_trials=100, n_jobs=4, dir_plots=None):
-        """
-        Optimize the model with Optuna.
-
-        Parameters
-        ----------
-        n_trials: int
-            The number of trials.
-        n_jobs: int
-            The number of jobs to run in parallel.
-        dir_plots: str
-            The directory where to save the plots.
-        """
-        if not has_optuna:
-            raise ValueError("Optuna is not installed")
-
-        study = optuna.create_study(direction='maximize')
-        study.optimize(self._objective, n_trials=n_trials, n_jobs=n_jobs)
-
-        print("Number of finished trials: ", len(study.trials))
-        print("Best trial:")
-        trial = study.best_trial
-        print("  Value: ", trial.value)
-        print("  Params: ")
-        for key, value in trial.params.items():
-            print(f"    {key}: {value}")
-
-        # Fit the model with the best parameters
-        if not self.options.generate_for_optuna(trial):
-            print("The parameters are not valid.")
-            return float('-inf')
-
-        self.compute_balanced_class_weights()
-        self.compute_corrected_class_weights(
-            weight_denominator=self.options.weight_denominator)
-        self.fit(dir_plots=dir_plots, tag='best_optuna_' + self.options.run_name)
-
     def reduce_negatives_for_training(self, factor):
         """
         Reduce the number of negatives on the training set.
