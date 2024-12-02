@@ -32,14 +32,11 @@ class ImpactRandomForest(Impact):
         The events object.
     options: ImpactOptions
         The model options.
-    reload_trained_models: bool
-        Whether to reload the previously trained models or not.
     """
 
-    def __init__(self, events, options, reload_trained_models=False):
+    def __init__(self, events, options):
         super().__init__(events, options)
 
-        self.reload_trained_models = reload_trained_models
         self.n_jobs = 20
 
     def copy(self):

@@ -70,7 +70,7 @@ class ImpactBasicOptions:
         """
         self.parser.add_argument(
             '--run-name', type=str,
-            default=datetime.datetime.now().strftime("%Y%m%d_%H%M%S"),
+            default=datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S"),
             help='The run name')
         self.parser.add_argument(
             "--dataset", type=str, default='',
