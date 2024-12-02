@@ -368,23 +368,6 @@ class ImpactDl(Impact):
 
         return optimizer
 
-    def _create_model_tmp_file_name(self):
-        """
-        Create the temporary file name for the model.
-        """
-        tag_model = (
-                pickle.dumps(self.df.shape) +
-                pickle.dumps(self.df.columns) +
-                pickle.dumps(self.df.iloc[0]) +
-                pickle.dumps(self.features) +
-                pickle.dumps(self.class_weight) +
-                pickle.dumps(self.options.random_state) +
-                pickle.dumps(self.target_type))
-        model_hashed_name = f'cnn_model_{hashlib.md5(tag_model).hexdigest()}.pickle'
-        tmp_filename = self.tmp_dir / model_hashed_name
-
-        return tmp_filename
-
     @staticmethod
     def _plot_training_history(hist, dir_plots, show_plots, prefix=None):
         """
