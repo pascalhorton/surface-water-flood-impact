@@ -19,7 +19,7 @@ try:
     import optuna
 
     has_optuna = True
-    from optuna.storages import JournalStorage, JournalFileStorage
+    from optuna.storages import JournalStorage, JournalFileBackend
 except ImportError:
     pass
 
@@ -128,7 +128,7 @@ def optimize_model_with_optuna(options, events, precip=None, dem=None, dir_plots
         raise ValueError("Optuna is not installed")
 
     storage = JournalStorage(
-        JournalFileStorage(f"{options.optuna_study_name}.log")
+        JournalFileBackend(f"{options.optuna_study_name}.log")
     )
 
     def optuna_objective(trial):

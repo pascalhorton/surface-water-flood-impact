@@ -116,7 +116,7 @@ class ImpactRFOptions(ImpactBasicOptions):
         self.min_samples_leaf = args.min_samples_leaf
         self.max_features = args.max_features
 
-    def generate_for_optuna(self, trial, hp_to_optimize):
+    def generate_for_optuna(self, trial, hp_to_optimize='default'):
         """
         Generate the hyperparameters for Optuna.
 
@@ -125,7 +125,7 @@ class ImpactRFOptions(ImpactBasicOptions):
         trial: optuna.trial.Trial
             The trial.
         hp_to_optimize: list
-            The hyperparameters to optimize.
+            The hyperparameters to optimize. Can be the string 'default'
             Options are: 'weight_denominator', 'n_estimators', 'max_depth',
             'min_samples_split', 'min_samples_leaf', 'max_features'.
 
@@ -138,6 +138,11 @@ class ImpactRFOptions(ImpactBasicOptions):
             raise ValueError("Optuna is not installed")
 
         assert self.optimize_with_optuna, "Optimize with Optuna is not set to True"
+
+        if isinstance(hp_to_optimize, str) and hp_to_optimize == 'default':
+            hp_to_optimize = [
+                'weight_denominator', 'n_estimators', 'max_depth',
+                'min_samples_split', 'min_samples_leaf', 'max_features']
 
         if 'weight_denominator' in hp_to_optimize:
             self.weight_denominator = trial.suggest_int(

@@ -182,8 +182,8 @@ class ImpactCnnOptions(ImpactDlOptions):
 
         Returns
         -------
-        ImpactCnnOptions
-            The options.
+        bool
+            Whether the generation was successful or not.
         """
         if isinstance(hp_to_optimize, str) and hp_to_optimize == 'default':
             if self.use_precip:
