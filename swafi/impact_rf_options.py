@@ -87,13 +87,13 @@ class ImpactRFOptions(ImpactBasicOptions):
             '--n-estimators', type=int, default=100,
             help='The number of estimators')
         self.parser.add_argument(
-            '--max-depth', type=int, default=None,
+            '--max-depth', type=int, default=15,
             help='The maximum depth')
         self.parser.add_argument(
-            '--min-samples-split', type=int, default=2,
+            '--min-samples-split', type=int, default=5,
             help='The minimum number of samples to split')
         self.parser.add_argument(
-            '--min-samples-leaf', type=int, default=1,
+            '--min-samples-leaf', type=int, default=4,
             help='The minimum number of samples in a leaf')
         self.parser.add_argument(
             '--max-features', type=str, default='auto',
@@ -156,7 +156,7 @@ class ImpactRFOptions(ImpactBasicOptions):
                 'min_samples_leaf', 1, 100)
         if 'max_features' in hp_to_optimize:
             self.max_features = trial.suggest_categorical(
-                'max_features', ['auto', 'sqrt', 'log2'])
+                'max_features', [None, 'sqrt', 'log2'])
 
         return True
 
