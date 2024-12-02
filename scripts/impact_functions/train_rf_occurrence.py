@@ -1,59 +1,153 @@
 """
 Train a random forest model to predict the occurrence of damages.
 """
-
-import argparse
+import time
 
 from swafi.config import Config
 from swafi.impact_rf import ImpactRandomForest
+from swafi.impact_rf_options import ImpactRFOptions
 from swafi.events import load_events_from_pickle
 
+has_optuna = False
+try:
+    import optuna
+
+    has_optuna = True
+    from optuna.storages import RDBStorage, JournalStorage, JournalFileStorage
+except ImportError:
+    pass
+
+OPTUNA_LOAD_STUDY = True
+OPTUNA_RANDOM = True
+SAVE_MODEL = True
+SHOW_PLOTS = False
 
 config = Config()
 
 
 def main():
-    parser = argparse.ArgumentParser(description="SWAFI RF")
-    parser.add_argument("config", help="Configuration", type=int, default=0,
-                        nargs='?')
-
-    args = parser.parse_args()
-    print("config: ", args.config)
+    options = ImpactRFOptions()
+    options.parse_args()
+    options.print_options()
+    assert options.is_ok()
 
     # Load events
     events_filename = f'events_{options.dataset}_with_target_{options.event_file_label}.pickle'
     events = load_events_from_pickle(filename=events_filename)
 
-    # Create the impact function
-    rf = ImpactRandomForest(events, target_type='occurrence', random_state=None)
+    if not options.optimize_with_optuna:
+        rf = _setup_model(options, events)
+        rf.fit(dir_plots=config.get('OUTPUT_DIR'),
+               tag=options.run_name, show_plots=SHOW_PLOTS)
+        rf.assess_model_on_all_periods()
+        if SAVE_MODEL:
+            rf.save_model(dir_output=config.get('OUTPUT_DIR'), base_name='model_rf')
+            print(f"Model saved in {config.get('OUTPUT_DIR')}")
 
-    # Configuration-specific changes
-    if args.config == 0:  # Manual configuration
-        pass
-    elif args.config == 1:
-        pass
-    elif args.config == 2:
-        rf.select_nb_claims_greater_or_equal_to(2)
-    elif args.config == 3:
-        rf.select_nb_claims_greater_or_equal_to(3)
-    elif args.config == 4:
-        rf.select_nb_claims_greater_or_equal_to(4)
-    elif args.config == 5:
-        rf.select_nb_claims_greater_or_equal_to(2)
-    elif args.config == 6:
-        rf.select_nb_claims_greater_or_equal_to(3)
-    elif args.config == 7:
-        rf.select_nb_claims_greater_or_equal_to(4)
+    else:
+        rf = optimize_model_with_optuna(options, events, dir_plots=config.get('OUTPUT_DIR'))
+        rf.assess_model_on_all_periods()
 
-    rf.load_features(['event', 'terrain', 'swf_map', 'flowacc', 'twi',
-                      'land_cover', 'runoff_coeff'])
 
+def _setup_model(options, events):
+    rf = ImpactRandomForest(events, options=options)
+    if rf.options.use_static_attributes or rf.options.use_event_attributes:
+        rf.select_features(rf.options.replace_simple_features)
+        rf.load_features(rf.options.simple_feature_classes)
     rf.split_sample()
     rf.compute_balanced_class_weights()
-    rf.compute_corrected_class_weights(weight_denominator=30)
-    rf.fit()
-    rf.assess_model_on_all_periods()
-    rf.plot_feature_importance(args.config, config.get('OUTPUT_DIR'))
+    rf.compute_corrected_class_weights(
+        weight_denominator=rf.options.weight_denominator)
+    return rf
+
+
+def optimize_model_with_optuna(options, events, dir_plots=None):
+    """
+    Optimize the model with Optuna.
+
+    Parameters
+    ----------
+    options: ImpactTransformerOptions
+        The options.
+    events: pd.DataFrame
+        The events.
+    dir_plots: str
+        The directory where to save the plots.
+    """
+    if not has_optuna:
+        raise ValueError("Optuna is not installed")
+
+    storage = JournalStorage(
+        JournalFileStorage(f"{options.optuna_study_name}.log")
+    )
+
+    def optuna_objective(trial):
+        """
+        The objective function for Optuna.
+
+        Parameters
+        ----------
+        trial: optuna.Trial
+            The trial.
+
+        Returns
+        -------
+        float
+            The score.
+        """
+        print("#" * 80)
+        print(f"Trial {trial.number}")
+        options_c = options.copy()
+        options_c.generate_for_optuna(trial)
+        options_c.print_options(show_optuna_params=True)
+        rf_trial = _setup_model(options_c, events)
+
+        start_time = time.time()
+
+        # Fit the model
+        rf_trial.fit(do_plot=False, silent=True)
+
+        end_time = time.time()
+        print(f"Model fitting took {end_time - start_time:.2f} seconds")
+
+        # Assess the model
+        score = rf_trial.compute_f1_score(rf_trial.x_valid, rf_trial.y_valid)
+
+        return score
+
+    sampler = None
+    if OPTUNA_RANDOM:
+        sampler = optuna.samplers.RandomSampler()
+
+    if OPTUNA_LOAD_STUDY:
+        study = optuna.load_study(
+            study_name=options.optuna_study_name,
+            storage=storage,
+            sampler=sampler
+        )
+    else:
+        study = optuna.create_study(
+            study_name=options.optuna_study_name,
+            direction='maximize',
+            sampler=sampler
+        )
+    study.optimize(optuna_objective, n_trials=options.optuna_trials_nb)
+
+    print("Number of finished trials: ", len(study.trials))
+    print("Best trial:")
+    best_trial = study.best_trial
+    print("  Value: ", best_trial.value)
+    print("  Params: ")
+    for key, value in best_trial.params.items():
+        print(f"    {key}: {value}")
+
+    # Fit the model with the best parameters
+    options_best = options.copy()
+    options_best.generate_for_optuna(best_trial)
+    tx = _setup_model(options_best, events)
+    tx.fit(dir_plots=dir_plots, tag='best_optuna_' + tx.options.run_name)
+
+    return tx
 
 
 if __name__ == '__main__':
