@@ -1,3 +1,7 @@
+"""
+This script calculates statistics for the event properties.
+"""
+
 import pandas as pd
 import matplotlib.pyplot as plt
 

@@ -1,3 +1,7 @@
+"""
+This script compares properties of precipitation events before and after smoothing.
+"""
+
 import pandas as pd
 
 data_dir = R'\\mobistorage02.giub.unibe.ch\share\SFW2023\02_data\CPC\precip_events_20241127'
