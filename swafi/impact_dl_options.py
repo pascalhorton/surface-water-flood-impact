@@ -107,7 +107,7 @@ class ImpactDlOptions(ImpactBasicOptions):
             '--batch-size', type=int, default=64,
             help='The batch size')
         self.parser.add_argument(
-            '--epochs', type=int, default=100,
+            '--epochs', type=int, default=200,
             help='The number of epochs')
         self.parser.add_argument(
             '--learning-rate', type=float, default=0.001,

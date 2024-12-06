@@ -4,42 +4,47 @@ This script is used to analyze the results of the link between claims and events
 
 from swafi.config import Config
 from swafi.damages_mobiliar import DamagesMobiliar
+from swafi.damages_gvz import DamagesGvz
 from swafi.events import Events
-from swafi.precip_combiprecip import PrecipitationCombiprecip
+from swafi.precip_combiprecip import CombiPrecip
 from swafi.utils.plotting import *
 from pathlib import Path
 
 CONFIG = Config()
 
 PARAMETERS = [  # [label, [criteria], [window_days]]
-    # Original
-    ['original', ['i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt'], [5, 3, 1]],
-    # For the original temporal window ([5, 3, 1])
-    ['v1', ['i_max', 'p_sum'], [5, 3, 1]],
-    ['v2', ['i_max', 'p_sum', 'r_ts_evt'], [5, 3, 1]],
-    ['v3', ['i_max', 'p_sum', 'r_ts_win', 'r_ts_evt'], [5, 3, 1]],
-    ['v4', ['prior', 'i_max', 'p_sum'], [5, 3, 1]],
-    ['v5', ['prior', 'i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt'], [5, 3, 1]],
-    # Original with intermediate temporal window ([5, 3, 2, 1])
-    ['original 4win', ['i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt'], [5, 3, 2, 1]],
-    # For an intermediate temporal window ([5, 3, 2, 1])
-    ['v1 4win', ['i_max', 'p_sum'], [5, 3, 2, 1]],
-    ['v2 4win', ['i_max', 'p_sum', 'r_ts_evt'], [5, 3, 2, 1]],
-    ['v3 4win', ['i_max', 'p_sum', 'r_ts_win', 'r_ts_evt'], [5, 3, 2, 1]],
-    ['v4 4win', ['prior', 'i_max', 'p_sum'], [5, 3, 2, 1]],
-    ['v5 4win', ['prior', 'i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt'], [5, 3, 2, 1]]
+    ['v1', ['i_max'], [5, 3, 1]],
+    ['v2', ['p_sum'], [5, 3, 1]],
+    ['v3', ['i_max', 'p_sum'], [5, 3, 1]],
+    ['v4', ['i_max', 'p_sum', 'i_mean'], [5, 3, 1]],
+    ['v5', ['i_max', 'p_sum', 'r_ts_evt'], [5, 3, 1]],
+    ['v6', ['i_max', 'p_sum', 'r_ts_win', 'r_ts_evt'], [5, 3, 1]],
+    ['v7', ['i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt'], [5, 3, 1]],
+    ['v8', ['prior', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt'], [5, 3, 1]],
+    ['v9', ['prior', 'i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt'], [5, 3, 1]],
 ]
 
-DATASET = 'mobiliar'
-EXPOSURE_CATEGORIES = ['external']
-CLAIM_CATEGORIES = ['external', 'pluvial']
+DATASET = 'gvz'
+
+if DATASET == 'mobiliar':
+    EXPOSURE_CATEGORIES = ['external']
+    CLAIM_CATEGORIES = ['external', 'pluvial']
+    CONFIG.set('YEAR_START', CONFIG.get('YEAR_START_MOBILIAR'))
+    CONFIG.set('YEAR_END', CONFIG.get('YEAR_END_MOBILIAR'))
+elif DATASET == 'gvz':
+    EXPOSURE_CATEGORIES = ['all_buildings']
+    CLAIM_CATEGORIES = ['likely_pluvial']
+    CONFIG.set('YEAR_START', CONFIG.get('YEAR_START_GVZ'))
+    CONFIG.set('YEAR_END', CONFIG.get('YEAR_END_GVZ'))
+else:
+    raise ValueError(f"Unknown damage dataset: {DATASET}")
 
 PICKLES_DIR = CONFIG.get('PICKLES_DIR')
 
 PLOT_HISTOGRAMS = False
 PLOT_MATRIX = True
 PLOT_ALL_TIME_SERIES = False
-PLOT_TIME_SERIES_DISAGREEMENT = True
+PLOT_TIME_SERIES_DISAGREEMENT = False
 
 
 def main():
@@ -47,8 +52,18 @@ def main():
     compute_link_and_save_to_pickle()
 
     # Load the first pickle file and do some common work
-    damages = DamagesMobiliar(
-        pickle_file=f'damages_linked_{PARAMETERS[0][0].replace(" ", "_")}.pickle')
+    filename = f'damages_{DATASET}_linked_{PARAMETERS[0][0].replace(" ", "_")}.pickle'
+    if DATASET == 'mobiliar':
+        damages = DamagesMobiliar(pickle_file=filename,
+                                  year_start=CONFIG.get('YEAR_START'),
+                                  year_end=CONFIG.get('YEAR_END'))
+    elif DATASET == 'gvz':
+        damages = DamagesGvz(pickle_file=filename,
+                             year_start=CONFIG.get('YEAR_START'),
+                             year_end=CONFIG.get('YEAR_END'))
+    else:
+        raise ValueError(f"Unknown damage dataset: {DATASET}")
+
     events = Events()
     events.load_events_and_select_those_with_contracts(
         CONFIG.get('EVENTS_PATH'), damages, DATASET)
@@ -57,15 +72,25 @@ def main():
     precip = None
     if PLOT_TIME_SERIES_DISAGREEMENT or PLOT_ALL_TIME_SERIES:
         # Precipitation data
-        precip = PrecipitationCombiprecip(CONFIG.get('DIR_PRECIP'))
+        precip = CombiPrecip(CONFIG.get('YEAR_START'), CONFIG.get('YEAR_END'))
 
     # Compare the events assigned
     diff_count = np.zeros((len(PARAMETERS), len(PARAMETERS)))
     total = []
     for i_ref, params_ref in enumerate(PARAMETERS):
         label_ref = params_ref[0].replace(" ", "_")
-        filename_ref = f'damages_linked_{label_ref}.pickle'
-        df_ref = DamagesMobiliar(pickle_file=filename_ref)
+        filename_ref = f'damages_{DATASET}_linked_{label_ref}.pickle'
+        if DATASET == 'mobiliar':
+            df_ref = DamagesMobiliar(pickle_file=filename_ref,
+                                     year_start=CONFIG.get('YEAR_START'),
+                                     year_end=CONFIG.get('YEAR_END'))
+        elif DATASET == 'gvz':
+            df_ref = DamagesGvz(pickle_file=filename_ref,
+                                year_start=CONFIG.get('YEAR_START'),
+                                year_end=CONFIG.get('YEAR_END'))
+        else:
+            raise ValueError(f"Unknown damage dataset: {DATASET}")
+
         total.append(df_ref.claims.eid.astype(bool).sum())
 
         # Compute and plot the time difference between the event and the claim date
@@ -82,8 +107,18 @@ def main():
         # Compute the differences in events attribution with other criteria
         for i_diff, params_diff in enumerate(PARAMETERS):
             label_diff = params_diff[0].replace(" ", "_")
-            filename_diff = f'damages_linked_{label_diff}.pickle'
-            df_comp = DamagesMobiliar(pickle_file=filename_diff)
+            filename_diff = f'damages_{DATASET}_linked_{label_diff}.pickle'
+            if DATASET == 'mobiliar':
+                df_comp = DamagesMobiliar(pickle_file=filename_diff,
+                                          year_start=CONFIG.get('YEAR_START'),
+                                          year_end=CONFIG.get('YEAR_END'))
+            elif DATASET == 'gvz':
+                df_comp = DamagesGvz(pickle_file=filename_diff,
+                                     year_start=CONFIG.get('YEAR_START'),
+                                     year_end=CONFIG.get('YEAR_END'))
+            else:
+                raise ValueError(f"Unknown damage dataset: {DATASET}")
+
             if len(df_ref.claims) >= len(df_comp.claims):
                 df_merged_claims = pd.merge(df_ref.claims, df_comp.claims,
                                             how="left", on=['date_claim', 'cid'])
@@ -111,7 +146,7 @@ def compute_link_and_save_to_pickle():
         label = params[0].replace(" ", "_")
         criteria = params[1]
         window_days = params[2]
-        filename = f'damages_linked_{label}.pickle'
+        filename = f'damages_{DATASET}_linked_{label}.pickle'
         file_path = Path(PICKLES_DIR + '/' + filename)
 
         if file_path.exists():
@@ -119,8 +154,19 @@ def compute_link_and_save_to_pickle():
             continue
 
         print(f"Assessing criteria {criteria}")
-        damages = DamagesMobiliar(dir_exposure=CONFIG.get('DIR_EXPOSURE'),
-                                  dir_claims=CONFIG.get('DIR_CLAIMS'))
+        if DATASET == 'mobiliar':
+            damages = DamagesMobiliar(dir_exposure=CONFIG.get('DIR_EXPOSURE_MOBILIAR'),
+                                      dir_claims=CONFIG.get('DIR_CLAIMS_MOBILIAR'),
+                                      year_start=CONFIG.get('YEAR_START'),
+                                      year_end=CONFIG.get('YEAR_END'))
+        elif DATASET == 'gvz':
+            damages = DamagesGvz(dir_exposure=CONFIG.get('DIR_EXPOSURE_GVZ'),
+                                 dir_claims=CONFIG.get('DIR_CLAIMS_GVZ'),
+                                 year_start=CONFIG.get('YEAR_START'),
+                                 year_end=CONFIG.get('YEAR_END'))
+        else:
+            raise ValueError(f"Unknown damage dataset: {DATASET}")
+
         damages.select_categories_type(EXPOSURE_CATEGORIES, CLAIM_CATEGORIES)
 
         events = Events()

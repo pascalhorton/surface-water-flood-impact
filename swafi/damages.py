@@ -351,8 +351,8 @@ class Damages:
             The name of the field to add to the dataframe.
         """
         claims = self.claims
-        self.claims[field_name] = claims.e_start.dt.date - claims.date_claim
-        self.claims[field_name] = claims[field_name].apply(lambda x: x.days)
+        self.claims[field_name] = (claims.e_start.dt.date -
+                                   claims.date_claim.dt.date).dt.days
 
     def compute_days_to_event_center(self, field_name='dt_center'):
         """
