@@ -76,6 +76,9 @@ class PrecipitationArchive(Precipitation):
         dy = self.domain.resolution[1]
         dpx = (size - 1) / 2
 
+        if len(self.pickle_files) == 0:
+            raise ValueError("The precipitation data must be first pre-loaded.")
+
         ts = []
 
         for f in self.pickle_files:
@@ -94,6 +97,9 @@ class PrecipitationArchive(Precipitation):
                     gc.collect()
             except EOFError:
                 raise EOFError(f"Error: {f} is empty or corrupted.")
+
+        if len(ts) == 0:
+            raise ValueError(f"No data found for CID {cid}")
 
         ts = xr.concat(ts, dim=self.time_axis)
         ts = ts.sel({self.time_axis: slice(start, end)})
