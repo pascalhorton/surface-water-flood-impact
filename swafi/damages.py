@@ -351,8 +351,8 @@ class Damages:
             The name of the field to add to the dataframe.
         """
         claims = self.claims
-        self.claims[field_name] = (claims.e_start.dt.date -
-                                   claims.date_claim.dt.date).dt.days
+        self.claims[field_name] = (pd.to_datetime(claims.e_start) -
+                                   pd.to_datetime(claims.date_claim)).dt.days
 
     def compute_days_to_event_center(self, field_name='dt_center'):
         """
@@ -366,9 +366,8 @@ class Damages:
             The name of the field to add to the dataframe.
         """
         claims = self.claims
-        self.claims[field_name] = ((claims.e_start + (
-                claims.e_end - claims.e_start) / 2).dt.date - claims.date_claim)
-        self.claims[field_name] = claims[field_name].apply(lambda x: x.days)
+        midpoint_date = claims.e_start + (claims.e_end - claims.e_start) / 2
+        self.claims[field_name] = (midpoint_date - claims.date_claim).dt.days
 
     def _create_exposure_claims_df(self):
         self.exposure = pd.DataFrame(
