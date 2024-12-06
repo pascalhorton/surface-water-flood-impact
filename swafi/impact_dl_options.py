@@ -89,7 +89,7 @@ class ImpactDlOptions(ImpactBasicOptions):
             '--factor-neg-reduction', type=int, default=10,
             help='The factor to reduce the number of negatives only for training')
         self.parser.add_argument(
-            '--weight-denominator', type=int, default=40,
+            '--weight-denominator', type=int, default=10,
             help='The weight denominator to reduce the negative class weights')
         self.parser.add_argument(
             '--use-precip', action=argparse.BooleanOptionalAction, default=True,

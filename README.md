@@ -245,7 +245,7 @@ lr.normalize_features()
 # Compute the class weights (claim/no claim)
 lr.compute_balanced_class_weights()
 # Decrease the weight of the events with claims by a certain factor (otherwise it will be too high)
-lr.compute_corrected_class_weights(weight_denominator=30)
+lr.compute_corrected_class_weights(weight_denominator=10)
 # Train the model
 lr.fit()
 # Evaluate the model on all splits

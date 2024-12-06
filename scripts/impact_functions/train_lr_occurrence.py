@@ -29,7 +29,7 @@ def main():
     lr.split_sample()
     lr.normalize_features()
     lr.compute_balanced_class_weights()
-    lr.compute_corrected_class_weights(weight_denominator=30)
+    lr.compute_corrected_class_weights(weight_denominator=10)
     lr.fit()
 
     tag_atts = options.get_attributes_tag()

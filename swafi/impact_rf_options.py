@@ -62,7 +62,7 @@ class ImpactRFOptions(ImpactBasicOptions):
         Set the parser arguments.
         """
         self.parser.add_argument(
-            '--weight-denominator', type=int, default=40,
+            '--weight-denominator', type=int, default=10,
             help='The weight denominator to reduce the negative class weights')
         self.parser.add_argument(
             '--n-estimators', type=int, default=100,
