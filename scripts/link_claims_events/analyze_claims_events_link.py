@@ -24,7 +24,7 @@ PARAMETERS = [  # [label, [criteria], [window_days]]
     ['v9', ['prior', 'i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt'], [5, 3, 1]],
 ]
 
-DATASET = 'gvz'
+DATASET = 'mobiliar'
 
 if DATASET == 'mobiliar':
     EXPOSURE_CATEGORIES = ['external']
@@ -64,9 +64,6 @@ def main():
     else:
         raise ValueError(f"Unknown damage dataset: {DATASET}")
 
-    # Extract CIDs with claims
-    cids = damages.claims['cid'].unique()
-
     events = Events()
     events.load_events_and_select_those_with_contracts(
         config.get('EVENTS_PATH'), damages, DATASET)
@@ -74,6 +71,27 @@ def main():
 
     precip = None
     if PLOT_TIME_SERIES_DISAGREEMENT or PLOT_ALL_TIME_SERIES:
+
+        # Extract CIDs with claims
+        cids = []
+        for i, params in enumerate(PARAMETERS):
+            label = params[0].replace(" ", "_")
+            filename = f'damages_{DATASET}_linked_{label}.pickle'
+            if DATASET == 'mobiliar':
+                damages = DamagesMobiliar(pickle_file=filename,
+                                          year_start=config.get('YEAR_START'),
+                                          year_end=config.get('YEAR_END'))
+            elif DATASET == 'gvz':
+                damages = DamagesGvz(pickle_file=filename,
+                                     year_start=config.get('YEAR_START'),
+                                     year_end=config.get('YEAR_END'))
+            else:
+                raise ValueError(f"Unknown damage dataset: {DATASET}")
+
+            cids.extend(damages.claims['cid'].unique())
+
+        cids = list(set(cids))
+
         # Precipitation data
         precip = CombiPrecip(config.get('YEAR_START'), config.get('YEAR_END'))
         precip.prepare_data(config.get('DIR_PRECIP'))
