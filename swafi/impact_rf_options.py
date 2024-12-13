@@ -24,6 +24,9 @@ class ImpactRFOptions(ImpactBasicOptions):
         The weight denominator to reduce the negative class weights.
     n_estimators: int
         The number of estimators.
+    criterion: str
+        The function to measure the quality of a split. Supported criteria are
+        'gini', 'log_loss', and 'entropy'.
     max_depth: int
         The maximum depth.
     min_samples_split: int
@@ -42,6 +45,7 @@ class ImpactRFOptions(ImpactBasicOptions):
 
         # RF options
         self.n_estimators = None
+        self.criterion = None
         self.max_depth = None
         self.min_samples_split = None
         self.min_samples_leaf = None
@@ -68,6 +72,10 @@ class ImpactRFOptions(ImpactBasicOptions):
             '--n-estimators', type=int, default=100,
             help='The number of estimators')
         self.parser.add_argument(
+            '--criterion', type=str, default='gini',
+            help='The function to measure the quality of a split. Supported criteria are '
+                 '\'gini\', \'log_loss\', and \'entropy\'')
+        self.parser.add_argument(
             '--max-depth', type=int, default=15,
             help='The maximum depth')
         self.parser.add_argument(
@@ -89,6 +97,7 @@ class ImpactRFOptions(ImpactBasicOptions):
 
         self.weight_denominator = args.weight_denominator
         self.n_estimators = args.n_estimators
+        self.criterion = args.criterion
         self.max_depth = args.max_depth
         self.min_samples_split = args.min_samples_split
         self.min_samples_leaf = args.min_samples_leaf
@@ -104,8 +113,8 @@ class ImpactRFOptions(ImpactBasicOptions):
             The trial.
         hp_to_optimize: list
             The hyperparameters to optimize. Can be the string 'default'
-            Options are: 'weight_denominator', 'n_estimators', 'max_depth',
-            'min_samples_split', 'min_samples_leaf', 'max_features'.
+            Options are: 'weight_denominator', 'n_estimators', 'criterion',
+            'max_depth', 'min_samples_split', 'min_samples_leaf', 'max_features'.
 
         Returns
         -------
@@ -119,7 +128,7 @@ class ImpactRFOptions(ImpactBasicOptions):
 
         if isinstance(hp_to_optimize, str) and hp_to_optimize == 'default':
             hp_to_optimize = [
-                'weight_denominator', 'n_estimators', 'max_depth',
+                'weight_denominator', 'n_estimators', 'criterion', 'max_depth',
                 'min_samples_split', 'min_samples_leaf', 'max_features']
 
         if 'weight_denominator' in hp_to_optimize:
@@ -128,6 +137,9 @@ class ImpactRFOptions(ImpactBasicOptions):
         if 'n_estimators' in hp_to_optimize:
             self.n_estimators = trial.suggest_int(
                 'n_estimators', 50, 1000)
+        if 'criterion' in hp_to_optimize:
+            self.criterion = trial.suggest_categorical(
+                'criterion', ['gini', 'log_loss', 'entropy'])
         if 'max_depth' in hp_to_optimize:
             self.max_depth = trial.suggest_int(
                 'max_depth', 1, 100)
@@ -161,6 +173,7 @@ class ImpactRFOptions(ImpactBasicOptions):
 
         print("- weight_denominator: ", self.weight_denominator)
         print("- n_estimators: ", self.n_estimators)
+        print("- criterion: ", self.criterion)
         print("- max_depth: ", self.max_depth)
         print("- min_samples_split: ", self.min_samples_split)
         print("- min_samples_leaf: ", self.min_samples_leaf)
@@ -182,6 +195,7 @@ class ImpactRFOptions(ImpactBasicOptions):
 
         assert self.weight_denominator > 0, "Invalid weight_denominator"
         assert self.n_estimators > 0, "Invalid n_estimators"
+        assert self.criterion in ['gini', 'log_loss', 'entropy'], "Invalid criterion"
         assert self.min_samples_split > 0, "Invalid min_samples_split"
         assert self.min_samples_leaf > 0, "Invalid min_samples_leaf"
         assert self.max_features in [None, 'sqrt', 'log2'], "Invalid max_features"
