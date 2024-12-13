@@ -142,7 +142,7 @@ class ImpactRFOptions(ImpactBasicOptions):
                 'criterion', ['gini', 'log_loss', 'entropy'])
         if 'max_depth' in hp_to_optimize:
             self.max_depth = trial.suggest_int(
-                'max_depth', 1, 100)
+                'max_depth', 5, 100)
         if 'min_samples_split' in hp_to_optimize:
             self.min_samples_split = trial.suggest_int(
                 'min_samples_split', 2, 100)
@@ -150,8 +150,8 @@ class ImpactRFOptions(ImpactBasicOptions):
             self.min_samples_leaf = trial.suggest_int(
                 'min_samples_leaf', 1, 100)
         if 'max_features' in hp_to_optimize:
-            self.max_features = trial.suggest_categorical(
-                'max_features', [None, 'sqrt', 'log2'])
+            self.max_features = trial.suggest_float(
+                'max_features', 0.1, 1.0)
 
         return True
 
