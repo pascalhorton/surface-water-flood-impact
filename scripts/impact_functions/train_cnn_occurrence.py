@@ -15,7 +15,6 @@ from swafi.events import load_events_from_pickle
 from swafi.precip_combiprecip import CombiPrecip
 from swafi.utils.optuna import get_or_create_optuna_study
 
-OPTUNA_RANDOM = True
 SAVE_MODEL = True
 SHOW_PLOTS = False
 
@@ -150,7 +149,7 @@ def optimize_model_with_optuna(options, events, precip=None, dem=None, dir_plots
 
         return score
 
-    study = get_or_create_optuna_study(options, OPTUNA_RANDOM)
+    study = get_or_create_optuna_study(options)
     study.optimize(optuna_objective, n_trials=options.optuna_trials_nb)
 
     print("Number of finished trials: ", len(study.trials))

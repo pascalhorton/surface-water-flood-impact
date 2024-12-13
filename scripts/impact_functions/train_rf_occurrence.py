@@ -16,7 +16,6 @@ try:
 except ImportError:
     pass
 
-OPTUNA_RANDOM = False
 SAVE_MODEL = True
 SHOW_PLOTS = False
 
@@ -117,7 +116,7 @@ def optimize_model_with_optuna(options, events, dir_plots=None):
 
         return score
 
-    study = get_or_create_optuna_study(options, OPTUNA_RANDOM)
+    study = get_or_create_optuna_study(options)
     study.optimize(optuna_objective, n_trials=options.optuna_trials_nb)
 
     print("Number of finished trials: ", len(study.trials))

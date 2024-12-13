@@ -42,6 +42,8 @@ class ImpactBasicOptions:
         Number of Optuna trials.
     optuna_study_name : str
         Optuna study name.
+    optuna_random_sampler : bool
+        Use the random sampler for Optuna.
     """
     def __init__(self):
         self.parser = argparse.ArgumentParser(description="SWAFI")
@@ -64,6 +66,7 @@ class ImpactBasicOptions:
         self.optimize_with_optuna = None
         self.optuna_trials_nb = None
         self.optuna_study_name = None
+        self.optuna_random_sampler = None
 
     def copy(self):
         """
@@ -128,6 +131,9 @@ class ImpactBasicOptions:
             '--optuna-study-name', type=str,
             default=datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S"),
             help='The Optuna study name (default: using the date and time'),
+        self.parser.add_argument(
+            '--optuna-random-sampler', action=argparse.BooleanOptionalAction,
+            default=False, help='Use the random sampler for Optuna')
 
     def parse_args(self):
         """
@@ -162,6 +168,7 @@ class ImpactBasicOptions:
         self.optimize_with_optuna = args.optimize_with_optuna
         self.optuna_trials_nb = args.optuna_trials_nb
         self.optuna_study_name = args.optuna_study_name
+        self.optuna_random_sampler = args.optuna_random_sampler
 
     def print_options(self):
         """
@@ -193,6 +200,7 @@ class ImpactBasicOptions:
             print("- optimize_with_optuna: ", self.optimize_with_optuna)
             print("- optuna_study_name: ", self.optuna_study_name)
             print("- optuna_trials_nb: ", self.optuna_trials_nb)
+            print("- optuna_random_sampler: ", self.optuna_random_sampler)
 
     def get_attributes_tag(self):
         """

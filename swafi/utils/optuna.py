@@ -7,7 +7,7 @@ except ImportError:
     pass
 
 
-def get_or_create_optuna_study(options, random_sampler=False):
+def get_or_create_optuna_study(options):
     """
     Get or create an Optuna study.
 
@@ -15,8 +15,6 @@ def get_or_create_optuna_study(options, random_sampler=False):
     ----------
     options: ImpactBasicOptions
         The options.
-    random_sampler: bool
-        Whether to use a random sampler or not.
 
     Returns
     -------
@@ -33,7 +31,7 @@ def get_or_create_optuna_study(options, random_sampler=False):
     )
 
     sampler = None
-    if random_sampler:
+    if options.optuna_ramdom_sampler:
         sampler = optuna.samplers.RandomSampler()
 
     try:
