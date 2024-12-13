@@ -31,7 +31,7 @@ def get_or_create_optuna_study(options):
     )
 
     sampler = None
-    if options.optuna_ramdom_sampler:
+    if options.optuna_random_sampler:
         sampler = optuna.samplers.RandomSampler()
 
     try:
