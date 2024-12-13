@@ -39,9 +39,7 @@ class ImpactDl(Impact):
     """
 
     def __init__(self, events, options, reload_trained_models=False):
-        super().__init__(events, target_type=options.target_type,
-                         random_state=options.random_state)
-        self.options = options
+        super().__init__(events, options=options)
         self.reload_trained_models = reload_trained_models
 
         self.precipitation_hf = None
@@ -104,7 +102,10 @@ class ImpactDl(Impact):
 
         # Clear session and set the seed
         keras.backend.clear_session()
-        keras.utils.set_random_seed(self.options.random_state)
+        if self.options.random_state is not None:
+            np.random.seed(self.options.random_state)
+            tf.random.set_seed(self.options.random_state)
+            keras.utils.set_random_seed(self.options.random_state)
 
         # Define the optimizer
         optimizer = self._define_optimizer(
@@ -142,43 +143,6 @@ class ImpactDl(Impact):
         # Plot the training history
         if do_plot:
             self._plot_training_history(hist, dir_plots, show_plots, tag)
-
-    def optimize_model_with_optuna(self, n_trials=100, n_jobs=4, dir_plots=None):
-        """
-        Optimize the model with Optuna.
-
-        Parameters
-        ----------
-        n_trials: int
-            The number of trials.
-        n_jobs: int
-            The number of jobs to run in parallel.
-        dir_plots: str
-            The directory where to save the plots.
-        """
-        if not has_optuna:
-            raise ValueError("Optuna is not installed")
-
-        study = optuna.create_study(direction='maximize')
-        study.optimize(self._objective, n_trials=n_trials, n_jobs=n_jobs)
-
-        print("Number of finished trials: ", len(study.trials))
-        print("Best trial:")
-        trial = study.best_trial
-        print("  Value: ", trial.value)
-        print("  Params: ")
-        for key, value in trial.params.items():
-            print(f"    {key}: {value}")
-
-        # Fit the model with the best parameters
-        if not self.options.generate_for_optuna(trial):
-            print("The parameters are not valid.")
-            return float('-inf')
-
-        self.compute_balanced_class_weights()
-        self.compute_corrected_class_weights(
-            weight_denominator=self.options.weight_denominator)
-        self.fit(dir_plots=dir_plots, tag='best_optuna_' + self.options.run_name)
 
     def reduce_negatives_for_training(self, factor):
         """
@@ -403,23 +367,6 @@ class ImpactDl(Impact):
             raise ValueError('learning rate schedule not well defined.')
 
         return optimizer
-
-    def _create_model_tmp_file_name(self):
-        """
-        Create the temporary file name for the model.
-        """
-        tag_model = (
-                pickle.dumps(self.df.shape) +
-                pickle.dumps(self.df.columns) +
-                pickle.dumps(self.df.iloc[0]) +
-                pickle.dumps(self.features) +
-                pickle.dumps(self.class_weight) +
-                pickle.dumps(self.options.random_state) +
-                pickle.dumps(self.target_type))
-        model_hashed_name = f'cnn_model_{hashlib.md5(tag_model).hexdigest()}.pickle'
-        tmp_filename = self.tmp_dir / model_hashed_name
-
-        return tmp_filename
 
     @staticmethod
     def _plot_training_history(hist, dir_plots, show_plots, prefix=None):

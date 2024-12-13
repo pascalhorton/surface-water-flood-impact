@@ -8,6 +8,7 @@ import gc
 import numpy as np
 import pandas as pd
 import xarray as xr
+import dask.array as da
 from tqdm import tqdm
 
 from .config import Config
@@ -47,7 +48,7 @@ class PrecipitationArchive(Precipitation):
     def prepare_data(self):
         raise NotImplementedError("This method must be implemented in the child class.")
 
-    def get_time_series(self, cid, start, end, size=1):
+    def get_time_series(self, cid, start, end, size=1, as_xr=False):
         """
         Extract the precipitation time series for the given cell ID and the given
         period (between start and end).
@@ -62,6 +63,8 @@ class PrecipitationArchive(Precipitation):
             The end of the period to extract
         size: int
             The number of pixels to average on (default: 1x1)
+        as_xr: bool
+            Return as xarray dataset (default: False)
 
         Returns
         -------
@@ -73,22 +76,36 @@ class PrecipitationArchive(Precipitation):
         dy = self.domain.resolution[1]
         dpx = (size - 1) / 2
 
+        if len(self.pickle_files) == 0:
+            raise ValueError("The precipitation data must be first pre-loaded.")
+
         ts = []
 
         for f in self.pickle_files:
             try:
                 with open(f, 'rb') as file:
                     data = pickle.load(file)
+                    data = data.chunk({'time': -1, self.x_axis: 'auto',
+                                       self.y_axis: 'auto'})  # Chunk the data
                     dat = data.sel(
                         {self.x_axis: slice(x - dx * dpx, x + dx * dpx),
                          self.y_axis: slice(y + dy * dpx, y - dy * dpx)
-                         })
+                         }).compute()  # Compute only the selected data
+
                     ts.append(dat)
+                    del data
+                    gc.collect()
             except EOFError:
                 raise EOFError(f"Error: {f} is empty or corrupted.")
 
+        if len(ts) == 0:
+            raise ValueError(f"No data found for CID {cid}")
+
         ts = xr.concat(ts, dim=self.time_axis)
         ts = ts.sel({self.time_axis: slice(start, end)})
+
+        if as_xr:
+            return ts
 
         if size == 1:
             return ts[self.precip_var].to_numpy()
@@ -189,60 +206,6 @@ class PrecipitationArchive(Precipitation):
 
         time_series = self.get_time_series(cid, start, end)
         time_series.to_netcdf(tmp_filename)
-
-    def compute_quantiles_cid(self, cid):
-        """
-        Compute the quantiles of the precipitation data for each cell ID.
-
-        Parameters
-        ----------
-        cid: int
-            The cell ID for which to compute the quantiles
-
-        Returns
-        -------
-        np.array
-            The quantiles of the precipitation data
-        """
-        # Use pickles to store the data
-        hash_tag_pk = self._compute_hash_precip_full_data()
-        filename_pk = (f"precip_{self.dataset_name.lower()}_q_"
-                       f"cid__{hash_tag_pk}.pickle")
-        tmp_filename_pk = self.tmp_dir / filename_pk
-
-        if tmp_filename_pk.exists():
-            print(f"Loading quantiles for CID {cid} from pickle file.")
-            try:
-                with open(tmp_filename_pk, 'rb') as f:
-                    quantiles = pickle.load(f)
-                    return quantiles
-            except EOFError:
-                raise EOFError(f"Error: {tmp_filename_pk} is empty or corrupted.")
-
-        # Check if netCDF file of the time series exists
-        hash_tag_nc = self._compute_hash_single_cid(self.year_start, self.year_end)
-        filename_nc = f"precip_{self.dataset_name.lower()}_cid_{hash_tag_nc}.nc"
-        tmp_filename_nc = self.tmp_dir / filename_nc
-
-        # Extract the time series
-        if tmp_filename_nc.exists():
-            print(f"Loading time series for CID {cid} from netCDF file.")
-            time_series = xr.open_dataset(tmp_filename_nc)
-        else:
-            start = pd.to_datetime(f'{self.year_start}-01-01 00:00:00')
-            end = pd.to_datetime(f'{self.year_end}-12-31 23:59:59')
-            time_series = self.get_time_series(cid, start, end)
-            time_series = time_series.load()
-            time_series.to_netcdf(tmp_filename_nc)
-
-        # Compute the ranks
-        quantiles = time_series.rank(dim='time', pct=True)
-
-        # Save as pickle
-        with open(tmp_filename_pk, 'wb') as f:
-            pickle.dump(quantiles, f)
-
-        return quantiles
 
     def generate_pickles_for_subdomain(self, x_axis, y_axis):
         """

@@ -61,6 +61,8 @@ class Damages:
 
         self.claim_categories = []
         self.exposure_categories = []
+        self.selected_claim_categories = []
+        self.selected_exposure_categories = []
 
     def load_from_pickle(self, filename):
         """
@@ -203,11 +205,17 @@ class Damages:
         claim_types: list|str
             The types of the exposure categories to select. The type are exclusive.
             Options are dependent on the dataset.
+
+        Returns
+        -------
+        The claims that have been removed from the dataset.
         """
         columns_exposure = self.get_exposure_categories_from_type(exposure_types)
+        self.selected_exposure_categories = columns_exposure
         columns_claims = self.get_claim_categories_from_type(claim_types)
         self.exposure['selection'] = self.exposure[columns_exposure].sum(axis=1)
-        self._apply_claim_categories_selection(columns_claims)
+
+        return self._apply_claim_categories_selection(columns_claims)
 
     def select_claim_categories(self, categories):
         """
@@ -220,8 +228,12 @@ class Damages:
             the possible categories are: 'sme_ext_cont', 'sme_ext_struc',
             'sme_int_cont', 'sme_int_struc', 'priv_ext_cont', 'priv_ext_struc',
             'priv_int_cont', 'priv_int_struc'
+
+        Returns
+        -------
+        The claims that have been removed from the dataset.
         """
-        self._apply_claim_categories_selection(categories)
+        return self._apply_claim_categories_selection(categories)
 
     def select_exposure_categories(self, categories):
         """
@@ -260,6 +272,10 @@ class Damages:
             Default to [5, 3, 1]
         filename: str
             File name to save the results (pickle format)
+
+        Returns
+        -------
+        The list of events to remove from the events dataframe
         """
         if window_days is None:
             window_days = [5, 3, 1]
@@ -271,6 +287,8 @@ class Damages:
         self._add_event_matching_fields(events, window_days, criteria)
         stats = dict(none=0, single=0, two=0, three=0, multiple=0,
                      conflicts=0, unresolved=0)
+
+        events_to_remove = []
 
         for i_claim in tqdm(range(len(self.claims)), desc=f"Matching claims / events"):
             claim = self.claims.iloc[i_claim]
@@ -289,9 +307,23 @@ class Damages:
             best_matches = self._get_best_candidate(pot_events, window_days, stats)
             self._record_best_event(best_matches, i_claim)
 
+            # Remove the events that have been matched
+            if len(pot_events) > 1:
+                ev_to_remove = pot_events.eid.tolist()
+                best_eid = best_matches.eid.tolist()[0]
+                ev_to_remove.remove(best_eid)
+                events_to_remove.extend(ev_to_remove)
+
+        # Check again that the events to remove were not selected in the claims
+        events_to_remove = [ev for ev in events_to_remove if
+                            ev not in self.claims.eid.tolist()]
+        print(f"Events to remove due to claim/event link: {len(events_to_remove)}")
+
         self._print_matches_stats(stats)
         self._remove_claims_with_no_event()
         self._dump_object(filename)
+
+        return events_to_remove
 
     def merge_with_events(self, events):
         """
@@ -319,8 +351,8 @@ class Damages:
             The name of the field to add to the dataframe.
         """
         claims = self.claims
-        self.claims[field_name] = claims.e_start.dt.date - claims.date_claim
-        self.claims[field_name] = claims[field_name].apply(lambda x: x.days)
+        self.claims[field_name] = (pd.to_datetime(claims.e_start) -
+                                   pd.to_datetime(claims.date_claim)).dt.days
 
     def compute_days_to_event_center(self, field_name='dt_center'):
         """
@@ -334,9 +366,8 @@ class Damages:
             The name of the field to add to the dataframe.
         """
         claims = self.claims
-        self.claims[field_name] = ((claims.e_start + (
-                claims.e_end - claims.e_start) / 2).dt.date - claims.date_claim)
-        self.claims[field_name] = claims[field_name].apply(lambda x: x.days)
+        midpoint_date = claims.e_start + (claims.e_end - claims.e_start) / 2
+        self.claims[field_name] = (midpoint_date - claims.date_claim).dt.days
 
     def _create_exposure_claims_df(self):
         self.exposure = pd.DataFrame(
@@ -352,9 +383,12 @@ class Damages:
         self.exposure = self.exposure[self.exposure.selection != 0]
         self.exposure.reset_index(inplace=True, drop=True)
         self.claims['selection'] = self.claims[categories].sum(axis=1)
+        removed_claims = self.claims[self.claims.selection == 0]
         self.claims = self.claims[self.claims.selection != 0]
         self.claims.reset_index(inplace=True, drop=True)
         self.selected_claim_categories = categories
+
+        return removed_claims
 
     def _compute_claim_exposure_ratio(self):
         # Check for duplicate keys in self.exposure
@@ -456,7 +490,7 @@ class Damages:
             if 'r_ts_win' in criteria or 'r_ts_evt' in criteria:
                 self._compute_temporal_overlap(claim['date_claim'], pot_events, window)
                 pot_events['r_ts_win'] = pot_events['overlap_hrs'] / (window * 24)
-                pot_events['r_ts_evt'] = pot_events['overlap_hrs'] / pot_events['e_tot']
+                pot_events['r_ts_evt'] = pot_events['overlap_hrs'] / pot_events['duration']
             for criterion in criteria:
                 if criterion == 'prior':
                     continue

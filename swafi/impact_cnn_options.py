@@ -5,6 +5,7 @@ from .impact_dl_options import ImpactDlOptions
 
 import copy
 import math
+import argparse
 
 
 class ImpactCnnOptions(ImpactDlOptions):
@@ -27,9 +28,9 @@ class ImpactCnnOptions(ImpactDlOptions):
         The number of days after the event to use for the precipitation.
     dropout_rate_cnn: float
         The dropout rate for the CNN.
-    with_spatial_dropout: bool
+    use_spatial_dropout: bool
         Whether to use spatial dropout or not.
-    with_batchnorm_cnn: bool
+    use_batchnorm_cnn: bool
         Whether to use batch normalization or not for the CNN.
     kernel_size_spatial: int
         The kernel size for the spatial convolution.
@@ -60,8 +61,8 @@ class ImpactCnnOptions(ImpactDlOptions):
 
         # Model options
         self.dropout_rate_cnn = None
-        self.with_spatial_dropout = None
-        self.with_batchnorm_cnn = None
+        self.use_spatial_dropout = None
+        self.use_batchnorm_cnn = None
         self.kernel_size_spatial = None
         self.kernel_size_temporal = None
         self.nb_filters = None
@@ -85,7 +86,7 @@ class ImpactCnnOptions(ImpactDlOptions):
         Set the parser arguments.
         """
         self.parser.add_argument(
-            '--use-dem', action='store_true',
+            '--use-dem', action=argparse.BooleanOptionalAction, default=False,
             help='Use DEM data')
         self.parser.add_argument(
             '--precip-window-size', type=int, default=1,
@@ -106,11 +107,11 @@ class ImpactCnnOptions(ImpactDlOptions):
             '--dropout-rate-cnn', type=float, default=0.4,
             help='The dropout rate for the CNN')
         self.parser.add_argument(
-            '--no-spatial-dropout', action='store_true',
-            help='Do not use spatial dropout')
+            '--use-spatial-dropout', action=argparse.BooleanOptionalAction,
+            default=True, help='Use spatial dropout')
         self.parser.add_argument(
-            '--no-batchnorm-cnn', action='store_true',
-            help='Do not use batch normalization for the CNN')
+            '--use-batchnorm-cnn', action=argparse.BooleanOptionalAction,
+            default=True, help='Use batch normalization for the CNN')
         self.parser.add_argument(
             '--kernel-size-spatial', type=int, default=3,
             help='The kernel size for the spatial convolution')
@@ -138,7 +139,7 @@ class ImpactCnnOptions(ImpactDlOptions):
         Parse the arguments.
         """
         args = self.parser.parse_args()
-        self._parse_args(args)
+        self._parse_dl_args(args)
 
         self.use_dem = args.use_dem
         self.precip_window_size = args.precip_window_size
@@ -147,8 +148,8 @@ class ImpactCnnOptions(ImpactDlOptions):
         self.precip_days_before = args.precip_days_before
         self.precip_days_after = args.precip_days_after
         self.dropout_rate_cnn = args.dropout_rate_cnn
-        self.with_spatial_dropout = not args.no_spatial_dropout
-        self.with_batchnorm_cnn = not args.no_batchnorm_cnn
+        self.use_spatial_dropout = args.use_spatial_dropout
+        self.use_batchnorm_cnn = args.use_batchnorm_cnn
         self.kernel_size_spatial = args.kernel_size_spatial
         self.kernel_size_temporal = args.kernel_size_temporal
         self.nb_filters = args.nb_filters
@@ -173,16 +174,16 @@ class ImpactCnnOptions(ImpactDlOptions):
             Options are: weight_denominator, precip_window_size, precip_time_step,
             precip_days_before, precip_resolution, precip_days_after, transform_static,
             transform_precip, log_transform_precip, batch_size, learning_rate,
-            dropout_rate_dense, dropout_rate_cnn, with_spatial_dropout,
-            with_batchnorm_cnn, with_batchnorm_dense, kernel_size_spatial,
+            dropout_rate_dense, dropout_rate_cnn, use_spatial_dropout,
+            use_batchnorm_cnn, use_batchnorm_dense, kernel_size_spatial,
             kernel_size_temporal, nb_filters, pool_size_spatial, pool_size_temporal,
             nb_conv_blocks, nb_dense_layers, nb_dense_units, nb_dense_units_decreasing,
             inner_activation_dense, inner_activation_cnn,
 
         Returns
         -------
-        ImpactCnnOptions
-            The options.
+        bool
+            Whether the generation was successful or not.
         """
         if isinstance(hp_to_optimize, str) and hp_to_optimize == 'default':
             if self.use_precip:
@@ -192,13 +193,13 @@ class ImpactCnnOptions(ImpactDlOptions):
                     'dropout_rate_cnn', 'kernel_size_spatial', 'kernel_size_temporal',
                     'nb_filters', 'pool_size_spatial', 'pool_size_temporal',
                     'nb_dense_layers', 'nb_dense_units', 'inner_activation_dense',
-                    'inner_activation_cnn', 'with_batchnorm_cnn',
-                    'with_batchnorm_dense', 'nb_conv_blocks', 'learning_rate']
+                    'inner_activation_cnn', 'use_batchnorm_cnn',
+                    'use_batchnorm_dense', 'nb_conv_blocks', 'learning_rate']
             else:
                 hp_to_optimize = [
                     'batch_size', 'dropout_rate_dense', 'nb_dense_layers',
                     'nb_dense_units', 'inner_activation_dense',
-                    'with_batchnorm_dense', 'learning_rate']
+                    'use_batchnorm_dense', 'learning_rate']
 
         self._generate_for_optuna(trial, hp_to_optimize)
 
@@ -223,12 +224,12 @@ class ImpactCnnOptions(ImpactDlOptions):
         if 'dropout_rate_cnn' in hp_to_optimize:
             self.dropout_rate_cnn = trial.suggest_float(
                 'dropout_rate_cnn', 0.2, 0.5)
-        if 'with_spatial_dropout' in hp_to_optimize:
-            self.with_spatial_dropout = trial.suggest_categorical(
-                'with_spatial_dropout', [True, False])
-        if 'with_batchnorm_cnn' in hp_to_optimize:
-            self.with_batchnorm_cnn = trial.suggest_categorical(
-                'with_batchnorm_cnn', [True, False])
+        if 'use_spatial_dropout' in hp_to_optimize:
+            self.use_spatial_dropout = trial.suggest_categorical(
+                'use_spatial_dropout', [True, False])
+        if 'use_batchnorm_cnn' in hp_to_optimize:
+            self.use_batchnorm_cnn = trial.suggest_categorical(
+                'use_batchnorm_cnn', [True, False])
         if 'kernel_size_spatial' in hp_to_optimize:
             self.kernel_size_spatial = trial.suggest_categorical(
                 'kernel_size_spatial', [1, 3, 5])
@@ -297,9 +298,9 @@ class ImpactCnnOptions(ImpactDlOptions):
             print("- precip_time_step: ", self.precip_time_step)
             print("- precip_days_before: ", self.precip_days_before)
             print("- precip_days_after: ", self.precip_days_after)
-            print("- with_spatial_dropout: ", self.with_spatial_dropout)
+            print("- use_spatial_dropout: ", self.use_spatial_dropout)
             print("- dropout_rate_cnn: ", self.dropout_rate_cnn)
-            print("- with_batchnorm_cnn: ", self.with_batchnorm_cnn)
+            print("- use_batchnorm_cnn: ", self.use_batchnorm_cnn)
             print("- kernel_size_spatial: ", self.kernel_size_spatial)
             print("- kernel_size_temporal: ", self.kernel_size_temporal)
             print("- nb_filters: ", self.nb_filters)
@@ -319,6 +320,9 @@ class ImpactCnnOptions(ImpactDlOptions):
         bool
             Whether the options are ok or not.
         """
+        if not super().is_ok():
+            return False
+
         # Check the precipitation parameters
         if self.use_precip:
             assert self.precip_window_size % self.precip_resolution == 0, \

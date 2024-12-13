@@ -13,14 +13,18 @@ output_dir = config.output_dir
 
 PICKLES_DIR = config.get('PICKLES_DIR')
 DATASET = 'mobiliar'  # 'mobiliar' or 'gvz'
+WITH_BACKWATER_DAMAGES = False
 
 if DATASET == 'mobiliar':
-    EXPOSURE_CATEGORIES = ['external']
-    CLAIM_CATEGORIES = ['external', 'pluvial']
+    if WITH_BACKWATER_DAMAGES:
+        EXPOSURE_CATEGORIES = ['all']
+        CLAIM_CATEGORIES = ['pluvial']
+    else:
+        EXPOSURE_CATEGORIES = ['external']
+        CLAIM_CATEGORIES = ['external', 'pluvial']
 elif DATASET == 'gvz':
     EXPOSURE_CATEGORIES = ['all_buildings']
     CLAIM_CATEGORIES = ['likely_pluvial']
-
 
 def main():
     if DATASET == 'mobiliar':
@@ -90,6 +94,39 @@ def main():
 
     # Select the categories of interest
     damages.select_categories_type(EXPOSURE_CATEGORIES, CLAIM_CATEGORIES)
+
+    # Plot the number of claims per cell
+    plt.figure(figsize=(4, 4))
+    plt.title(DATASET)
+    plt.xlabel('Number of claims per cell')
+    plt.ylabel('Occurrences')
+    hist_data = damages.claims['selection'].value_counts()
+    plt.hist(hist_data.index, bins=hist_data.index.max(), weights=hist_data.values)
+    plt.xlim(1, 20)
+    plt.tight_layout()
+    plt.savefig(output_dir / 'histogram_claims_per_cell.png')
+    plt.savefig(output_dir / 'histogram_claims_per_cell.pdf')
+    plt.close()
+    # Show values
+    hist_data = hist_data.sort_index()
+    print(f"Total number of claims: {hist_data.sum()}")
+    print(f"Number of claims per cell: {hist_data} (pc: {100*hist_data / hist_data.sum()}%)")
+
+    # Plot the monthly distribution of the total # of claims for selected categories
+    categories = damages.selected_claim_categories
+    df_claims_month_sum['selected'] = df_claims_month_sum[categories].sum(axis=1)
+    sum_claims = df_claims_month_sum['selected'].sum()
+    plt.figure(figsize=(4, 4))
+    plt.title(f'Seasonality of the claims')
+    plt.xlabel('Month')
+    plt.ylabel('Percentage of claims [%]')
+    nb_annual_claims = df_claims_month_sum['selected'] / sum_claims
+    plt.bar(df_claims_month_sum.index, 100 * nb_annual_claims)
+    plt.xticks(range(1, 13))
+    plt.tight_layout()
+    plt.savefig(output_dir / f'monthly_distribution_selected_categories.png')
+    plt.savefig(output_dir / f'monthly_distribution_selected_categories.pdf')
+    plt.close()
 
     # Analyze the occurrences of damages to the structure and/or content
     if DATASET == 'mobiliar':
@@ -180,6 +217,8 @@ def main():
     plt.tight_layout()
     plt.savefig(output_dir / 'scatter_contracts_claims.png')
     plt.savefig(output_dir / 'scatter_contracts_claims.pdf')
+
+    print("Done.")
 
 
 if __name__ == '__main__':

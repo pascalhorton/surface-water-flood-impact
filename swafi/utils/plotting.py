@@ -108,7 +108,10 @@ def plot_claim_events_timeseries(window_days, precip, claim_1, label_1, claim_2=
         e_end_1 = claim_1.e_end + timedelta(hours=1)
         e_1_dur = (e_end_1 - e_start_1).total_seconds() / 3600
         e_1_dates = [e_start_1 + timedelta(hours=x) for x in range(int(e_1_dur) + 1)]
-        precip_1 = precip.get_time_series(cid, e_start_1, e_end_1)
+        precip_1 = precip.get_data_chunk(
+            e_start_1, e_end_1, None, None, None, None, cid
+        )
+        precip_1 = np.squeeze(precip_1)
 
     # Get second event data
     e_2_dates = None
@@ -118,14 +121,20 @@ def plot_claim_events_timeseries(window_days, precip, claim_1, label_1, claim_2=
         e_end_2 = claim_2.e_end + timedelta(hours=1)
         e_2_dur = (e_end_2 - e_start_2).total_seconds() / 3600
         e_2_dates = [e_start_2 + timedelta(hours=x) for x in range(int(e_2_dur) + 1)]
-        precip_2 = precip.get_time_series(cid, e_start_2, e_end_2)
+        precip_2 = precip.get_data_chunk(
+            e_start_2, e_end_2, None, None, None, None, cid
+        )
+        precip_2 = np.squeeze(precip_2)
 
     # Get full window data
     delta_days_max = (max(window_days) - 1) / 2
     timedelta_max = timedelta(days=delta_days_max)
     win_start = datetime.combine(claim_date - timedelta_max, datetime.min.time())
     win_end = datetime.combine(claim_date + timedelta_max, datetime.max.time())
-    precip_win = precip.get_time_series(cid, win_start, win_end, size=3)
+    precip_win = precip.get_data_chunk(
+        win_start, win_end, None, None, None, None, cid
+    )
+    precip_win = np.squeeze(precip_win)
     dates_win = [win_start + timedelta(hours=x) for x in range(len(precip_win))]
 
     # Plot precipitation

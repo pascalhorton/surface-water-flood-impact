@@ -51,19 +51,12 @@ class DamagesGvz(Damages):
         self.exposure_categories = [
             'all_buildings']
 
-        self.selected_exposure_categories = [
-            'all_buildings']
-
         self.claim_categories = [
             'A',  # most likely surface flood
             'B',
             'C',
             'D',
             'E']  # most likely fluvial flood
-
-        self.selected_claim_categories = [
-            'A',
-            'B']
 
         self._create_exposure_claims_df()
         self._load_from_dump('damages_gvz.pickle')
@@ -250,7 +243,9 @@ class DamagesGvz(Damages):
                     df_case['date_claim'] = [date] * len(indices)
                     df_case['mask_index'] = indices
                     df_case[cat] = values
-                    df_claims = pd.concat([df_claims, df_case])
+                    df_case = df_case.dropna(axis=1, how='all')
+                    if not df_case.empty:
+                        df_claims = pd.concat([df_claims, df_case])
 
                 self._store_in_claims_dataframe(df_claims)
 

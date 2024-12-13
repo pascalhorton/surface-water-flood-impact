@@ -4,6 +4,7 @@ Class to define the options for the Transformer-based impact function.
 from .impact_dl_options import ImpactDlOptions
 
 import copy
+import argparse
 
 
 class ImpactTransformerOptions(ImpactDlOptions):
@@ -20,8 +21,14 @@ class ImpactTransformerOptions(ImpactDlOptions):
         The number of days before the event to use for the high-frequency precipitation.
     precip_hf_days_after: int
         The number of days after the event to use for the high-frequency precipitation.
-    combined_transformer: bool
-        Whether to use a combined transformer or one for each precipitation type.
+    architecture: str
+        Architecture of the Transformer.
+    embeddings_2_layers: bool
+        Whether to use two dense layers for the embeddings.
+    embeddings_activation: str
+        The activation function for the embeddings.
+    inner_activation_tx: str
+        The activation function for the Transformer.
     use_cnn_in_tx: bool
         Whether to use a CNN in the transformer instead of the dense layers.
     nb_transformer_blocks: int
@@ -46,9 +53,10 @@ class ImpactTransformerOptions(ImpactDlOptions):
         self.precip_hf_days_after = None
 
         # Transformer options
-        self.combined_transformer = None
+        self.architecture = None
         self.embeddings_2_layers = None
         self.embeddings_activation = None
+        self.inner_activation_tx = None
         self.use_cnn_in_tx = None
         self.nb_transformer_blocks = None
         self.tx_model_dim = None
@@ -83,19 +91,22 @@ class ImpactTransformerOptions(ImpactDlOptions):
             "--precip-hf-days-after", type=int, default=1,
             help="The number of days after the event to use for the high-frequency precipitation.")
         self.parser.add_argument(
-            "--combined-transformer", type=bool, default=True,
-            help="Whether to use a combined transformer or one for each precipitation type.")
+            "--architecture", type=str, default="combined_fixed_embeddings",
+            help="The architecture of the Transformer.")
         self.parser.add_argument(
-            "--embeddings-2-layers", type=bool, default=False,
-            help="Whether to use two dense layers for the embeddings.")
+            "--embeddings-2-layers", action=argparse.BooleanOptionalAction,
+            default=False, help="Whether to use two dense layers for the embeddings.")
         self.parser.add_argument(
-            "--embeddings-activation", type=str, default="relu",
+            "--embeddings-activation", type=str, default="elu",
             help="The activation function for the embeddings.")
         self.parser.add_argument(
-            "--use-cnn-in-tx", action="store_true",
+            "--inner-activation-tx", type=str, default="relu",
+            help="The activation function for the Transformer.")
+        self.parser.add_argument(
+            "--use-cnn-in-tx", action=argparse.BooleanOptionalAction, default=False,
             help="Whether to use a CNN in the transformer instead of the dense layers.")
         self.parser.add_argument(
-            "--nb-transformer-blocks", type=int, default=2,
+            "--nb-transformer-blocks", type=int, default=3,
             help="The number of transformer blocks.")
         self.parser.add_argument(
             "--tx-model-dim", type=int, default=128,
@@ -107,7 +118,7 @@ class ImpactTransformerOptions(ImpactDlOptions):
             "--ff-dim", type=int, default=32,
             help="The feed-forward dimension.")
         self.parser.add_argument(
-            "--dropout-rate", type=float, default=0.2,
+            "--dropout-rate", type=float, default=0.4,
             help="The dropout rate.")
 
     def parse_args(self):
@@ -115,15 +126,16 @@ class ImpactTransformerOptions(ImpactDlOptions):
         Parse the arguments.
         """
         args = self.parser.parse_args()
-        self._parse_args(args)
+        self._parse_dl_args(args)
 
         self.precip_daily_days_nb = args.precip_daily_days_nb
         self.precip_hf_time_step = args.precip_hf_time_step
         self.precip_hf_days_before = args.precip_hf_days_before
         self.precip_hf_days_after = args.precip_hf_days_after
-        self.combined_transformer = args.combined_transformer
+        self.architecture = args.architecture
         self.embeddings_2_layers = args.embeddings_2_layers
         self.embeddings_activation = args.embeddings_activation
+        self.inner_activation_tx = args.inner_activation_tx
         self.use_cnn_in_tx = args.use_cnn_in_tx
         self.nb_transformer_blocks = args.nb_transformer_blocks
         self.tx_model_dim = args.tx_model_dim
@@ -145,53 +157,55 @@ class ImpactTransformerOptions(ImpactDlOptions):
         hp_to_optimize: list|str
             The list of hyperparameters to optimize. Can be the string 'default'
             Options are: 'precip_daily_days_nb', 'precip_hf_time_step',
-            'precip_hf_days_before', 'precip_hf_days_after', 'combined_transformer',
-            'embeddings_2_layers', 'embeddings_activation',
+            'precip_hf_days_before', 'precip_hf_days_after', 'architecture',
+            'embeddings_2_layers', 'embeddings_activation', 'inner_activation_tx',
             'use_cnn_in_tx', 'nb_transformer_blocks', 'tx_model_dim', 'num_heads',
             'ff_dim', 'dropout_rate', 'dropout_rate_dense', 'inner_activation_dense',
-            'with_batchnorm_dense', 'batch_size', 'learning_rate'
+            'use_batchnorm_dense', 'batch_size', 'learning_rate'
 
         Returns
         -------
-        ImpactCnnOptions
-            The options.
+        bool
+            Whether the options are ok or not.
         """
+        assert self.use_precip, "Precipitation data is required for the Transformer model."
+
         if isinstance(hp_to_optimize, str) and hp_to_optimize == 'default':
-            if self.use_precip:
-                hp_to_optimize = [
-                    'transform_precip', 'log_transform_precip',
-                    'combined_transformer', 'embeddings_2_layers',
-                    'embeddings_activation', 'use_cnn_in_tx',
-                    'nb_transformer_blocks', 'num_heads', 'ff_dim', 'dropout_rate',
-                    'dropout_rate_dense', 'inner_activation_dense',
-                    'with_batchnorm_dense', 'batch_size', 'learning_rate']
-                # Left out: 'precip_hf_time_step', 'precip_daily_days_nb',
-                # 'precip_hf_days_before', 'precip_hf_days_after'
-            else:
-                hp_to_optimize = [
-                    'batch_size', 'dropout_rate_dense', 'nb_dense_layers',
-                    'nb_dense_units', 'inner_activation_dense',
-                    'with_batchnorm_dense', 'learning_rate']
+            hp_to_optimize = [
+                'log_transform_precip', 'architecture', 'embeddings_2_layers',
+                'embeddings_activation', 'inner_activation_tx', 'use_cnn_in_tx',
+                'nb_transformer_blocks', 'num_heads', 'ff_dim', 'dropout_rate',
+                'dropout_rate_dense', 'inner_activation_dense',
+                'use_batchnorm_dense', 'batch_size', 'learning_rate',
+                'nb_dense_layers', 'nb_dense_units', 'nb_dense_units_decreasing']
+            # 'weight_denominator'
+            # Left out: 'precip_hf_time_step', 'precip_daily_days_nb',
+            # 'precip_hf_days_before', 'precip_hf_days_after'
 
         self._generate_for_optuna(trial, hp_to_optimize)
 
-        if self.use_precip:
-            if 'precip_daily_days_nb' in hp_to_optimize:
-                self.precip_daily_days_nb = trial.suggest_int(
-                    "precip_daily_days_nb", 1, 60)
-            if 'precip_hf_time_step' in hp_to_optimize:
-                self.precip_hf_time_step = trial.suggest_categorical(
-                    "precip_hf_time_step", [60, 120, 240, 360, 720])
-            if 'precip_hf_days_before' in hp_to_optimize:
-                self.precip_hf_days_before = trial.suggest_int(
-                    "precip_hf_days_before", 0, 5)
-            if 'precip_hf_days_after' in hp_to_optimize:
-                self.precip_hf_days_after = trial.suggest_int(
-                    "precip_hf_days_after", 0, 1)
-
-        if 'combined_transformer' in hp_to_optimize:
-            self.combined_transformer = trial.suggest_categorical(
-                "combined_transformer", [True, False])
+        if 'precip_daily_days_nb' in hp_to_optimize:
+            self.precip_daily_days_nb = trial.suggest_int(
+                "precip_daily_days_nb", 1, 60)
+        if 'precip_hf_time_step' in hp_to_optimize:
+            self.precip_hf_time_step = trial.suggest_categorical(
+                "precip_hf_time_step", [60, 120, 240, 360, 720])
+        if 'precip_hf_days_before' in hp_to_optimize:
+            self.precip_hf_days_before = trial.suggest_int(
+                "precip_hf_days_before", 0, 5)
+        if 'precip_hf_days_after' in hp_to_optimize:
+            self.precip_hf_days_after = trial.suggest_int(
+                "precip_hf_days_after", 0, 1)
+        if 'architecture' in hp_to_optimize:
+            self.architecture = trial.suggest_categorical(
+                "architecture",
+                ['combined_fixed_embeddings', 'combined_learned_embeddings',
+                 'combined_broadcast', 'separate', 'hybrid'])
+        if 'inner_activation_tx' in hp_to_optimize:
+            self.inner_activation_tx = trial.suggest_categorical(
+                "inner_activation_tx",
+                ['relu', 'silu', 'elu', 'selu', 'leaky_relu',
+                 'linear', 'gelu', 'softplus'])
         if 'use_cnn_in_tx' in hp_to_optimize:
             self.use_cnn_in_tx = trial.suggest_categorical(
                 "use_cnn_in_tx", [True, False])
@@ -200,7 +214,9 @@ class ImpactTransformerOptions(ImpactDlOptions):
                 "embeddings_2_layers", [True, False])
         if 'embeddings_activation' in hp_to_optimize:
             self.embeddings_activation = trial.suggest_categorical(
-                "embeddings_activation", ["relu", None])
+                "embeddings_activation",
+                ['relu', 'silu', 'elu', 'selu', 'leaky_relu',
+                 'linear', 'gelu', 'softplus', 'None'])
         if 'nb_transformer_blocks' in hp_to_optimize:
             self.nb_transformer_blocks = trial.suggest_int(
                 "nb_transformer_blocks", 1, 4)
@@ -209,7 +225,7 @@ class ImpactTransformerOptions(ImpactDlOptions):
                 "tx_model_dim", [64, 128, 256, 512, 1024])
         if 'num_heads' in hp_to_optimize:
             self.num_heads = trial.suggest_categorical(
-                "num_heads", [1, 2, 4, 8])
+                "num_heads", [4, 8, 16])
         if 'ff_dim' in hp_to_optimize:
             self.ff_dim = trial.suggest_categorical(
                 "ff_dim", [16, 32, 64, 128])
@@ -236,14 +252,13 @@ class ImpactTransformerOptions(ImpactDlOptions):
             print("-" * 80)
             return
 
-        if self.use_precip:
-            print("- precip_daily_days_nb:", self.precip_daily_days_nb)
-            print("- precip_hf_time_step:", self.precip_hf_time_step)
-            print("- precip_hf_days_before:", self.precip_hf_days_before)
-            print("- precip_hf_days_after:", self.precip_hf_days_after)
-            print("- combined_transformer:", self.combined_transformer)
-            print("- use_cnn_in_tx:", self.use_cnn_in_tx)
-
+        print("- precip_daily_days_nb:", self.precip_daily_days_nb)
+        print("- precip_hf_time_step:", self.precip_hf_time_step)
+        print("- precip_hf_days_before:", self.precip_hf_days_before)
+        print("- precip_hf_days_after:", self.precip_hf_days_after)
+        print("- architecture:", self.architecture)
+        print("- inner_activation_tx:", self.inner_activation_tx)
+        print("- use_cnn_in_tx:", self.use_cnn_in_tx)
         print("- embeddings_2_layers:", self.embeddings_2_layers)
         print("- embeddings_activation:", self.embeddings_activation)
         print("- nb_transformer_blocks:", self.nb_transformer_blocks)
@@ -263,5 +278,9 @@ class ImpactTransformerOptions(ImpactDlOptions):
         bool
             Whether the options are ok or not.
         """
-        # No specific checks for the Transformer options
+        if not super().is_ok():
+            return False
+
+        assert self.use_precip, "Precipitation data is required for the Transformer model."
+
         return True

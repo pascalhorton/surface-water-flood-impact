@@ -75,6 +75,7 @@ def compute_score_binary(metric, tp, tn, fp, fn):
         return frate
 
     elif metric in ['bias']:
+        # Represents the positive bias of the forecast -> if > 1, over-predict
         # Frequency Bias (bias) = (a+b) / (a+c)
         # [0, inf]
         bias = (tp + fp) / (tp + fn)
@@ -316,6 +317,38 @@ def print_classic_scores(tp, tn, fp, fn):
     print(f"Recall: {compute_score_binary('Recall', tp, tn, fp, fn):.3f}")
     print(f"F1: {compute_score_binary('F1', tp, tn, fp, fn):.3f}")
 
+
+def store_classic_scores(tp, tn, fp, fn, df_results):
+    """
+    Compute classic scores from contingency table
+
+    Parameters
+    ----------
+    tp: int
+        The number of true positives
+    tn: int
+        The number of true negatives
+    fp: int
+        The number of false positives
+    fn: int
+        The number of false negatives
+    df_results: DataFrame
+        The DataFrame to store the results
+    """
+    df_results['TP'] = tp
+    df_results['TN'] = tn
+    df_results['FP'] = fp
+    df_results['FN'] = fn
+    df_results['SEDI'] = compute_score_binary('SEDI', tp, tn, fp, fn)
+    df_results['F'] = compute_score_binary('F', tp, tn, fp, fn)
+    df_results['FAR'] = compute_score_binary('FAR', tp, tn, fp, fn)
+    df_results['H'] = compute_score_binary('H', tp, tn, fp, fn)
+    df_results['CSI'] = compute_score_binary('CSI', tp, tn, fp, fn)
+    df_results['Bias'] = compute_score_binary('bias', tp, tn, fp, fn)
+    df_results['Accuracy'] = compute_score_binary('Accuracy', tp, tn, fp, fn)
+    df_results['Precision'] = compute_score_binary('Precision', tp, tn, fp, fn)
+    df_results['Recall'] = compute_score_binary('Recall', tp, tn, fp, fn)
+    df_results['F1'] = compute_score_binary('F1', tp, tn, fp, fn)
 
 def assess_roc_auc(y_test, y_pred):
     """

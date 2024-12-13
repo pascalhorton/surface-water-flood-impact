@@ -1,7 +1,6 @@
 """
 Class to compute the impact function.
 """
-
 from .config import Config
 
 import pickle
@@ -13,7 +12,7 @@ from pathlib import Path
 from sklearn.model_selection import train_test_split
 
 from .utils.verification import compute_confusion_matrix, print_classic_scores, \
-    assess_roc_auc, compute_score_binary
+    assess_roc_auc, compute_score_binary, store_classic_scores
 
 
 class Impact:
@@ -24,16 +23,14 @@ class Impact:
     ----------
     events: Events
         The events object.
-    target_type: str
-        The target type. Options are: 'occurrence', 'damage_ratio'
-    random_state: int|None
-        The random state to use for the random number generator.
-        Default: None. Set to None to not set the random seed.
+    options: ImpactBasicOptions|ImpactDlOptions
+        The model options.
     """
 
-    def __init__(self, events, target_type='occurrence', random_state=None):
+    def __init__(self, events, options):
+        self.options = options
         self.df = events.events
-        self.target_type = target_type
+        self.target_type = options.target_type
         self.model = None
         self.events_train = None
         self.events_valid = None
@@ -52,8 +49,7 @@ class Impact:
         self.tmp_dir = Path(self.config.get('TMP_DIR'))
 
         # Computing options
-        self.n_jobs = 20
-        self.random_state = random_state
+        self.random_state = options.random_state
 
         # Initialize the data properties
         self._define_potential_features()
@@ -132,11 +128,13 @@ class Impact:
         # Create unique hash for the data dataframe
         tmp_filename = self._create_data_tmp_file_name(feature_files)
 
-        if tmp_filename.exists():
-            print(f"Loading data from {tmp_filename}")
-            self.df = pd.read_pickle(tmp_filename)
-
-        else:
+        try:
+            if tmp_filename.exists():
+                print(f"Loading data from {tmp_filename}")
+                self.df = pd.read_pickle(tmp_filename)
+            else:
+                raise FileNotFoundError
+        except (pickle.UnpicklingError, FileNotFoundError, EOFError, Exception):
             print(f"Creating dataframe and saving to {tmp_filename}")
             for f in feature_files:
                 df_features = pd.read_csv(f)
@@ -175,7 +173,7 @@ class Impact:
         self.df = self.df[(self.df['nb_claims'] == 0) |
                           (self.df['nb_claims'] >= threshold)]
 
-    def split_sample(self, valid_test_size=0.5, test_size=0.5):
+    def split_sample(self, valid_test_size=0.4, test_size=0.25):
         """
         Split the sample into training, validation and test sets. The split is
         stratified on the target, i.e. the proportion of events with and without
@@ -184,12 +182,16 @@ class Impact:
         Parameters
         ----------
         valid_test_size: float
-            The size of the set for validation and testing (default: 0.5)
+            The size of the set for validation and testing (default: 0.4)
         test_size: float
             The size of the set for testing proportionally to the length of the
-            validation and testing split (default: 0.6)
+            validation and testing split (default: 0.25)
         """
         df = self.df.copy()
+
+        if self.options.min_nb_claims > 1:
+            self.df = self.df[(self.df['nb_claims'] == 0) |
+                              (self.df['nb_claims'] >= self.options.min_nb_claims)]
 
         # Rename the column date_claim to date
         df.rename(columns={'date_claim': 'date'}, inplace=True)
@@ -203,11 +205,10 @@ class Impact:
         df['damage_class'] = (df['target'] > 0).astype(int)
 
         # Remove lines with NaN values
-        x_nan = np.argwhere(np.isnan(df[self.features].to_numpy()))
-        rows_with_nan = np.unique(x_nan[:, 0])
-        if len(rows_with_nan) > 0:
-            print(f"Removing {len(rows_with_nan)} rows with NaN values")
-            df = df.drop(rows_with_nan)
+        len_before = len(df)
+        df.dropna(subset=self.features, inplace=True)
+        len_after = len(df)
+        print(f"Number of NaN values removed: {len_before - len_after}")
 
         # Group all events by date and damage class to split by date without mixing.
         date_label_df = df.groupby('date')['damage_class'].max().reset_index()
@@ -365,15 +366,38 @@ class Impact:
 
         self.model = BenchmarkModel(model_type, self.target_type)
 
-    def assess_model_on_all_periods(self):
+    def assess_model_on_all_periods(self, save_results=False, file_tag=''):
         """
         Assess the model on all periods.
-        """
-        self._assess_model(self.x_train, self.y_train, 'Train period')
-        self._assess_model(self.x_valid, self.y_valid, 'Validation period')
-        self._assess_model(self.x_test, self.y_test, 'Test period')
 
-    def _assess_model(self, x, y, period_name):
+        Parameters
+        ----------
+        save_results: bool
+            Save the results to a file.
+        file_tag: str
+            The tag to add to the file name.
+        """
+        df_res = pd.DataFrame(columns=['split'])
+        df_res = self._assess_model(self.x_train, self.y_train, 'train', df_res)
+        df_res = self._assess_model(self.x_valid, self.y_valid, 'valid', df_res)
+        df_res = self._assess_model(self.x_test, self.y_test, 'test', df_res)
+
+        if save_results:
+            output_dir = self.config.output_dir
+            date_tag = pd.Timestamp.now().strftime('%Y-%m-%d_%H%M%S')
+            dataset = self.options.dataset
+            seed_tag = ''
+            if self.random_state is not None:
+                seed_tag = f'_seed_{self.random_state}'
+            base_name = f'results_{dataset}_{file_tag}{seed_tag}_{date_tag}'
+            file_name = f'{output_dir}/{base_name}.csv'
+            df_res.to_csv(file_name, index=False)
+            file_name_options = f'{output_dir}/{base_name}_options.csv'
+            df_options = pd.DataFrame(self.options.__dict__.items(), columns=['option', 'value'])
+            df_options.to_csv(file_name_options, index=False)
+            print(f"Results saved to {file_name}")
+
+    def _assess_model(self, x, y, period_name, df_res):
         """
         Assess the model on a single period.
         """
@@ -384,16 +408,26 @@ class Impact:
 
         print(f"\nSplit: {period_name}")
 
+        df_tmp = pd.DataFrame(columns=df_res.columns)
+        df_tmp['split'] = [period_name]
+
         # Compute the scores
         if self.target_type == 'occurrence':
             tp, tn, fp, fn = compute_confusion_matrix(y, y_pred)
             print_classic_scores(tp, tn, fp, fn)
+            store_classic_scores(tp, tn, fp, fn, df_tmp)
             y_pred_prob = self.model.predict_proba(x)
-            assess_roc_auc(y, y_pred_prob[:, 1])
+            roc = assess_roc_auc(y, y_pred_prob[:, 1])
+            df_tmp['ROC_AUC'] = [roc]
         else:
             rmse = np.sqrt(np.mean((y - y_pred) ** 2))
             print(f"RMSE: {rmse}")
+            df_tmp['RMSE'] = [rmse]
         print(f"----------------------------------------")
+
+        df_res = pd.concat([df_res, df_tmp])
+
+        return df_res
 
     def _create_data_tmp_file_name(self, feature_files):
         """
@@ -418,20 +452,100 @@ class Impact:
         return tmp_filename
 
     def _define_potential_features(self):
-        self.tabular_features = {
-            'event': ['i_max_q', 'p_sum_q', 'e_tot', 'i_mean_q', 'apireg_q',
-                      'nb_contracts'],
-            'terrain': ['dem_010m_curv_plan_std', 'dem_010m_slope_min',
-                        'dem_010m_curv_plan_mean', 'dem_010m_slope_median'],
-            'swf_map': ['area_low', 'area_med', 'area_high',
-                        'n_buildings', 'n_buildings_high'],
-            'flowacc': ['dem_025m_flowacc_norivers_max',
-                        'dem_010m_flowacc_norivers_max',
-                        'dem_050m_flowacc_norivers_max',
-                        'dem_100m_flowacc_norivers_max',
-                        'dem_010m_flowacc_norivers_median'],
-            'twi': ['dem_010m_twi_max', 'dem_050m_twi_max'],
-            'land_cover': ['land_cover_cat_7', 'land_cover_cat_11',
-                           'land_cover_cat_12'],
-            'runoff_coeff': ['runoff_coeff_mean']
-        }
+        self.tabular_features = {}
+
+        if self.options.use_event_attributes:
+            self.tabular_features['event'] = [
+                'i_max_q', 'p_sum_q', 'duration', 'i_mean_q',
+                'api_q', 'nb_contracts']
+
+        if self.options.use_static_attributes:
+            if not self.options.use_all_static_attributes:
+                self.tabular_features['terrain'] = [
+                    'dem_010m_curv_plan_mean', 'dem_010m_curv_plan_std',
+                    'dem_010m_slope_min', 'dem_010m_slope_median']
+                self.tabular_features['swf_map'] = [
+                    'area_low', 'area_med', 'area_high',
+                    'n_buildings_high', 'n_buildings']
+                self.tabular_features['flowacc'] = [
+                    'dem_010m_flowacc_max', 'dem_010m_flowacc_median',
+                    'dem_050m_flowacc_max', 'dem_050m_flowacc_median',
+                    'dem_100m_flowacc_max', 'dem_100m_flowacc_median']
+                self.tabular_features['twi'] = [
+                    'dem_010m_twi_max', 'dem_010m_twi_median']
+                self.tabular_features['land_cover'] = [
+                    'land_cover_cat_7', 'land_cover_cat_11', 'land_cover_cat_12']
+            else:
+                self.tabular_features['terrain'] = [
+                    'dem_010m_curv_plan_min', 'dem_010m_curv_plan_max',
+                    'dem_010m_curv_plan_mean', 'dem_010m_curv_plan_std',
+                    'dem_010m_curv_plan_median', 'dem_010m_curv_prof_min',
+                    'dem_010m_curv_prof_max', 'dem_010m_curv_prof_mean',
+                    'dem_010m_curv_prof_std', 'dem_010m_curv_prof_median',
+                    'dem_010m_curv_tot_min', 'dem_010m_curv_tot_max',
+                    'dem_010m_curv_tot_mean', 'dem_010m_curv_tot_std',
+                    'dem_010m_curv_tot_median', 'dem_010m_slope_min',
+                    'dem_010m_slope_max', 'dem_010m_slope_mean',
+                    'dem_010m_slope_std', 'dem_010m_slope_median',
+                    'dem_025m_curv_plan_min', 'dem_025m_curv_plan_max',
+                    'dem_025m_curv_plan_mean', 'dem_025m_curv_plan_std',
+                    'dem_025m_curv_plan_median', 'dem_025m_curv_prof_min',
+                    'dem_025m_curv_prof_max', 'dem_025m_curv_prof_mean',
+                    'dem_025m_curv_prof_std', 'dem_025m_curv_prof_median',
+                    'dem_025m_curv_tot_min', 'dem_025m_curv_tot_max',
+                    'dem_025m_curv_tot_mean', 'dem_025m_curv_tot_std',
+                    'dem_025m_curv_tot_median', 'dem_025m_slope_min',
+                    'dem_025m_slope_max', 'dem_025m_slope_mean',
+                    'dem_025m_slope_std', 'dem_025m_slope_median',
+                    'dem_050m_curv_plan_min', 'dem_050m_curv_plan_max',
+                    'dem_050m_curv_plan_mean', 'dem_050m_curv_plan_std',
+                    'dem_050m_curv_plan_median', 'dem_050m_curv_prof_min',
+                    'dem_050m_curv_prof_max', 'dem_050m_curv_prof_mean',
+                    'dem_050m_curv_prof_std', 'dem_050m_curv_prof_median',
+                    'dem_050m_curv_tot_min', 'dem_050m_curv_tot_max',
+                    'dem_050m_curv_tot_mean', 'dem_050m_curv_tot_std',
+                    'dem_050m_curv_tot_median', 'dem_050m_slope_min',
+                    'dem_050m_slope_max', 'dem_050m_slope_mean',
+                    'dem_050m_slope_std', 'dem_050m_slope_median',
+                    'dem_100m_curv_plan_min', 'dem_100m_curv_plan_max',
+                    'dem_100m_curv_plan_mean', 'dem_100m_curv_plan_std',
+                    'dem_100m_curv_plan_median', 'dem_100m_curv_prof_min',
+                    'dem_100m_curv_prof_max', 'dem_100m_curv_prof_mean',
+                    'dem_100m_curv_prof_std', 'dem_100m_curv_prof_median',
+                    'dem_100m_curv_tot_min', 'dem_100m_curv_tot_max',
+                    'dem_100m_curv_tot_mean', 'dem_100m_curv_tot_std',
+                    'dem_100m_curv_tot_median', 'dem_100m_slope_min',
+                    'dem_100m_slope_max', 'dem_100m_slope_mean',
+                    'dem_100m_slope_std', 'dem_100m_slope_median',
+                    'dem_250m_curv_plan_min', 'dem_250m_curv_plan_max',
+                    'dem_250m_curv_plan_mean', 'dem_250m_curv_plan_std',
+                    'dem_250m_curv_plan_median', 'dem_250m_curv_prof_min',
+                    'dem_250m_curv_prof_max', 'dem_250m_curv_prof_mean',
+                    'dem_250m_curv_prof_std', 'dem_250m_curv_prof_median',
+                    'dem_250m_curv_tot_min', 'dem_250m_curv_tot_max',
+                    'dem_250m_curv_tot_mean', 'dem_250m_curv_tot_std',
+                    'dem_250m_curv_tot_median', 'dem_250m_slope_min',
+                    'dem_250m_slope_max', 'dem_250m_slope_mean',
+                    'dem_250m_slope_std', 'dem_250m_slope_median']
+                self.tabular_features['swf_map'] = [
+                    'area_low', 'area_med', 'area_high', 'area_exposed',
+                    'n_buildings_low', 'n_buildings_med', 'n_buildings_high',
+                    'n_buildings_exposed']
+                self.tabular_features['flowacc'] = [
+                    'dem_010m_flowacc_max', 'dem_010m_flowacc_mean',
+                    'dem_010m_flowacc_std', 'dem_010m_flowacc_median',
+                    'dem_025m_flowacc_max', 'dem_025m_flowacc_mean',
+                    'dem_025m_flowacc_std', 'dem_025m_flowacc_median',
+                    'dem_050m_flowacc_max', 'dem_050m_flowacc_mean',
+                    'dem_050m_flowacc_std', 'dem_050m_flowacc_median',
+                    'dem_100m_flowacc_max', 'dem_100m_flowacc_mean',
+                    'dem_100m_flowacc_std', 'dem_100m_flowacc_median',
+                    'dem_250m_flowacc_max', 'dem_250m_flowacc_mean',
+                    'dem_250m_flowacc_std', 'dem_250m_flowacc_median']
+                self.tabular_features['twi'] = [
+                    'dem_010m_twi_max', 'dem_010m_twi_mean',
+                    'dem_010m_twi_std', 'dem_010m_twi_median']
+                self.tabular_features['land_cover'] = [
+                    'land_cover_cat_7', 'land_cover_cat_11',
+                    'land_cover_cat_12']
+

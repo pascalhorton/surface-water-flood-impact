@@ -13,21 +13,8 @@ from swafi.impact_cnn import ImpactCnn
 from swafi.impact_cnn_options import ImpactCnnOptions
 from swafi.events import load_events_from_pickle
 from swafi.precip_combiprecip import CombiPrecip
+from swafi.utils.optuna import get_or_create_optuna_study
 
-has_optuna = False
-try:
-    import optuna
-
-    has_optuna = True
-    from optuna.storages import RDBStorage, JournalStorage, JournalFileStorage
-except ImportError:
-    pass
-
-USE_SQLITE = False
-USE_TXTFILE = True
-OPTUNA_RANDOM = True
-DATASET = 'mobiliar'  # 'mobiliar' or 'gvz'
-LABEL_EVENT_FILE = 'original_w_prior_pluvial_occurrence'
 SAVE_MODEL = True
 SHOW_PLOTS = False
 
@@ -39,23 +26,22 @@ MISSING_DATES = CombiPrecip.missing
 def main():
     options = ImpactCnnOptions()
     options.parse_args()
-    # options.parser.print_help()
     options.print_options()
     assert options.is_ok()
 
     year_start = None
     year_end = None
-    if DATASET == 'mobiliar':
+    if options.dataset == 'mobiliar':
         year_start = config.get('YEAR_START_MOBILIAR')
         year_end = config.get('YEAR_END_MOBILIAR')
-    elif DATASET == 'gvz':
+    elif options.dataset == 'gvz':
         year_start = config.get('YEAR_START_GVZ')
         year_end = config.get('YEAR_END_GVZ')
     else:
-        raise ValueError(f'Dataset {DATASET} not recognized.')
+        raise ValueError(f'Dataset {options.dataset} not recognized.')
 
     # Load events
-    events_filename = f'events_{DATASET}_with_target_values_{LABEL_EVENT_FILE}.pickle'
+    events_filename = f'events_{options.dataset}_with_target_{options.event_file_label}.pickle'
     events = load_events_from_pickle(filename=events_filename)
 
     # Remove dates where the precipitation data is not available
@@ -100,8 +86,8 @@ def _setup_model(options, events, precip, dem):
     cnn.set_precipitation(precip)
     cnn.remove_events_without_precipitation_data()
     cnn.reduce_spatial_domain(options.precip_window_size)
-    if cnn.options.use_simple_features:
-        cnn.select_features(cnn.options.simple_features)
+    if cnn.options.use_static_attributes or cnn.options.use_event_attributes:
+        cnn.select_features(cnn.options.replace_simple_features)
         cnn.load_features(cnn.options.simple_feature_classes)
     cnn.split_sample()
     cnn.reduce_negatives_for_training(cnn.options.factor_neg_reduction)
@@ -128,20 +114,6 @@ def optimize_model_with_optuna(options, events, precip=None, dem=None, dir_plots
     dir_plots: str
         The directory where to save the plots.
     """
-    if not has_optuna:
-        raise ValueError("Optuna is not installed")
-
-    if USE_SQLITE:
-        storage = RDBStorage(
-            url=f'sqlite:///{options.optuna_study_name}.db',
-            engine_kwargs={"connect_args": {"timeout": 60.0}}
-        )
-    elif USE_TXTFILE:
-        storage = JournalStorage(
-            JournalFileStorage(f"{options.optuna_study_name}.log")
-        )
-    else:
-        raise ValueError("No storage specified")
 
     def optuna_objective(trial):
         """
@@ -177,22 +149,7 @@ def optimize_model_with_optuna(options, events, precip=None, dem=None, dir_plots
 
         return score
 
-    sampler = None
-    if OPTUNA_RANDOM:
-        sampler = optuna.samplers.RandomSampler()
-
-    if USE_SQLITE or USE_TXTFILE:
-        study = optuna.load_study(
-            study_name=options.optuna_study_name,
-            storage=storage,
-            sampler=sampler
-        )
-    else:
-        study = optuna.create_study(
-            study_name=options.optuna_study_name,
-            direction='maximize',
-            sampler=sampler
-        )
+    study = get_or_create_optuna_study(options)
     study.optimize(optuna_objective, n_trials=options.optuna_trials_nb)
 
     print("Number of finished trials: ", len(study.trials))

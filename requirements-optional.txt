@@ -2,7 +2,7 @@ pysheds
 richdem
 gdal
 geopandas
-optuna
+optuna>=4.0
 asyncpg
 psycopg2
 psycopg2-binary

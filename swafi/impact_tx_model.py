@@ -57,7 +57,7 @@ class ModelTransformer(models.Model):
         input_daily = keras.ops.expand_dims(input_daily, axis=-1)
         input_high_freq = keras.ops.expand_dims(input_high_freq, axis=-1)
 
-        if not self.options.combined_transformer:
+        if self.options.architecture == 'separate':
             input_attributes = keras.ops.expand_dims(input_attributes, axis=-1)
 
             x_daily = self.project_to_model_dim(input_daily)
@@ -87,7 +87,48 @@ class ModelTransformer(models.Model):
             # Concatenate
             x = layers.Concatenate(axis=1)([x_daily, x_high_freq, x_attributes])
 
-        else:
+        elif self.options.architecture == 'combined_fixed_embeddings':
+            # Project and concatenate the precipitation inputs
+            x_daily = self.project_to_model_dim(input_daily)
+            x_high_freq = self.project_to_model_dim(input_high_freq)
+            x = layers.Concatenate(axis=1)([x_daily, x_high_freq])
+            x = AddFixedPositionalEmbedding(
+                self.options.tx_model_dim
+            )(x)
+
+            # Project the attributes input into the model dimension
+            x_attributes = self.project_to_model_dim(input_attributes)
+            x_attributes = keras.ops.expand_dims(x_attributes, axis=1)
+
+            # Combine time series and static attributes into a single sequence
+            x = layers.Concatenate(axis=1)([x, x_attributes])
+
+            for _ in range(self.options.nb_transformer_blocks):
+                x = self.transformer_block(x, use_cnn=self.options.use_cnn_in_tx)
+
+        elif self.options.architecture == 'combined_broadcast':
+            # Project and concatenate the precipitation inputs
+            x_daily = self.project_to_model_dim(input_daily)
+            x_high_freq = self.project_to_model_dim(input_high_freq)
+            x = layers.Concatenate(axis=1)([x_daily, x_high_freq])
+            x = AddFixedPositionalEmbedding(
+                self.options.tx_model_dim
+            )(x)
+
+            x_attributes = self.project_to_model_dim(input_attributes)
+            x_attributes = keras.ops.expand_dims(x_attributes, axis=1)
+
+            # Add the attributes to the time series
+            x = layers.Add()([x, x_attributes])
+
+            for _ in range(self.options.nb_transformer_blocks):
+                x = self.transformer_block(x, use_cnn=self.options.use_cnn_in_tx)
+
+        elif self.options.architecture == 'combined_learned_embeddings':
+            embeddings_activation = self.options.embeddings_activation
+            if embeddings_activation == 'None':
+                embeddings_activation = None
+
             # Project and concatenate the precipitation inputs
             x_daily = self.project_to_model_dim(input_daily)
             x_high_freq = self.project_to_model_dim(input_high_freq)
@@ -98,7 +139,7 @@ class ModelTransformer(models.Model):
                 model_dim=self.options.tx_model_dim,
                 daily_prec_size=self.input_daily_prec_size,
                 high_freq_prec_size=self.input_high_freq_prec_size,
-                embeddings_activation=self.options.embeddings_activation,
+                embeddings_activation=embeddings_activation,
                 embeddings_2_layers=self.options.embeddings_2_layers
             )(x)
 
@@ -107,15 +148,15 @@ class ModelTransformer(models.Model):
             if single_attributes_vector:
                 x_attributes = layers.Dense(
                     self.options.tx_model_dim,
-                    name=f'dense_proj_{int(1e4 * np.random.uniform())}',
-                    activation=self.options.embeddings_activation
+                    name=f'dense_proj_{int(1e6 * np.random.uniform())}',
+                    activation=embeddings_activation
                 )(input_attributes)
 
                 if self.options.embeddings_2_layers:
                     x_attributes = layers.Dense(
                         self.options.tx_model_dim,
-                        name=f'dense_proj_{int(1e4 * np.random.uniform())}',
-                        activation=self.options.embeddings_activation
+                        name=f'dense_proj_{int(1e6 * np.random.uniform())}',
+                        activation=embeddings_activation
                     )(x_attributes)
 
                 x_attributes = keras.ops.expand_dims(x_attributes, axis=1)
@@ -126,7 +167,39 @@ class ModelTransformer(models.Model):
             x = layers.Concatenate(axis=1)([x, x_attributes])
 
             for _ in range(self.options.nb_transformer_blocks):
+                x = self.transformer_block(x, use_cnn=False)
+
+        elif self.options.architecture == 'hybrid':
+            # Separate processing
+            x_daily = self.project_to_model_dim(input_daily)
+            x_daily = AddFixedPositionalEmbedding(
+                self.options.tx_model_dim
+            )(x_daily)
+            for _ in range(self.options.nb_transformer_blocks):
+                x_daily = self.transformer_block(
+                    x_daily, use_cnn=self.options.use_cnn_in_tx)
+
+            x_high_freq = self.project_to_model_dim(input_high_freq)
+            x_high_freq = AddFixedPositionalEmbedding(
+                self.options.tx_model_dim
+            )(x_high_freq)
+            for _ in range(self.options.nb_transformer_blocks):
+                x_high_freq = self.transformer_block(
+                    x_high_freq, use_cnn=self.options.use_cnn_in_tx)
+
+            # Concatenate and further processing
+            x = layers.Concatenate(axis=1)([x_daily, x_high_freq])
+            x = AddFixedPositionalEmbedding(self.options.tx_model_dim)(x)
+
+            x_attributes = self.project_to_model_dim(input_attributes)
+            x_attributes = keras.ops.expand_dims(x_attributes, axis=1)
+            x = layers.Add()([x, x_attributes])
+
+            for _ in range(self.options.nb_transformer_blocks):
                 x = self.transformer_block(x, use_cnn=self.options.use_cnn_in_tx)
+
+        else:
+            raise ValueError(f'Architecture {self.options.architecture} not supported.')
 
         # Flatten
         x = layers.Flatten()(x)
@@ -140,7 +213,7 @@ class ModelTransformer(models.Model):
             x = layers.Dense(nb_units, activation=self.options.inner_activation_dense,
                              name=f'dense_ffn_{i}')(x)
 
-            if self.options.with_batchnorm_dense:
+            if self.options.use_batchnorm_dense:
                 x = layers.BatchNormalization(name=f'batchnorm_dense_{i}')(x)
 
             if self.options.dropout_rate_dense > 0:
@@ -169,17 +242,21 @@ class ModelTransformer(models.Model):
         -------
         The output tensor.
         """
+        embeddings_activation = self.options.embeddings_activation
+        if embeddings_activation == 'None':
+            embeddings_activation = None
+
         x = layers.Dense(
             self.options.tx_model_dim,
-            name=f'dense_proj_{int(1e4 * np.random.uniform())}',
-            activation=self.options.embeddings_activation
+            name=f'dense_proj_{int(1e6 * np.random.uniform())}',
+            activation=embeddings_activation
         )(inputs)
 
         if self.options.embeddings_2_layers:
             x = layers.Dense(
                 self.options.tx_model_dim,
-                name=f'dense_proj_{int(1e4 * np.random.uniform())}',
-                activation=self.options.embeddings_activation
+                name=f'dense_proj_{int(1e6 * np.random.uniform())}',
+                activation=embeddings_activation
             )(x)
 
         return x
@@ -218,7 +295,7 @@ class ModelTransformer(models.Model):
             x = layers.Conv1D(
                 filters=self.options.ff_dim,
                 kernel_size=1,
-                activation='relu'
+                activation=self.options.inner_activation_tx
             )(x)
             x = layers.Dropout(self.options.dropout_rate)(x)
             x = layers.Conv1D(
@@ -228,12 +305,12 @@ class ModelTransformer(models.Model):
         else:
             x = layers.Dense(
                 self.options.ff_dim,
-                activation='relu',
-                name=f'dense_tx_{int(1e4 * np.random.uniform())}'
+                activation=self.options.inner_activation_tx,
+                name=f'dense_tx_{int(1e6 * np.random.uniform())}'
             )(x)
             x = layers.Dense(
                 self.options.tx_model_dim,
-                name=f'dense_tx_{int(1e4 * np.random.uniform())}'
+                name=f'dense_tx_{int(1e6 * np.random.uniform())}'
             )(x)
             x = layers.Dropout(self.options.dropout_rate)(x)
 
@@ -327,14 +404,14 @@ class AddLearnedPositionalEmbedding(layers.Layer):
         """
         x = layers.Dense(
             self.model_dim,
-            name=f'dense_proj_{int(1e4 * np.random.uniform())}',
+            name=f'dense_proj_{int(1e6 * np.random.uniform())}',
             activation=self.embeddings_activation
         )(inputs)
 
         if self.embeddings_2_layers:
             x = layers.Dense(
                 self.model_dim,
-                name=f'dense_proj_{int(1e4 * np.random.uniform())}',
+                name=f'dense_proj_{int(1e6 * np.random.uniform())}',
                 activation=self.embeddings_activation
             )(x)
 

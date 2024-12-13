@@ -4,6 +4,7 @@ Class to handle the events.
 
 import pickle
 from pathlib import Path
+from tqdm import tqdm
 
 import numpy as np
 import pandas as pd
@@ -79,7 +80,7 @@ class Events:
             (self.events['e_start'].dt.year <= damages.year_end)
             ]
 
-        print(f"Number of events with contracts in "
+        print(f"Number of events with potential contracts in "
               f"the selected years: {len(self.events)}")
 
     def select_locations_with_contracts(self, damages):
@@ -105,7 +106,7 @@ class Events:
                 (self.events['e_start'].dt.year != row['year'])
                 ]
 
-        print(f"Number of events with contracts: {len(self.events)}")
+        print(f"Number of events with potential contracts: {len(self.events)}")
 
     def set_target_values_from_damages(self, damages):
         """
@@ -129,6 +130,48 @@ class Events:
         self.events['target'] = self.events['target'].fillna(0)
         self.events['nb_claims'] = self.events['nb_claims'].fillna(0)
 
+    def get_events_for_removed_claims(self, removed_claims, damages):
+        """
+        Get the events for the removed claims.
+
+        Parameters
+        ----------
+        removed_claims: pd.DataFrame
+            The removed claims.
+        damages: Damages instance
+            An object containing the damages properties.
+
+        Returns
+        -------
+        The events for the removed claims.
+        """
+        print("Extracting events for the removed claims.")
+
+        cids = removed_claims['cid'].unique()
+
+        # Select the event cids for the removed claims
+        events = self.events.copy()
+        events = events[events['cid'].isin(cids)]
+
+        # Compute the middle-date of the events
+        events['mid_date'] = events['e_start'] + (events['e_end'] - events['e_start']) / 2
+
+        events_to_remove = []
+        for i_claim in tqdm(range(len(removed_claims)), desc=f"Checking events"):
+            claim = removed_claims.iloc[i_claim]
+            mask = (events['cid'] == claim['cid']) & \
+                   (events['mid_date'] >= claim['date_claim'] - pd.Timedelta(days=2)) & \
+                   (events['mid_date'] <= claim['date_claim'] + pd.Timedelta(days=2))
+            events_to_remove.extend(events.loc[mask, 'eid'].tolist())
+
+        # Filter out the events that are associated with damages
+        events_to_remove = [ev for ev in events_to_remove if
+                            ev not in damages.claims.eid.tolist()]
+
+        print(f"Events to remove dues to claim classes: {len(events_to_remove)}")
+
+        return events_to_remove
+
     def remove_period(self, start_date, end_date):
         """
         Remove a period of time from the events.
@@ -144,6 +187,26 @@ class Events:
             (self.events['e_end'] < start_date) |
             (self.events['e_end'] > end_date)
             ]
+
+    def remove_events(self, events_to_remove):
+        """
+        Remove specific events from the events dataframe.
+
+        Parameters
+        ----------
+        events_to_remove: list
+            A list of event IDs to remove.
+        """
+        self.events = self.events[~self.events['eid'].isin(events_to_remove)]
+
+    def remove_events_without_contracts(self):
+        """
+        Remove events without contracts.
+        """
+        len_before = len(self.events)
+        self.events.dropna(subset=['nb_contracts'], inplace=True)
+        len_after = len(self.events)
+        print(f"Number of events without actual contracts: {len_before - len_after}")
 
     def count_positives(self):
         """

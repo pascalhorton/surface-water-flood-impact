@@ -15,10 +15,16 @@ config = Config(output_dir='analysis_precip_claims')
 DATASET = 'mobiliar'  # 'mobiliar' or 'gvz'
 PRECIP_DAYS_BEFORE = 2
 PRECIP_DAYS_AFTER = 2
+WITH_INTERNAL_DAMAGES = False
+
 
 if DATASET == 'mobiliar':
-    EXPOSURE_CATEGORIES = ['external']
-    CLAIM_CATEGORIES = ['external', 'pluvial']
+    if WITH_INTERNAL_DAMAGES:
+        EXPOSURE_CATEGORIES = ['all']
+        CLAIM_CATEGORIES = ['pluvial']
+    else:
+        EXPOSURE_CATEGORIES = ['external']
+        CLAIM_CATEGORIES = ['external', 'pluvial']
 elif DATASET == 'gvz':
     EXPOSURE_CATEGORIES = ['all_buildings']
     CLAIM_CATEGORIES = ['likely_pluvial']
@@ -31,18 +37,15 @@ def main():
 
 def generate_csv():
     # Load the damage data
-    year_start = None
-    year_end = None
+    year_start = 2005
+    year_end = 2022
+
     if DATASET == 'mobiliar':
-        year_start = config.get('YEAR_START_MOBILIAR')
-        year_end = config.get('YEAR_END_MOBILIAR')
         damages = DamagesMobiliar(dir_exposure=config.get('DIR_EXPOSURE_MOBILIAR'),
                                   dir_claims=config.get('DIR_CLAIMS_MOBILIAR'),
                                   year_start=config.get('YEAR_START_MOBILIAR'),
                                   year_end=config.get('YEAR_END_MOBILIAR'))
     elif DATASET == 'gvz':
-        year_start = config.get('YEAR_START_GVZ')
-        year_end = config.get('YEAR_END_GVZ')
         damages = DamagesGvz(dir_exposure=config.get('DIR_EXPOSURE_GVZ'),
                              dir_claims=config.get('DIR_CLAIMS_GVZ'),
                              year_start=config.get('YEAR_START_GVZ'),
@@ -62,6 +65,8 @@ def generate_csv():
     # Load CombiPrecip files
     precip = CombiPrecip(year_start, year_end)
     precip.prepare_data(config.get('DIR_PRECIP'))
+    print("Preloading all daily precipitation data.")
+    precip.preload_all_cid_data(cids)
 
     # Add columns to the claims dataframe
     claims['precip_max'] = None
@@ -71,17 +76,32 @@ def generate_csv():
     claims['precip_12h_max'] = None
     claims['precip_24h_max'] = None
 
+    t_start = pd.Timestamp('2005-01-01')
+    t_end = pd.Timestamp('2022-12-31')
+
     for cid in cids:
         print(f'Processing CID {cid}')
-        precip_cid_q = precip.compute_quantiles_cid(cid)
+        precip_cid = precip.cid_time_series.sel(
+            time=slice(t_start, t_end),
+            cid=cid
+        )
+
+        if precip_cid is None:
+            print(f'No precipitation data for CID {cid}')
+            continue
+        precip_cid_q = precip_cid.rank(dim='time', pct=True)
 
         for idx, claim in claims[claims['cid'] == cid].iterrows():
             start = claim['date_claim'] - pd.Timedelta(days=PRECIP_DAYS_BEFORE)
-            end = claim['date_claim'] + pd.Timedelta(days=PRECIP_DAYS_AFTER)
-            precip_ts = precip.get_time_series(cid, start, end)
-            precip_ts = precip_ts.flatten()
+            end = claim['date_claim'] + pd.Timedelta(days=PRECIP_DAYS_AFTER + 1)
+            precip_ts = precip_cid.sel(time=slice(start, end))
+            precip_ts = precip_ts.to_numpy()
+
+            if len(precip_ts) == 0:
+                continue
+
             precip_q_ts = precip_cid_q.sel(time=slice(start, end))
-            precip_q_ts = precip_q_ts['precip'].to_numpy()
+            precip_q_ts = precip_q_ts.to_numpy()
 
             # Compute the max precipitation
             claims.loc[idx, 'precip_max'] = precip_ts.max()
@@ -112,6 +132,7 @@ def generate_plots():
 
     # Copy of the claims with positive precipitation only
     claims_pos = claims[claims['precip_max'] > 0].copy()
+    claims_tail = claims_pos[claims_pos['precip_max_q'] > 0.98].copy()
 
     # Plot a histogram of the max precipitation (all)
     filename = f'hist_precip_max_{DATASET}_all.png'
@@ -145,6 +166,15 @@ def generate_plots():
     # Plot a histogram of the max precipitation quantile (>0)
     filename = f'hist_precip_max_q_{DATASET}_pos.png'
     claims_pos['precip_max_q'].hist(bins=50)
+    plt.title('Quantiles of max precipitation intensity (>0)')
+    plt.grid(axis='x')
+    plt.tight_layout()
+    plt.savefig(config.output_dir / filename)
+    plt.close()
+
+    # Plot a histogram of the max precipitation quantile (>0)
+    filename = f'hist_precip_max_q_{DATASET}_tail.png'
+    claims_tail['precip_max_q'].hist(bins=50)
     plt.title('Quantiles of max precipitation intensity (>0)')
     plt.grid(axis='x')
     plt.tight_layout()

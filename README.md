@@ -48,8 +48,8 @@ These are managed by the `Events` class in `swafi/events.py` and are handled int
 Different characteristics are calculated for each event:
 - `e_start`: start date of the event
 - `e_end`: end date of the event
-- `e_tot`: duration of the event in hours
-- `e_tot_q`: quantile equivalent for the duration
+- `duration`: duration of the event in hours
+- `duration_q`: quantile equivalent for the duration
 - `p_sum`: total precipitation of the event in mm
 - `p_sum_q`: quantile equivalent for the total precipitation
 - `i_max`: maximum precipitation intensity of the event in mm/h
@@ -58,8 +58,8 @@ Different characteristics are calculated for each event:
 - `i_mean_q`: quantile equivalent for the mean precipitation intensity
 - `i_sd`: standard deviation of the precipitation intensity of the event in mm/h
 - `i_sd_q`: quantile equivalent for the standard deviation of the precipitation intensity
-- `apireg`: antecedent precipitation index for the event
-- `apireg_q`: quantile equivalent for the antecedent precipitation index
+- `api`: antecedent precipitation index for the event
+- `api_q`: quantile equivalent for the antecedent precipitation index
 
 ### Damages
 
@@ -179,7 +179,7 @@ This script will:
 
 6. From the selection of events on step 3, assign the target value to the events based on the corresponding damages.
    All events not linked to damages are assigned a target value of 0.
-   The selected events are saved as pickle files with the name `events_{DATASET}_with_target_values_{LABEL_RESULTING_FILE}`.
+   The selected events are saved as pickle files with the name `events_{DATASET}_with_target_{LABEL_RESULTING_FILE}`.
 
 The file resulting from this step is a pickle file with the events and the assigned target values.
 This file is needed to train or assess the impact functions.
@@ -229,7 +229,7 @@ from swafi.events import load_events_from_pickle
 from swafi.impact_lr import ImpactLogisticRegression
 
 # Load the events with the target values
-events_filename = f'events_mobiliar_with_target_values_pluvial_occurrence.pickle'
+events_filename = f'events_mobiliar_with_target_pluvial_occurrence.pickle'
 events = load_events_from_pickle(filename=events_filename)
 
 # Create the impact function
@@ -245,7 +245,7 @@ lr.normalize_features()
 # Compute the class weights (claim/no claim)
 lr.compute_balanced_class_weights()
 # Decrease the weight of the events with claims by a certain factor (otherwise it will be too high)
-lr.compute_corrected_class_weights(weight_denominator=27)
+lr.compute_corrected_class_weights(weight_denominator=10)
 # Train the model
 lr.fit()
 # Evaluate the model on all splits
@@ -303,7 +303,7 @@ train_cnn_occurrence.py [-h] [--run-id RUN_ID] [--optimize-with-optuna]
                        [--do-not-use-precip] [--do-not-use-dem]
                        [--do-not-use-simple-features]
                        [--simple-feature-classes SIMPLE_FEATURE_CLASSES [SIMPLE_FEATURE_CLASSES ...]]
-                       [--simple-features SIMPLE_FEATURES [SIMPLE_FEATURES ...]]
+                       [--replace-simple-features SIMPLE_FEATURES [SIMPLE_FEATURES ...]]
                        [--precip-window-size PRECIP_WINDOW_SIZE]
                        [--precip-resolution PRECIP_RESOLUTION]
                        [--precip-time-step PRECIP_TIME_STEP]
@@ -335,7 +335,7 @@ Options
 * `--do-not-use-dem`: Do not use DEM data
 * `--do-not-use-simple-features`: Do not use simple features (event properties and static attributes)
 * `--simple-feature-classes SIMPLE_FEATURE_CLASSES [SIMPLE_FEATURE_CLASSES ...]`: The list of simple feature classes to use (e.g. event terrain)
-* `--simple-features SIMPLE_FEATURES [SIMPLE_FEATURES ...]`: The list of specific simple features to use (e.g. event:i_max_q). If not specified, the default class features will be used. If specified, the default class features will be overridden for this class only (e.g. event).
+* `--replace-simple-features SIMPLE_FEATURES [SIMPLE_FEATURES ...]`: The list of specific simple features to use (e.g. event:i_max_q). If not specified, the default class features will be used. If specified, the default class features will be overridden for this class only (e.g. event).
 * `--precip-window-size PRECIP_WINDOW_SIZE`: The precipitation window size [km]
 * `--precip-resolution PRECIP_RESOLUTION`: The precipitation resolution [km]
 * `--precip-time-step PRECIP_TIME_STEP`: The precipitation time step [h]

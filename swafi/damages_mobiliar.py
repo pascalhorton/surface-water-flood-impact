@@ -57,12 +57,6 @@ class DamagesMobiliar(Damages):
             'priv_int_cont',  # Private, internal, content
             'priv_int_struc']  # Private, internal, structure
 
-        self.selected_exposure_categories = [
-            'sme_ext_cont',
-            'sme_ext_struc',
-            'priv_ext_cont',
-            'priv_ext_struc']
-
         self.exposure_tags = [
             'KMU_ES_FH',
             'KMU_ES_GB',
@@ -86,12 +80,6 @@ class DamagesMobiliar(Damages):
             'priv_ext_struc_fluv',  # Private, external, structure, fluvial
             'priv_int_cont',  # Private, internal, content
             'priv_int_struc']  # Private, internal, structure
-
-        self.selected_claim_categories = [
-            'sme_ext_cont_pluv',
-            'sme_ext_struc_pluv',
-            'priv_ext_cont_pluv',
-            'priv_ext_struc_pluv']
 
         self.claim_tags = [
             'Ueberschwemmung_pluvial_KMU_FH',
@@ -141,6 +129,8 @@ class DamagesMobiliar(Damages):
             types = [types]
 
         for cat_type in types:
+            if cat_type.lower() == 'all':
+                continue
             if cat_type.lower() == 'external':
                 columns = [i for i in columns if 'ext' in i]
                 continue
@@ -160,7 +150,7 @@ class DamagesMobiliar(Damages):
                 columns = [i for i in columns if 'struc' in i]
                 continue
             elif cat_type.lower() == 'pluvial':
-                columns = [i for i in columns if 'pluv' in i]
+                columns = [i for i in columns if 'fluv' not in i]
             else:
                 raise ValueError(f"Unknown claim type: {cat_type}")
 
@@ -186,7 +176,9 @@ class DamagesMobiliar(Damages):
             types = [types]
 
         for cat_type in types:
-            if cat_type.lower() == 'external':
+            if cat_type.lower() == 'all':
+                continue
+            elif cat_type.lower() == 'external':
                 columns = [i for i in columns if 'ext' in i]
                 continue
             elif cat_type.lower() == 'internal':
