@@ -5,7 +5,7 @@ with open('README.md') as f:
 
 setup(
     name="swafi",
-    version="0.0.1",
+    version="0.1.0",
     author="Pascal Horton",
     author_email="pascal.horton@unibe.ch",
     description="Surface Water Flood Impact",
