@@ -1,5 +1,8 @@
 # SWAFI - Surface Water Flood Impact
 
+[![DOI](https://zenodo.org/badge/602145466.svg)](https://doi.org/10.5281/zenodo.14448114)
+
+
 ## Install the package
 Install the released version of the package using the following command:
 ```
