@@ -16,7 +16,7 @@ try:
 except ImportError:
     pass
 
-OPTUNA_RANDOM = True
+OPTUNA_RANDOM = False
 SAVE_MODEL = True
 SHOW_PLOTS = False
 
