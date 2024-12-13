@@ -37,7 +37,7 @@ class ImpactRandomForest(Impact):
     def __init__(self, events, options):
         super().__init__(events, options)
 
-        self.n_jobs = 20
+        self.n_jobs = 5
 
     def copy(self):
         """
