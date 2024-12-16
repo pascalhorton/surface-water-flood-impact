@@ -71,9 +71,8 @@ def main():
             print(f"Model saved in {config.get('OUTPUT_DIR')}")
 
     else:
-        tx = optimize_model_with_optuna(options, events, precip_hf, precip_daily,
-                                         dir_plots=config.get('OUTPUT_DIR'))
-        tx.assess_model_on_all_periods()
+        optimize_model_with_optuna(options, events, precip_hf, precip_daily,
+                                   dir_plots=config.get('OUTPUT_DIR'))
 
 
 def _setup_model(options, events, precip_hf, precip_daily):
@@ -157,14 +156,6 @@ def optimize_model_with_optuna(options, events, precip_hf=None, precip_daily=Non
     print("  Params: ")
     for key, value in best_trial.params.items():
         print(f"    {key}: {value}")
-
-    # Fit the model with the best parameters
-    options_best = options.copy()
-    options_best.generate_for_optuna(best_trial)
-    tx = _setup_model(options_best, events, precip_hf, precip_daily)
-    tx.fit(dir_plots=dir_plots, tag='best_optuna_' + tx.options.run_name)
-
-    return tx
 
 
 if __name__ == '__main__':

@@ -75,9 +75,8 @@ def main():
             print(f"Model saved in {config.get('OUTPUT_DIR')}")
 
     else:
-        cnn = optimize_model_with_optuna(options, events, precip, dem,
-                                         dir_plots=config.get('OUTPUT_DIR'))
-        cnn.assess_model_on_all_periods()
+        optimize_model_with_optuna(options, events, precip, dem,
+                                   dir_plots=config.get('OUTPUT_DIR'))
 
 
 def _setup_model(options, events, precip, dem):
@@ -160,14 +159,6 @@ def optimize_model_with_optuna(options, events, precip=None, dem=None, dir_plots
     print("  Params: ")
     for key, value in best_trial.params.items():
         print(f"    {key}: {value}")
-
-    # Fit the model with the best parameters
-    options_best = options.copy()
-    options_best.generate_for_optuna(best_trial)
-    cnn = _setup_model(options_best, events, precip, dem)
-    cnn.fit(dir_plots=dir_plots, tag='best_optuna_' + cnn.options.run_name)
-
-    return cnn
 
 
 if __name__ == '__main__':
