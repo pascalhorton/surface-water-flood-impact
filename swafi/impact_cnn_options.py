@@ -212,8 +212,9 @@ class ImpactCnnOptions(ImpactDlOptions):
                 'precip_window_size', [1, 3, 5, 7])
         if 'precip_resolution' in hp_to_optimize:
             choices = [v for v in [1, 3, 5] if v <= self.precip_window_size]
-            self.precip_resolution = trial.suggest_categorical(
-                'precip_resolution', choices)
+            precip_resolution_index =  trial.suggest_int(
+                'precip_resolution_index', 0, len(choices) - 1)
+            self.precip_resolution = choices[precip_resolution_index]
         if 'precip_time_step' in hp_to_optimize:
             self.precip_time_step = trial.suggest_categorical(
                 'precip_time_step', [1, 2, 4, 6, 12, 24])
@@ -235,8 +236,9 @@ class ImpactCnnOptions(ImpactDlOptions):
         if 'kernel_size_spatial' in hp_to_optimize:
             max_val = min(self.precip_window_size / self.precip_resolution, 5)
             choices = [v for v in [1, 3, 5] if v <= max_val]
-            self.kernel_size_spatial = trial.suggest_categorical(
-                'kernel_size_spatial', choices)
+            kernel_size_spatial_index = trial.suggest_int(
+                'kernel_size_spatial_index', 0, len(choices) - 1)
+            self.kernel_size_spatial = choices[kernel_size_spatial_index]
         if 'kernel_size_temporal' in hp_to_optimize:
             self.kernel_size_temporal = trial.suggest_categorical(
                 'kernel_size_temporal', [1, 3, 5, 7, 9, 11])
@@ -245,9 +247,8 @@ class ImpactCnnOptions(ImpactDlOptions):
                 'nb_filters', [32, 64, 128, 256, 512])
         if 'pool_size_spatial' in hp_to_optimize:
             max_val = min(self.precip_window_size / self.precip_resolution, 4)
-            choices = [v for v in [1, 2, 3, 4] if v <= max_val]
-            self.pool_size_spatial = trial.suggest_categorical(
-                'pool_size_spatial', choices)
+            self.pool_size_spatial = trial.suggest_int(
+                'pool_size_spatial', max_val)
         if 'pool_size_temporal' in hp_to_optimize:
             self.pool_size_temporal = trial.suggest_categorical(
                 'pool_size_temporal', [1, 2, 3, 4, 5, 6, 9, 12])
