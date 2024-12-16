@@ -136,16 +136,17 @@ def optimize_model_with_optuna(options, events, precip=None, dem=None, dir_plots
         options_c.print_options(show_optuna_params=True)
         cnn_trial = _setup_model(options_c, events, precip, dem)
 
-        start_time = time.time()
+        # Get the dg_val before it gets reduced (in the fit function)
+        dg_val = cnn_trial.dg_val
 
         # Fit the model
+        start_time = time.time()
         cnn_trial.fit(do_plot=False, silent=True)
-
         end_time = time.time()
         print(f"Model fitting took {end_time - start_time:.2f} seconds")
 
         # Assess the model
-        score = cnn_trial.compute_f1_score(cnn_trial.dg_val)
+        score = cnn_trial.compute_f1_score(dg_val)
 
         return score
 
