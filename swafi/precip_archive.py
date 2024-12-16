@@ -45,6 +45,14 @@ class PrecipitationArchive(Precipitation):
         self.cid_time_series = None
         self.mem_nb_pixels = 64  # Number of pixels to process at once (per spatial dimension; e.g. 100x100)
 
+    def reset(self):
+        """
+        Reset the data.
+        """
+        self.hash_tag = None
+        self.pickle_files = []
+        self.cid_time_series = None
+
     def prepare_data(self):
         raise NotImplementedError("This method must be implemented in the child class.")
 

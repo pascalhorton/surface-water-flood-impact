@@ -130,6 +130,8 @@ def optimize_model_with_optuna(options, events, precip_hf=None, precip_daily=Non
         options_c = options.copy()
         options_c.generate_for_optuna(trial)
         options_c.print_options(show_optuna_params=True)
+        precip_hf.reset()
+        precip_daily.reset()
         tx_trial = _setup_model(options_c, events, precip_hf, precip_daily)
 
         # Get the dg_val before it gets reduced (in the fit function)

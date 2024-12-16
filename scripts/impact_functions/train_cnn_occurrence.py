@@ -133,6 +133,7 @@ def optimize_model_with_optuna(options, events, precip=None, dem=None, dir_plots
         options_c = options.copy()
         options_c.generate_for_optuna(trial)
         options_c.print_options(show_optuna_params=True)
+        precip.reset()
         cnn_trial = _setup_model(options_c, events, precip, dem)
 
         # Get the dg_val before it gets reduced (in the fit function)
