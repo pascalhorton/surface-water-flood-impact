@@ -211,8 +211,9 @@ class ImpactCnnOptions(ImpactDlOptions):
             self.precip_window_size = trial.suggest_categorical(
                 'precip_window_size', [1, 3, 5, 7])
         if 'precip_resolution' in hp_to_optimize:
+            choices = [v for v in [1, 3, 5] if v <= self.precip_window_size]
             self.precip_resolution = trial.suggest_categorical(
-                'precip_resolution', [1, 3, 5])
+                'precip_resolution', choices)
         if 'precip_time_step' in hp_to_optimize:
             self.precip_time_step = trial.suggest_categorical(
                 'precip_time_step', [1, 2, 4, 6, 12, 24])
@@ -232,44 +233,38 @@ class ImpactCnnOptions(ImpactDlOptions):
             self.use_batchnorm_cnn = trial.suggest_categorical(
                 'use_batchnorm_cnn', [True, False])
         if 'kernel_size_spatial' in hp_to_optimize:
+            max_val = min(self.precip_window_size / self.precip_resolution, 5)
+            choices = [v for v in [1, 3, 5] if v <= max_val]
             self.kernel_size_spatial = trial.suggest_categorical(
-                'kernel_size_spatial', [1, 3, 5])
+                'kernel_size_spatial', choices)
         if 'kernel_size_temporal' in hp_to_optimize:
             self.kernel_size_temporal = trial.suggest_categorical(
-                'kernel_size_temporal', [1, 3, 5, 7, 9, 11, 13])
+                'kernel_size_temporal', [1, 3, 5, 7, 9, 11])
         if 'nb_filters' in hp_to_optimize:
             self.nb_filters = trial.suggest_categorical(
                 'nb_filters', [32, 64, 128, 256, 512])
         if 'pool_size_spatial' in hp_to_optimize:
+            max_val = min(self.precip_window_size / self.precip_resolution, 4)
+            choices = [v for v in [1, 2, 3, 4] if v <= max_val]
             self.pool_size_spatial = trial.suggest_categorical(
-                'pool_size_spatial', [1, 2, 3, 4])
+                'pool_size_spatial', choices)
         if 'pool_size_temporal' in hp_to_optimize:
             self.pool_size_temporal = trial.suggest_categorical(
                 'pool_size_temporal', [1, 2, 3, 4, 5, 6, 9, 12])
         if 'nb_conv_blocks' in hp_to_optimize:
+            max_val = 5
+            if self.pool_size_spatial > 1:
+                spatial_size = int(self.precip_window_size / self.precip_resolution)
+                max_val = min(max_val, math.floor(math.log(spatial_size, self.pool_size_spatial)))
+            if self.pool_size_temporal > 1:
+                temporal_size = (self.precip_days_before + self.precip_days_after + 1) * 24 / self.precip_time_step
+                max_val = min(max_val, math.floor(math.log(temporal_size, self.pool_size_temporal)))
             self.nb_conv_blocks = trial.suggest_int(
-                'nb_conv_blocks', 0, 5)
+                'nb_conv_blocks', 0, max_val)
         if 'inner_activation_cnn' in hp_to_optimize:
             self.inner_activation_cnn = trial.suggest_categorical(
                 'inner_activation_cnn',
                 ['relu', 'leaky_relu', 'silu', 'hard_silu', 'softplus', 'mish'])
-
-        # Check the input 3D size vs nb_conv_blocks
-        pixels_nb = int(self.precip_window_size / self.precip_resolution)
-        time_steps = int((self.precip_days_before + self.precip_days_after + 1) *
-                         24 / self.precip_time_step)
-
-        nb_conv_blocks_max = self.nb_conv_blocks
-        if self.pool_size_spatial > 1:
-            nb_conv_blocks_max = min(
-                nb_conv_blocks_max, math.floor(
-                    math.log(pixels_nb, self.pool_size_spatial)))
-        if self.pool_size_temporal > 1:
-            nb_conv_blocks_max = min(
-                nb_conv_blocks_max, math.floor(
-                    math.log(time_steps, self.pool_size_temporal)))
-        if self.nb_conv_blocks > nb_conv_blocks_max:
-            return False  # Not valid
 
         return True
 
