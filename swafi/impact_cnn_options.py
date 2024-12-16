@@ -99,10 +99,10 @@ class ImpactCnnOptions(ImpactDlOptions):
             help='The precipitation time step [h]')
         self.parser.add_argument(
             '--precip-days-before', type=int, default=7,
-            help='The number of days before the event to use for the precipitation')
+            help='The number of days before the claim/event to use for the precipitation')
         self.parser.add_argument(
             '--precip-days-after', type=int, default=1,
-            help='The number of days after the event to use for the precipitation')
+            help='The number of days after the claim/event to use for the precipitation')
         self.parser.add_argument(
             '--dropout-rate-cnn', type=float, default=0.4,
             help='The dropout rate for the CNN')
@@ -188,18 +188,20 @@ class ImpactCnnOptions(ImpactDlOptions):
         if isinstance(hp_to_optimize, str) and hp_to_optimize == 'default':
             if self.use_precip:
                 hp_to_optimize = [
-                    'precip_time_step', 'precip_days_before', 'transform_precip',
-                    'log_transform_precip', 'batch_size', 'dropout_rate_dense',
-                    'dropout_rate_cnn', 'kernel_size_spatial', 'kernel_size_temporal',
-                    'nb_filters', 'pool_size_spatial', 'pool_size_temporal',
-                    'nb_dense_layers', 'nb_dense_units', 'inner_activation_dense',
-                    'inner_activation_cnn', 'use_batchnorm_cnn',
-                    'use_batchnorm_dense', 'nb_conv_blocks', 'learning_rate']
+                    'precip_window_size', 'precip_time_step', 'precip_days_before',
+                    'log_transform_precip', 'nb_conv_blocks', 'nb_filters',
+                    'kernel_size_spatial', 'kernel_size_temporal', 'pool_size_spatial',
+                    'pool_size_temporal', 'inner_activation_cnn', 'dropout_rate_cnn',
+                    'use_batchnorm_cnn', 'nb_dense_layers', 'nb_dense_units',
+                    'nb_dense_units_decreasing', 'inner_activation_dense',
+                    'dropout_rate_dense', 'use_batchnorm_dense', 'batch_size',
+                    'learning_rate', 'weight_denominator']
             else:
                 hp_to_optimize = [
-                    'batch_size', 'dropout_rate_dense', 'nb_dense_layers',
-                    'nb_dense_units', 'inner_activation_dense',
-                    'use_batchnorm_dense', 'learning_rate']
+                    'nb_dense_layers', 'nb_dense_units',
+                    'nb_dense_units_decreasing', 'inner_activation_dense',
+                    'dropout_rate_dense', 'use_batchnorm_dense', 'batch_size',
+                    'learning_rate', 'weight_denominator']
 
         self._generate_for_optuna(trial, hp_to_optimize)
 

@@ -107,7 +107,7 @@ class ImpactDlOptions(ImpactBasicOptions):
             '--batch-size', type=int, default=64,
             help='The batch size')
         self.parser.add_argument(
-            '--epochs', type=int, default=200,
+            '--epochs', type=int, default=400,
             help='The number of epochs')
         self.parser.add_argument(
             '--learning-rate', type=float, default=0.001,
@@ -125,7 +125,7 @@ class ImpactDlOptions(ImpactBasicOptions):
             '--nb-dense-units', type=int, default=256,
             help='The number of dense units')
         self.parser.add_argument(
-            '--dense-units-decreasing', action=argparse.BooleanOptionalAction,
+            '--nb-dense-units-decreasing', action=argparse.BooleanOptionalAction,
             default=False, help='The number of dense units should decrease')
         self.parser.add_argument(
             '--inner-activation-dense', type=str, default='relu',
@@ -150,7 +150,7 @@ class ImpactDlOptions(ImpactBasicOptions):
         self.use_batchnorm_dense = args.use_batchnorm_dense
         self.nb_dense_layers = args.nb_dense_layers
         self.nb_dense_units = args.nb_dense_units
-        self.nb_dense_units_decreasing = args.dense_units_decreasing
+        self.nb_dense_units_decreasing = args.nb_dense_units_decreasing
         self.inner_activation_dense = args.inner_activation_dense
 
     def _generate_for_optuna(self, trial, hp_to_optimize):
