@@ -192,15 +192,14 @@ class ImpactCnnOptions(ImpactDlOptions):
                     'log_transform_precip', 'nb_conv_blocks', 'nb_filters',
                     'kernel_size_spatial', 'kernel_size_temporal', 'pool_size_spatial',
                     'pool_size_temporal', 'inner_activation_cnn', 'dropout_rate_cnn',
-                    'use_batchnorm_cnn', 'nb_dense_layers', 'nb_dense_units',
-                    'nb_dense_units_decreasing', 'inner_activation_dense',
-                    'dropout_rate_dense', 'use_batchnorm_dense', 'batch_size',
+                    'nb_dense_layers', 'nb_dense_units', 'nb_dense_units_decreasing',
+                    'inner_activation_dense', 'dropout_rate_dense', 'batch_size',
                     'learning_rate', 'weight_denominator']
             else:
                 hp_to_optimize = [
                     'nb_dense_layers', 'nb_dense_units',
                     'nb_dense_units_decreasing', 'inner_activation_dense',
-                    'dropout_rate_dense', 'use_batchnorm_dense', 'batch_size',
+                    'dropout_rate_dense', 'batch_size',
                     'learning_rate', 'weight_denominator']
 
         self._generate_for_optuna(trial, hp_to_optimize)
@@ -237,7 +236,7 @@ class ImpactCnnOptions(ImpactDlOptions):
                 'kernel_size_spatial', [1, 3, 5])
         if 'kernel_size_temporal' in hp_to_optimize:
             self.kernel_size_temporal = trial.suggest_categorical(
-                'kernel_size_temporal', [1, 3, 5, 7, 9, 11])
+                'kernel_size_temporal', [1, 3, 5, 7, 9, 11, 13])
         if 'nb_filters' in hp_to_optimize:
             self.nb_filters = trial.suggest_categorical(
                 'nb_filters', [32, 64, 128, 256, 512])
@@ -253,8 +252,7 @@ class ImpactCnnOptions(ImpactDlOptions):
         if 'inner_activation_cnn' in hp_to_optimize:
             self.inner_activation_cnn = trial.suggest_categorical(
                 'inner_activation_cnn',
-                ['relu', 'tanh', 'sigmoid', 'silu', 'elu', 'selu', 'leaky_relu',
-                 'linear', 'gelu', 'hard_sigmoid', 'hard_silu', 'softplus'])
+                ['relu', 'leaky_relu', 'silu', 'hard_silu', 'softplus', 'mish'])
 
         # Check the input 3D size vs nb_conv_blocks
         pixels_nb = int(self.precip_window_size / self.precip_resolution)

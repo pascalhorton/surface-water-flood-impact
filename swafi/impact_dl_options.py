@@ -200,8 +200,8 @@ class ImpactDlOptions(ImpactBasicOptions):
         if 'inner_activation_dense' in hp_to_optimize:
             self.inner_activation_dense = trial.suggest_categorical(
                 'inner_activation_dense',
-                ['relu', 'silu', 'elu', 'selu', 'leaky_relu',
-                 'linear', 'gelu', 'softplus'])
+                ['relu', 'leaky_relu', 'silu', 'hard_silu', 'elu', 'selu',
+                 'gelu', 'softplus', 'mish'])
 
         return True
 
