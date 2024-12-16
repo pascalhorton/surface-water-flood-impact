@@ -221,6 +221,7 @@ class Events:
     def reduce_number_of_negatives(self, nb_keep, random_state=None):
         """
         Reduce the number of events with target = 0.
+        Not used in the current version!
 
         Parameters
         ----------

@@ -108,6 +108,13 @@ class ImpactDlDataGenerator(keras.utils.Sequence):
         # Shuffle
         np.random.shuffle(self.idxs)
 
+    def reset_indices(self):
+        """
+        Reset the indices.
+        """
+        self.n_samples = self.y.shape[0]
+        self.idxs = np.arange(self.get_number_of_batches_for_full_dataset())
+
     def get_number_of_batches_for_full_dataset(self):
         """
         Get the number of batches for the full data (i.e., without shuffling or

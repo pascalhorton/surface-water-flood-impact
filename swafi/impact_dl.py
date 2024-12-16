@@ -155,6 +155,15 @@ class ImpactDl(Impact):
         """
         self.factor_neg_reduction = factor
 
+    def reset_negatives_reduction(self):
+        """
+        Reset the number of negatives reduction.
+        """
+        self.factor_neg_reduction = 1
+        self.dg_val.reset_indices()
+        self.dg_test.reset_indices()
+        self.dg_train.reset_indices()
+
     def assess_model_on_all_periods(self):
         """
         Assess the model on all periods.
