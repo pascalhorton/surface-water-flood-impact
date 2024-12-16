@@ -161,7 +161,6 @@ class ImpactDl(Impact):
         """
         self.factor_neg_reduction = 1
         self.dg_val.reset_indices()
-        self.dg_test.reset_indices()
         self.dg_train.reset_indices()
 
     def assess_model_on_all_periods(self):
