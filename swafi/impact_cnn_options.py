@@ -248,7 +248,7 @@ class ImpactCnnOptions(ImpactDlOptions):
         if 'pool_size_spatial' in hp_to_optimize:
             max_val = min(self.precip_window_size / self.precip_resolution, 4)
             self.pool_size_spatial = trial.suggest_int(
-                'pool_size_spatial', max_val)
+                'pool_size_spatial', 1, max_val)
         if 'pool_size_temporal' in hp_to_optimize:
             self.pool_size_temporal = trial.suggest_categorical(
                 'pool_size_temporal', [1, 2, 3, 4, 5, 6, 9, 12])
