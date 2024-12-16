@@ -188,6 +188,7 @@ class ImpactDlDataGenerator(keras.utils.Sequence):
             print(f"Data array larger than expected: {data_length} > "
                   f"{expected_length}")
             print(f"Event: {event}")
+            print(f"Data shape: {precip_ev.shape}")
             print(f"Data: {precip_ev}")
             raise ValueError("Data array larger than expected.")
 
