@@ -142,11 +142,8 @@ def optimize_model_with_optuna(options, events, precip=None, dem=None, dir_plots
         end_time = time.time()
         print(f"Model fitting took {end_time - start_time:.2f} seconds")
 
-        # Reset the data generator for validation
-        cnn_trial.reset_negatives_reduction()
-
         # Assess the model
-        score = cnn_trial.compute_f1_score(cnn_trial.dg_val)
+        score = cnn_trial.compute_f1_score_full_data(cnn_trial.dg_val)
 
         return score
 

@@ -155,14 +155,6 @@ class ImpactDl(Impact):
         """
         self.factor_neg_reduction = factor
 
-    def reset_negatives_reduction(self):
-        """
-        Reset the number of negatives reduction.
-        """
-        self.factor_neg_reduction = 1
-        self.dg_val.reset_indices()
-        self.dg_train.reset_indices()
-
     def assess_model_on_all_periods(self):
         """
         Assess the model on all periods.
@@ -211,7 +203,7 @@ class ImpactDl(Impact):
             print(f"RMSE: {rmse}")
         print(f"----------------------------------------")
 
-    def compute_f1_score(self, dg):
+    def compute_f1_score_full_data(self, dg):
         """
         Compute the F1 score on the given set.
 
@@ -225,14 +217,19 @@ class ImpactDl(Impact):
         float
             The F1 score.
         """
-        n_batches = dg.__len__()
-        epsilon = 1e-7  # a small constant to avoid division by zero
+        if self.model is None:
+            raise ValueError("Model not defined")
+
+        if self.target_type != 'occurrence':
+            raise ValueError("F1 score is only available for occurrence models.")
+
+        n_batches = dg.get_number_of_batches_for_full_dataset()
 
         # Predict
         all_pred = []
         all_obs = []
         for i in range(n_batches):
-            x, y = dg.__getitem__(i)
+            x, y = dg.get_ordered_batch_from_full_dataset(i)
             all_obs.append(y)
             y_pred_batch = self.model.predict(x, verbose=0)
 
@@ -244,8 +241,10 @@ class ImpactDl(Impact):
         y_pred = np.concatenate(all_pred, axis=0)
         y_obs = np.concatenate(all_obs, axis=0)
 
+        # Compute the score
         y_pred_class = (y_pred > 0.5).astype(int)
         tp, tn, fp, fn = compute_confusion_matrix(y_obs, y_pred_class)
+        epsilon = 1e-7  # a small constant to avoid division by zero
         f1 = 2 * tp / (2 * tp + fp + fn + epsilon)
 
         return f1

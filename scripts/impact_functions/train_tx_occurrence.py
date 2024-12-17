@@ -140,11 +140,8 @@ def optimize_model_with_optuna(options, events, precip_hf=None, precip_daily=Non
         end_time = time.time()
         print(f"Model fitting took {end_time - start_time:.2f} seconds")
 
-        # Reset the data generator for validation
-        tx_trial.reset_negatives_reduction()
-
         # Assess the model
-        score = tx_trial.compute_f1_score(tx_trial.dg_val)
+        score = tx_trial.compute_f1_score_full_data(tx_trial.dg_val)
 
         return score
 
