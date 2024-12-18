@@ -85,7 +85,7 @@ class ImpactRFOptions(ImpactBasicOptions):
             '--min-samples-leaf', type=int, default=4,
             help='The minimum number of samples in a leaf')
         self.parser.add_argument(
-            '--max-features', type=str, default=None,
+            '--max-features', type=float, default=0.2,
             help='The maximum number of features')
 
     def parse_args(self):
@@ -198,6 +198,5 @@ class ImpactRFOptions(ImpactBasicOptions):
         assert self.criterion in ['gini', 'log_loss', 'entropy'], "Invalid criterion"
         assert self.min_samples_split > 0, "Invalid min_samples_split"
         assert self.min_samples_leaf > 0, "Invalid min_samples_leaf"
-        assert self.max_features in [None, 'sqrt', 'log2'], "Invalid max_features"
 
         return True
