@@ -35,7 +35,7 @@ def main():
     if not options.optimize_with_optuna:
         rf = _setup_model(options, events)
         rf.fit()
-        rf.assess_model_on_all_periods()
+        rf.assess_model_on_all_periods(save_results=True, file_tag='rf')
         rf.plot_feature_importance(tag='feature_importance_' + rf.options.run_name,
                                    dir_output=config.get('OUTPUT_DIR'))
         if SAVE_MODEL:
