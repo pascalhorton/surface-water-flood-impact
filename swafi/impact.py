@@ -462,15 +462,12 @@ class Impact:
         if self.options.use_static_attributes:
             if not self.options.use_all_static_attributes:
                 self.tabular_features['terrain'] = [
-                    'dem_010m_curv_plan_mean', 'dem_010m_curv_plan_std',
-                    'dem_010m_slope_min', 'dem_010m_slope_median']
+                    'dem_100m_curv_plan_median', 'dem_100m_slope_min']
                 self.tabular_features['swf_map'] = [
                     'area_low', 'area_med', 'area_high',
-                    'n_buildings_high', 'n_buildings']
+                    'n_buildings_low', 'n_buildings_med', 'n_buildings_high']
                 self.tabular_features['flowacc'] = [
-                    'dem_010m_flowacc_max', 'dem_010m_flowacc_median',
-                    'dem_050m_flowacc_max', 'dem_050m_flowacc_median',
-                    'dem_100m_flowacc_max', 'dem_100m_flowacc_median']
+                    'dem_100m_flowacc_median']
                 self.tabular_features['twi'] = [
                     'dem_010m_twi_max', 'dem_010m_twi_median']
                 self.tabular_features['land_cover'] = [
