@@ -160,7 +160,7 @@ class ImpactBasicOptions:
             if self.use_event_attributes:
                 classes.append('event')
             if self.use_static_attributes:
-                classes.extend(['terrain', 'swf_map', 'flowacc'])
+                classes.extend(['terrain', 'swf_map', 'flowacc', 'twi'])
             self.simple_feature_classes = classes
         else:
             self.simple_feature_classes = args.simple_feature_classes
