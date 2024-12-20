@@ -66,26 +66,26 @@ class ImpactRFOptions(ImpactBasicOptions):
         Set the parser arguments.
         """
         self.parser.add_argument(
-            '--weight-denominator', type=int, default=10,
+            '--weight-denominator', type=int, default=30,
             help='The weight denominator to reduce the negative class weights')
         self.parser.add_argument(
-            '--n-estimators', type=int, default=100,
+            '--n-estimators', type=int, default=800,
             help='The number of estimators')
         self.parser.add_argument(
-            '--criterion', type=str, default='gini',
+            '--criterion', type=str, default='entropy',
             help='The function to measure the quality of a split. Supported criteria are '
                  '\'gini\', \'log_loss\', and \'entropy\'')
         self.parser.add_argument(
-            '--max-depth', type=int, default=15,
+            '--max-depth', type=int, default=30,
             help='The maximum depth')
         self.parser.add_argument(
-            '--min-samples-split', type=int, default=5,
+            '--min-samples-split', type=int, default=30,
             help='The minimum number of samples to split')
         self.parser.add_argument(
-            '--min-samples-leaf', type=int, default=4,
+            '--min-samples-leaf', type=int, default=90,
             help='The minimum number of samples in a leaf')
         self.parser.add_argument(
-            '--max-features', type=float, default=0.2,
+            '--max-features', type=float, default=0.3,
             help='The maximum number of features')
 
     def parse_args(self):
