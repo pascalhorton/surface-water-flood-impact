@@ -187,16 +187,13 @@ class ImpactTransformerOptions(ImpactDlOptions):
 
         if isinstance(hp_to_optimize, str) and hp_to_optimize == 'default':
             hp_to_optimize = [
-                'log_transform_precip', 'architecture', 'embeddings_2_layers',
-                'embeddings_activation', 'inner_activation_tx', 'use_cnn_in_tx',
-                'nb_transformer_blocks', 'num_heads', 'ff_dim', 'dropout_rate',
-                'dropout_rate_dense', 'inner_activation_dense',
-                'use_batchnorm_dense', 'batch_size', 'learning_rate',
-                'nb_dense_layers', 'nb_dense_units', 'nb_dense_units_decreasing',
-                'weight_denominator', 'use_precip_type_embedding',
-                'use_single_attributes_vector']
-            # Left out: 'precip_hf_time_step', 'precip_daily_days_nb',
-            # 'precip_hf_days_before', 'precip_hf_days_after'
+                'log_transform_precip', 'architecture', 'nb_transformer_blocks',
+                'tx_model_dim', 'num_heads', 'inner_activation_tx', 'embeddings_activation',
+                'embeddings_2_layers', 'use_single_attributes_vector', 'use_precip_type_embedding',
+                'dropout_rate', 'ff_dim', 'nb_dense_layers', 'nb_dense_units',
+                'nb_dense_units_decreasing', 'inner_activation_dense', 'dropout_rate_dense',
+                'batch_size', 'learning_rate', 'weight_denominator'
+                ]
 
         self._generate_for_optuna(trial, hp_to_optimize)
 
