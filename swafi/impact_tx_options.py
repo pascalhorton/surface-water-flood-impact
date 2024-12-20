@@ -27,6 +27,10 @@ class ImpactTransformerOptions(ImpactDlOptions):
         Whether to use two dense layers for the embeddings.
     embeddings_activation: str
         The activation function for the embeddings.
+    use_single_attributes_vector: bool
+        Whether to use a single attributes vector for the Transformer.
+    use_precip_type_embedding: bool
+        Whether to use a precipitation type embedding.
     inner_activation_tx: str
         The activation function for the Transformer.
     use_cnn_in_tx: bool
@@ -56,6 +60,8 @@ class ImpactTransformerOptions(ImpactDlOptions):
         self.architecture = None
         self.embeddings_2_layers = None
         self.embeddings_activation = None
+        self.use_single_attributes_vector = None
+        self.use_precip_type_embedding = None
         self.inner_activation_tx = None
         self.use_cnn_in_tx = None
         self.nb_transformer_blocks = None
@@ -100,6 +106,12 @@ class ImpactTransformerOptions(ImpactDlOptions):
             "--embeddings-activation", type=str, default="elu",
             help="The activation function for the embeddings.")
         self.parser.add_argument(
+            "--use-single-attributes-vector", action=argparse.BooleanOptionalAction,
+            default=False, help="Whether to use a single attributes vector for the Transformer.")
+        self.parser.add_argument(
+            "--use-precip-type-embedding", action=argparse.BooleanOptionalAction,
+            default=True, help="Whether to use a precipitation type embedding.")
+        self.parser.add_argument(
             "--inner-activation-tx", type=str, default="relu",
             help="The activation function for the Transformer.")
         self.parser.add_argument(
@@ -135,6 +147,8 @@ class ImpactTransformerOptions(ImpactDlOptions):
         self.architecture = args.architecture
         self.embeddings_2_layers = args.embeddings_2_layers
         self.embeddings_activation = args.embeddings_activation
+        self.use_single_attributes_vector = args.use_single_attributes_vector
+        self.use_precip_type_embedding = args.use_precip_type_embedding
         self.inner_activation_tx = args.inner_activation_tx
         self.use_cnn_in_tx = args.use_cnn_in_tx
         self.nb_transformer_blocks = args.nb_transformer_blocks
@@ -161,7 +175,8 @@ class ImpactTransformerOptions(ImpactDlOptions):
             'embeddings_2_layers', 'embeddings_activation', 'inner_activation_tx',
             'use_cnn_in_tx', 'nb_transformer_blocks', 'tx_model_dim', 'num_heads',
             'ff_dim', 'dropout_rate', 'dropout_rate_dense', 'inner_activation_dense',
-            'use_batchnorm_dense', 'batch_size', 'learning_rate'
+            'use_batchnorm_dense', 'batch_size', 'learning_rate', 'use_single_attributes_vector',
+            'weight_denominator', 'use_precip_type_embedding'.
 
         Returns
         -------
@@ -177,8 +192,9 @@ class ImpactTransformerOptions(ImpactDlOptions):
                 'nb_transformer_blocks', 'num_heads', 'ff_dim', 'dropout_rate',
                 'dropout_rate_dense', 'inner_activation_dense',
                 'use_batchnorm_dense', 'batch_size', 'learning_rate',
-                'nb_dense_layers', 'nb_dense_units', 'nb_dense_units_decreasing']
-            # 'weight_denominator'
+                'nb_dense_layers', 'nb_dense_units', 'nb_dense_units_decreasing',
+                'weight_denominator', 'use_precip_type_embedding',
+                'use_single_attributes_vector']
             # Left out: 'precip_hf_time_step', 'precip_daily_days_nb',
             # 'precip_hf_days_before', 'precip_hf_days_after'
 
@@ -204,8 +220,22 @@ class ImpactTransformerOptions(ImpactDlOptions):
         if 'inner_activation_tx' in hp_to_optimize:
             self.inner_activation_tx = trial.suggest_categorical(
                 "inner_activation_tx",
-                ['relu', 'silu', 'elu', 'selu', 'leaky_relu',
-                 'linear', 'gelu', 'softplus'])
+                ['relu', 'leaky_relu', 'silu', 'hard_silu', 'elu', 'selu',
+                 'gelu', 'softplus', 'mish'])
+        if 'use_single_attributes_vector' in hp_to_optimize:
+            # Only available for 'combined_learned_embeddings'. For the other architectures, -1 is used (~None).
+            min_val = 0 if self.architecture == 'combined_learned_embeddings' else -1
+            max_val = 1 if self.architecture == 'combined_learned_embeddings' else -1
+            flag = trial.suggest_int(
+                "use_single_attributes_vector", min_val, max_val)
+            self.use_single_attributes_vector = flag == 1
+        if 'use_precip_type_embedding' in hp_to_optimize:
+            # Only available for 'combined_learned_embeddings'. For the other architectures, -1 is used (~None).
+            min_val = 0 if self.architecture == 'combined_learned_embeddings' else -1
+            max_val = 1 if self.architecture == 'combined_learned_embeddings' else -1
+            flag = trial.suggest_int(
+                "use_precip_type_embedding", min_val, max_val)
+            self.use_precip_type_embedding = flag == 1
         if 'use_cnn_in_tx' in hp_to_optimize:
             self.use_cnn_in_tx = trial.suggest_categorical(
                 "use_cnn_in_tx", [True, False])
@@ -215,8 +245,8 @@ class ImpactTransformerOptions(ImpactDlOptions):
         if 'embeddings_activation' in hp_to_optimize:
             self.embeddings_activation = trial.suggest_categorical(
                 "embeddings_activation",
-                ['relu', 'silu', 'elu', 'selu', 'leaky_relu',
-                 'linear', 'gelu', 'softplus', 'None'])
+                ['relu', 'leaky_relu', 'silu', 'hard_silu', 'elu', 'selu',
+                 'gelu', 'softplus', 'mish'])
         if 'nb_transformer_blocks' in hp_to_optimize:
             self.nb_transformer_blocks = trial.suggest_int(
                 "nb_transformer_blocks", 1, 4)
@@ -261,6 +291,8 @@ class ImpactTransformerOptions(ImpactDlOptions):
         print("- use_cnn_in_tx:", self.use_cnn_in_tx)
         print("- embeddings_2_layers:", self.embeddings_2_layers)
         print("- embeddings_activation:", self.embeddings_activation)
+        print("- use_single_attributes_vector:", self.use_single_attributes_vector)
+        print("- use_precip_type_embedding:", self.use_precip_type_embedding)
         print("- nb_transformer_blocks:", self.nb_transformer_blocks)
         print("- tx_model_dim:", self.tx_model_dim)
         print("- num_heads:", self.num_heads)
