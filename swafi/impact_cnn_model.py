@@ -110,6 +110,8 @@ class ModelCnn(models.Model):
         for i in range(self.options.nb_dense_layers):
             if self.options.nb_dense_units_decreasing:
                 nb_units = self.options.nb_dense_units // (2 ** i)
+                # Keep at least 4 units
+                nb_units = max(nb_units, 4)
             else:
                 nb_units = self.options.nb_dense_units
             x = layers.Dense(nb_units, activation=self.options.inner_activation_dense,
