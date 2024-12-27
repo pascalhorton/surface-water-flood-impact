@@ -44,26 +44,6 @@ class CombiPrecip(PrecipitationArchive):
         super().__init__(year_start, year_end, cid_file)
         self.dataset_name = "CombiPrecip"
 
-    @staticmethod
-    def preprocess(ds, filename=None, debug=False):
-        try:
-            # Print the filename being processed
-            if filename and debug:
-                print(f"Processing file: {filename}")
-
-            # Example preprocessing: sort by REFERENCE_TS if it exists
-            if 'REFERENCE_TS' in ds.coords:
-                ds = ds.drop_duplicates('REFERENCE_TS', keep='first')
-                ds = ds.sortby('REFERENCE_TS', ascending=True)
-
-            return ds
-        except Exception as e:
-            # Log the error and the filename
-            print(f"Error processing file: {filename}")
-            print(f"Error message: {e}")
-
-            return None  # Skip this file
-
     def prepare_data(self, data_path=None, resolution=1, time_step=1):
         """
         Load the precipitation data from the given path.
@@ -90,9 +70,7 @@ class CombiPrecip(PrecipitationArchive):
         data = xr.open_mfdataset(
             files,
             parallel=False,
-            chunks={'time': 1000},
-            combine='nested',
-            preprocess=lambda ds: self.preprocess(ds, filename=files.pop(0))  # Track filenames
+            chunks={'time': 1000}
         )
         data = data.rename_vars({'CPC': 'precip'})
         data = data.rename({'REFERENCE_TS': 'time'})
