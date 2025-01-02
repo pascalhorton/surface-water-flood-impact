@@ -191,8 +191,7 @@ class ImpactTransformerOptions(ImpactDlOptions):
                 'tx_model_dim', 'num_heads', 'inner_activation_tx', 'embeddings_activation',
                 'embeddings_2_layers', 'use_single_attributes_vector', 'use_precip_type_embedding',
                 'dropout_rate', 'ff_dim', 'nb_dense_layers', 'nb_dense_units',
-                'nb_dense_units_decreasing', 'inner_activation_dense', 'dropout_rate_dense',
-                'batch_size', 'learning_rate', 'weight_denominator'
+                'dropout_rate_dense', 'batch_size', 'learning_rate', 'weight_denominator'
                 ]
 
         self._generate_for_optuna(trial, hp_to_optimize)
