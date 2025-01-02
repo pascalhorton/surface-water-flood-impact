@@ -119,16 +119,16 @@ class ImpactDlOptions(ImpactBasicOptions):
             '--use-batchnorm-dense', action=argparse.BooleanOptionalAction,
             default=True, help='Use batch normalization for the dense layers')
         self.parser.add_argument(
-            '--nb-dense-layers', type=int, default=5,
+            '--nb-dense-layers', type=int, default=4,
             help='The number of dense layers')
         self.parser.add_argument(
-            '--nb-dense-units', type=int, default=256,
+            '--nb-dense-units', type=int, default=1024,
             help='The number of dense units')
         self.parser.add_argument(
             '--nb-dense-units-decreasing', action=argparse.BooleanOptionalAction,
-            default=False, help='The number of dense units should decrease')
+            default=True, help='The number of dense units should decrease')
         self.parser.add_argument(
-            '--inner-activation-dense', type=str, default='relu',
+            '--inner-activation-dense', type=str, default='leaky_relu',
             help='The inner activation function for the dense layers')
 
     def _parse_dl_args(self, args):
