@@ -65,9 +65,9 @@ def main():
         tx = _setup_model(options, events, precip_hf, precip_daily)
         tx.fit(dir_plots=config.get('OUTPUT_DIR'),
                tag=options.run_name, show_plots=SHOW_PLOTS)
-        tx.assess_model_on_all_periods()
+        tx.assess_model_on_all_periods(save_results=True, file_tag=f'cnn_{tx.options.run_name}')
         if SAVE_MODEL:
-            tx.save_model(dir_output=config.get('OUTPUT_DIR'), base_name='model_tx')
+            tx.save_model(dir_output=config.get('OUTPUT_DIR'), base_name='model_tx_' + tx.options.run_name)
             print(f"Model saved in {config.get('OUTPUT_DIR')}")
 
     else:

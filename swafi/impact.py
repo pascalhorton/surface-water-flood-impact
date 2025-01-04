@@ -12,7 +12,7 @@ from pathlib import Path
 from sklearn.model_selection import train_test_split
 
 from .utils.verification import compute_confusion_matrix, print_classic_scores, \
-    assess_roc_auc, compute_score_binary, store_classic_scores
+    assess_roc_auc, store_classic_scores
 
 
 class Impact:
@@ -383,19 +383,22 @@ class Impact:
         df_res = self._assess_model(self.x_test, self.y_test, 'test', df_res)
 
         if save_results:
-            output_dir = self.config.output_dir
-            date_tag = pd.Timestamp.now().strftime('%Y-%m-%d_%H%M%S')
-            dataset = self.options.dataset
-            seed_tag = ''
-            if self.random_state is not None:
-                seed_tag = f'_seed_{self.random_state}'
-            base_name = f'results_{dataset}_{file_tag}{seed_tag}_{date_tag}'
-            file_name = f'{output_dir}/{base_name}.csv'
-            df_res.to_csv(file_name, index=False)
-            file_name_options = f'{output_dir}/{base_name}_options.csv'
-            df_options = pd.DataFrame(self.options.__dict__.items(), columns=['option', 'value'])
-            df_options.to_csv(file_name_options, index=False)
-            print(f"Results saved to {file_name}")
+            self._save_results_csv(df_res, file_tag)
+
+    def _save_results_csv(self, df_res, file_tag):
+        output_dir = self.config.output_dir
+        date_tag = pd.Timestamp.now().strftime('%Y-%m-%d_%H%M%S')
+        dataset = self.options.dataset
+        seed_tag = ''
+        if self.random_state is not None:
+            seed_tag = f'_seed_{self.random_state}'
+        base_name = f'results_{dataset}_{file_tag}{seed_tag}_{date_tag}'
+        file_name = f'{output_dir}/{base_name}.csv'
+        df_res.to_csv(file_name, index=False)
+        file_name_options = f'{output_dir}/{base_name}_options.csv'
+        df_options = pd.DataFrame(self.options.__dict__.items(), columns=['option', 'value'])
+        df_options.to_csv(file_name_options, index=False)
+        print(f"Results saved to {file_name}")
 
     def _assess_model(self, x, y, period_name, df_res):
         """

@@ -4,12 +4,11 @@ It is not meant to be used directly, but to be inherited by other classes.
 """
 from .impact import Impact
 from .utils.verification import compute_confusion_matrix, print_classic_scores, \
-    assess_roc_auc, compute_score_binary
+    assess_roc_auc, store_classic_scores
 
-import hashlib
-import pickle
 import keras
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 import tensorflow as tf
 import datetime
@@ -155,17 +154,29 @@ class ImpactDl(Impact):
         """
         self.factor_neg_reduction = factor
 
-    def assess_model_on_all_periods(self):
+    def assess_model_on_all_periods(self, save_results=False, file_tag=''):
         """
         Assess the model on all periods.
+
+        Parameters
+        ----------
+        save_results: bool
+            Save the results to a file.
+        file_tag: str
+            The tag to add to the file name.
         """
         print("Assessing the model on all periods.")
-        self._create_data_generator_test()
-        self._assess_model_dg(self.dg_train, 'Train period')
-        self._assess_model_dg(self.dg_val, 'Validation period')
-        self._assess_model_dg(self.dg_test, 'Test period')
+        self._create_data_generator_test()  # Implement this method in the child class
 
-    def _assess_model_dg(self, dg, period_name):
+        df_res = pd.DataFrame(columns=['split'])
+        df_res = self._assess_model_dg(self.dg_train, 'train', df_res)
+        df_res = self._assess_model_dg(self.dg_val, 'valid', df_res)
+        df_res = self._assess_model_dg(self.dg_test, 'test', df_res)
+
+        if save_results:
+            self._save_results_csv(df_res, file_tag)
+
+    def _assess_model_dg(self, dg, period_name, df_res):
         """
         Assess the model on a single period.
         """
@@ -192,16 +203,26 @@ class ImpactDl(Impact):
 
         print(f"\nSplit: {period_name}")
 
+        df_tmp = pd.DataFrame(columns=df_res.columns)
+        df_tmp['split'] = [period_name]
+
         # Compute the scores
         if self.target_type == 'occurrence':
             y_pred_class = (y_pred > 0.5).astype(int)
             tp, tn, fp, fn = compute_confusion_matrix(y_obs, y_pred_class)
             print_classic_scores(tp, tn, fp, fn)
-            assess_roc_auc(y_obs, y_pred)
+            store_classic_scores(tp, tn, fp, fn, df_tmp)
+            roc = assess_roc_auc(y_obs, y_pred)
+            df_tmp['ROC_AUC'] = [roc]
         else:
             rmse = np.sqrt(np.mean((y_obs - y_pred) ** 2))
             print(f"RMSE: {rmse}")
+            df_tmp['RMSE'] = [rmse]
         print(f"----------------------------------------")
+
+        df_res = pd.concat([df_res, df_tmp])
+
+        return df_res
 
     def compute_f1_score_full_data(self, dg):
         """
