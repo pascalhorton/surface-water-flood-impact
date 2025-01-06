@@ -16,6 +16,8 @@ class ImpactCnnOptions(ImpactDlOptions):
     ----------
     use_dem: bool
         Whether to use DEM data or not.
+    optimize_precip_spatial_extent: bool
+        Whether to allow the precipitation spatial extent to be optimized.
     precip_window_size: int
         The precipitation window size [km].
     precip_resolution: int
@@ -53,6 +55,7 @@ class ImpactCnnOptions(ImpactDlOptions):
 
         # Data options
         self.use_dem = None
+        self.optimize_precip_spatial_extent = None
         self.precip_window_size = None
         self.precip_resolution = None
         self.precip_time_step = None
@@ -88,6 +91,9 @@ class ImpactCnnOptions(ImpactDlOptions):
         self.parser.add_argument(
             '--use-dem', action=argparse.BooleanOptionalAction, default=False,
             help='Use DEM data')
+        self.parser.add_argument(
+            '--optimize-precip-spatial-extent', action=argparse.BooleanOptionalAction, default=True,
+            help='Allow the precipitation spatial extent to be optimized')
         self.parser.add_argument(
             '--precip-window-size', type=int, default=1,
             help='The precipitation window size [km]')
@@ -142,6 +148,7 @@ class ImpactCnnOptions(ImpactDlOptions):
         self._parse_dl_args(args)
 
         self.use_dem = args.use_dem
+        self.optimize_precip_spatial_extent = args.optimize_precip_spatial_extent
         self.precip_window_size = args.precip_window_size
         self.precip_resolution = args.precip_resolution
         self.precip_time_step = args.precip_time_step
@@ -188,13 +195,18 @@ class ImpactCnnOptions(ImpactDlOptions):
         if isinstance(hp_to_optimize, str) and hp_to_optimize == 'default':
             if self.use_precip:
                 hp_to_optimize = [
-                    'precip_window_size', 'precip_time_step', 'precip_days_before',
-                    'log_transform_precip', 'nb_conv_blocks', 'nb_filters',
-                    'kernel_size_spatial', 'kernel_size_temporal', 'pool_size_spatial',
+                    'precip_time_step', 'precip_days_before', 'log_transform_precip',
+                    'nb_conv_blocks', 'nb_filters', 'kernel_size_temporal',
                     'pool_size_temporal', 'inner_activation_cnn', 'dropout_rate_cnn',
                     'nb_dense_layers', 'nb_dense_units', 'nb_dense_units_decreasing',
                     'inner_activation_dense', 'dropout_rate_dense', 'batch_size',
                     'learning_rate', 'weight_denominator']
+                if self.optimize_precip_spatial_extent:
+                    hp_to_optimize.append(['precip_window_size', 'kernel_size_spatial', 'pool_size_spatial'])
+                else:
+                    self.precip_window_size = 1
+                    self.kernel_size_spatial = 1
+                    self.pool_size_spatial = 1
             else:
                 hp_to_optimize = [
                     'nb_dense_layers', 'nb_dense_units',
@@ -284,9 +296,11 @@ class ImpactCnnOptions(ImpactDlOptions):
 
         print("- use_dem: ", self.use_dem)
 
-        if self.optimize_with_optuna and not show_optuna_params:
-            print("-" * 80)
-            return
+        if self.optimize_with_optuna:
+            print("- optimize_precip_spatial_extent: ", self.optimize_precip_spatial_extent)
+            if not show_optuna_params:
+                print("-" * 80)
+                return
 
         if self.use_precip:
             print("- precip_window_size: ", self.precip_window_size)
