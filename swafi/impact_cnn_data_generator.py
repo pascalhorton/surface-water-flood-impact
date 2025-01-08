@@ -191,7 +191,7 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
         # Select the 3D data
         if self.X_precip is not None:
             pixels_nb = int(self.precip_window_size / self.precip_resolution)
-            x_3d = np.zeros((self.batch_size,
+            x_3d = np.zeros((len(idxs),
                              pixels_nb,
                              pixels_nb,
                              self.get_third_dim_size()))
