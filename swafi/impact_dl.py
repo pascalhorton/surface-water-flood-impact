@@ -162,9 +162,10 @@ class ImpactDl(Impact):
         file_tag: str
             The tag to add to the file name.
         """
-        print("Assessing the model on all periods.")
+        print("Creating test data generator.")
         self._create_data_generator_test()  # Implement this method in the child class
 
+        print("Assessing the model on all periods.")
         df_res = pd.DataFrame(columns=['split'])
         df_res = self._assess_model_dg(self.dg_train, 'train', df_res)
         df_res = self._assess_model_dg(self.dg_val, 'valid', df_res)
