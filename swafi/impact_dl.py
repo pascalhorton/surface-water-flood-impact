@@ -195,8 +195,7 @@ class ImpactDl(Impact):
             raise ValueError("Model not defined")
 
         # Changing the batch size to speed up the evaluation
-        dg.batch_size = 256
-
+        dg.batch_size = 1024
         n_batches = dg.get_number_of_batches_for_full_dataset()
 
         # Predict
