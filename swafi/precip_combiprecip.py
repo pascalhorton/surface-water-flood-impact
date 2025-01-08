@@ -67,6 +67,7 @@ class CombiPrecip(PrecipitationArchive):
         self.time_step = time_step
 
         files = sorted(glob(f"{self.data_path}/*.nc"))
+        self._check_files(files)
         data = xr.open_mfdataset(
             files,
             parallel=False,
@@ -76,3 +77,31 @@ class CombiPrecip(PrecipitationArchive):
         data = data.rename({'REFERENCE_TS': 'time'})
 
         self._generate_pickle_files(data)
+
+    def _check_files(self, files):
+        """
+        The original file are named such as: CPC_00060_H_20221128000000_20221204230000.nc
+        Here, we check that there is no overlapping period between files (not handled
+        by xarray) using the dates in the file names.
+
+        Parameters
+        ----------
+        files: list
+            The list of files
+
+        Raises
+        ------
+        ValueError
+            If there is an overlapping period between files
+        """
+        for i in range(1, len(files)):
+            file1 = files[i-1]
+            file2 = files[i]
+            date1 = file1.split('_')[-1]
+            date2 = file2.split('_')[-2]
+            if date1 >= date2:
+                filename1 = file1.split('/')[-1]
+                filename1 = filename1.split('\\')[-1]
+                filename2 = file2.split('/')[-1]
+                filename2 = filename2.split('\\')[-1]
+                raise ValueError(f"Overlapping period between {filename1} and {filename2}")
