@@ -195,6 +195,7 @@ class ImpactDl(Impact):
             raise ValueError("Model not defined")
 
         # Changing the batch size to speed up the evaluation
+        batch_size_orig = dg.batch_size
         dg.batch_size = 1024
         n_batches = dg.get_number_of_batches_for_full_dataset()
 
@@ -209,6 +210,8 @@ class ImpactDl(Impact):
             # Get rid of the single dimension
             y_pred_batch = y_pred_batch.squeeze()
             all_pred.append(y_pred_batch)
+
+        dg.batch_size = batch_size_orig
 
         # Concatenate predictions and obs from all batches
         y_pred = np.concatenate(all_pred, axis=0)
@@ -257,6 +260,9 @@ class ImpactDl(Impact):
         if self.target_type != 'occurrence':
             raise ValueError("F1 score is only available for occurrence models.")
 
+        # Changing the batch size to speed up the evaluation
+        batch_size_orig = dg.batch_size
+        dg.batch_size = 1024
         n_batches = dg.get_number_of_batches_for_full_dataset()
 
         # Predict
@@ -270,6 +276,8 @@ class ImpactDl(Impact):
             # Get rid of the single dimension
             y_pred_batch = y_pred_batch.squeeze()
             all_pred.append(y_pred_batch)
+
+        dg.batch_size = batch_size_orig
 
         # Concatenate predictions and obs from all batches
         y_pred = np.concatenate(all_pred, axis=0)
