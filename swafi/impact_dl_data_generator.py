@@ -118,7 +118,7 @@ class ImpactDlDataGenerator(keras.utils.Sequence):
         The number of batches.
         """
 
-        return int(np.floor(len(self.y) / self.batch_size))
+        return int(np.ceil(len(self.y) / self.batch_size))
 
     def get_ordered_batch_from_full_dataset(self, i):
         """
