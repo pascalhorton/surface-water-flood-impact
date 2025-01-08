@@ -6,6 +6,8 @@ from .impact import Impact
 from .utils.verification import compute_confusion_matrix, print_classic_scores, \
     assess_roc_auc, store_classic_scores
 
+import os
+import random
 import keras
 import numpy as np
 import pandas as pd
@@ -40,6 +42,7 @@ class ImpactDl(Impact):
     def __init__(self, events, options, reload_trained_models=False):
         super().__init__(events, options=options)
         self.reload_trained_models = reload_trained_models
+        self._set_random_state()
 
         self.precipitation_hf = None
         self.precipitation_daily = None
@@ -91,6 +94,7 @@ class ImpactDl(Impact):
         silent: bool
             Hide model summary and training progress.
         """
+        self._set_random_state()
         self._create_data_generator_train()
         self._create_data_generator_valid()
         self._define_model()
@@ -98,13 +102,6 @@ class ImpactDl(Impact):
         # Early stopping
         callback = keras.callbacks.EarlyStopping(
             monitor='val_loss', patience=20, restore_best_weights=True)
-
-        # Clear session and set the seed
-        keras.backend.clear_session()
-        if self.options.random_state is not None:
-            np.random.seed(self.options.random_state)
-            tf.random.set_seed(self.options.random_state)
-            keras.utils.set_random_seed(self.options.random_state)
 
         # Define the optimizer
         optimizer = self._define_optimizer(
@@ -175,6 +172,19 @@ class ImpactDl(Impact):
 
         if save_results:
             self._save_results_csv(df_res, file_tag)
+
+    def _set_random_state(self):
+        """
+        Set the random state.
+        """
+        # Clear session and set the seed
+        keras.backend.clear_session()
+        if self.options.random_state is not None:
+            os.environ['PYTHONHASHSEED'] = str(self.options.random_state)
+            random.seed(self.options.random_state)
+            np.random.seed(self.options.random_state)
+            tf.random.set_seed(self.options.random_state)
+            keras.utils.set_random_seed(self.options.random_state)
 
     def _assess_model_dg(self, dg, period_name, df_res):
         """
