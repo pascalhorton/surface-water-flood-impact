@@ -179,6 +179,9 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
         """Generate one batch of data"""
         idxs = self.idxs[i * self.batch_size:(i + 1) * self.batch_size]
 
+        return self._generate_batch(idxs)
+
+    def _generate_batch(self, idxs):
         # Select the events
         y = self.y[idxs]
 

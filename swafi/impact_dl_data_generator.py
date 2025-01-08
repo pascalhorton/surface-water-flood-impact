@@ -134,19 +134,12 @@ class ImpactDlDataGenerator(keras.utils.Sequence):
         -------
         The batch of data.
         """
+        idxs_full = np.arange(len(self.y))
+        i_start = i * self.batch_size
+        i_end = min((i + 1) * self.batch_size, len(self.y) - 1)
+        idxs = idxs_full[i_start:i_end]
 
-        # Save the original indices
-        idxs_orig = self.idxs
-
-        # Reset the indices
-        self.idxs = np.arange(len(self.y))
-
-        batch = self.__getitem__(i)
-
-        # Restore the original indices
-        self.idxs = idxs_orig
-
-        return batch
+        return self._generate_batch(idxs)
 
     def _standardize_static_inputs(self):
         if self.X_static is not None:
