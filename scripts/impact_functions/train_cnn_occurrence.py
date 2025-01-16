@@ -46,10 +46,8 @@ def main():
 
     # Remove dates where the precipitation data is not available
     for date_range in MISSING_DATES:
-        remove_start = (pd.to_datetime(date_range[0])
-                        - pd.Timedelta(days=options.precip_days_before + 1))
-        remove_end = (pd.to_datetime(date_range[1])
-                      + pd.Timedelta(days=options.precip_days_after + 1))
+        remove_start = (pd.to_datetime(date_range[0]) - pd.Timedelta(days=8))
+        remove_end = (pd.to_datetime(date_range[1]) + pd.Timedelta(days=2))
         events.remove_period(remove_start, remove_end)
 
     dem = None
