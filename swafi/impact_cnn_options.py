@@ -207,6 +207,7 @@ class ImpactCnnOptions(ImpactDlOptions):
                     self.precip_window_size = 1
                     self.kernel_size_spatial = 1
                     self.pool_size_spatial = 1
+                    self.use_spatial_dropout = False
             else:
                 hp_to_optimize = [
                     'nb_dense_layers', 'nb_dense_units',
