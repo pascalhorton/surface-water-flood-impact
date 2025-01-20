@@ -252,11 +252,12 @@ class ImpactCnn(ImpactDl):
         # Extract events dates
         events = self.df[['e_end', 'date_claim']].copy()
         events.rename(columns={'date_claim': 'date'}, inplace=True)
+        events['e_start'] = pd.to_datetime(events['e_start']).dt.date
         events['e_end'] = pd.to_datetime(events['e_end']).dt.date
         events['date'] = pd.to_datetime(events['date']).dt.date
 
-        # Fill NaN values with the event end date (as date, not datetime)
-        events['date'] = events['date'].fillna(events['e_end'])
+        # Fill NaN values with the mean of the event start and end date (as date, not datetime)
+        events['date'] = events['date'].fillna(events[['e_start', 'e_end']].mean(axis=1))
 
         # Precipitation period
         p_start = pd.to_datetime(f'{self.precipitation_hf.year_start}-01-01').date()
