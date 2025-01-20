@@ -195,12 +195,12 @@ class Impact:
 
         # Rename the column date_claim to date
         df.rename(columns={'date_claim': 'date'}, inplace=True)
+        # Fill NaN values with the mean of the event start and end date
+        df['date'] = df['date'].fillna(df[['e_start', 'e_end']].mean(axis=1))
         # Transform the dates to a date without time
         df['e_start'] = pd.to_datetime(df['e_start']).dt.date
         df['e_end'] = pd.to_datetime(df['e_end']).dt.date
         df['date'] = pd.to_datetime(df['date']).dt.date
-        # Fill NaN values with the mean of the event start and end date (as date, not datetime)
-        df['date'] = df['date'].fillna(df[['e_start', 'e_end']].mean(axis=1))
 
         # Add a column to flag any claim (1 if there is a damage, 0 otherwise)
         df['damage_class'] = (df['target'] > 0).astype(int)
