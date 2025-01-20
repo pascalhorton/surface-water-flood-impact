@@ -131,7 +131,7 @@ def optimize_model_with_optuna(options, events, precip_hf=None, precip_daily=Non
 
         # Fit the model
         start_time = time.time()
-        tx_trial.fit(do_plot=False, silent=True)
+        tx_trial.fit(do_plot=False)
         end_time = time.time()
         print(f"Model fitting took {end_time - start_time:.2f} seconds")
 

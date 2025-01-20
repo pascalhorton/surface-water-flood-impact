@@ -137,7 +137,7 @@ def optimize_model_with_optuna(options, events, precip=None, dem=None, dir_plots
 
         # Fit the model
         start_time = time.time()
-        cnn_trial.fit(do_plot=False, silent=True)
+        cnn_trial.fit(do_plot=False)
         end_time = time.time()
         print(f"Model fitting took {end_time - start_time:.2f} seconds")
 
