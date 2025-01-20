@@ -88,7 +88,7 @@ def _setup_model(options, events, precip, dem):
         cnn.load_features(cnn.options.simple_feature_classes)
     cnn.split_sample()
     cnn.reduce_negatives_for_training(cnn.options.factor_neg_reduction)
-    cnn.compute_balanced_class_weights()
+    cnn.compute_balanced_class_weights(cnn.options.factor_neg_reduction)
     cnn.compute_corrected_class_weights(
         weight_denominator=cnn.options.weight_denominator)
     return cnn

@@ -288,15 +288,24 @@ class Impact:
         self.x_valid = (self.x_valid - mean) / std
         self.x_test = (self.x_test - mean) / std
 
-    def compute_balanced_class_weights(self):
+    def compute_balanced_class_weights(self, factor_neg_reduction=1):
         """
         Compute balanced the class weights.
+
+        Parameters
+        ----------
+        factor_neg_reduction: float
+            The factor to reduce the number of negative events.
         """
         if self.target_type != 'occurrence':
             raise NotImplemented("Class weights are only available for occurrence")
 
         n_classes = len(np.unique(self.y_train))
         self.weights = len(self.y_train) / (n_classes * np.bincount(self.y_train))
+
+        # Reduce the number of negative events
+        if factor_neg_reduction > 1:
+            self.weights[1] /= factor_neg_reduction
 
     def compute_corrected_class_weights(self, weight_denominator):
         """

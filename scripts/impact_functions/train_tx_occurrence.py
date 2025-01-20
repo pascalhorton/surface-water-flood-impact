@@ -81,7 +81,7 @@ def _setup_model(options, events, precip_hf, precip_daily):
         tx.load_features(tx.options.simple_feature_classes)
     tx.split_sample()
     tx.reduce_negatives_for_training(tx.options.factor_neg_reduction)
-    tx.compute_balanced_class_weights()
+    tx.compute_balanced_class_weights(tx.options.factor_neg_reduction)
     tx.compute_corrected_class_weights(
         weight_denominator=tx.options.weight_denominator)
     return tx
