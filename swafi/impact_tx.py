@@ -232,7 +232,7 @@ class ImpactTransformer(ImpactDl):
             return
 
         # Extract events dates
-        events = self.df[['e_end', 'date_claim']].copy()
+        events = self.df[['e_start', 'e_end', 'date_claim']].copy()
         events.rename(columns={'date_claim': 'date'}, inplace=True)
         events['e_start'] = pd.to_datetime(events['e_start']).dt.date
         events['e_end'] = pd.to_datetime(events['e_end']).dt.date
