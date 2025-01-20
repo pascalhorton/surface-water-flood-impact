@@ -250,7 +250,7 @@ class ImpactCnn(ImpactDl):
             return
 
         # Extract events dates
-        events = self.df[['e_end', 'date_claim']].copy()
+        events = self.df[['e_start', 'e_end', 'date_claim']].copy()
         events.rename(columns={'date_claim': 'date'}, inplace=True)
 
         # Fill NaN values with the mean of the event start and end date (as date, not datetime)
