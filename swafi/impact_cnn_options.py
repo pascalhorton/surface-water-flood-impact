@@ -165,6 +165,11 @@ class ImpactCnnOptions(ImpactDlOptions):
         self.nb_conv_blocks = args.nb_conv_blocks
         self.inner_activation_cnn = args.inner_activation_cnn
 
+        if self.precip_window_size==1:
+            self.kernel_size_spatial = 1
+            self.pool_size_spatial = 1
+            self.use_spatial_dropout = False
+
         if self.optimize_with_optuna:
             print("Optimizing with Optuna; some options will be ignored.")
 
