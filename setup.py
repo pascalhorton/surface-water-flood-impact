@@ -20,7 +20,7 @@ setup(
     extras_require={"test": ["pytest>=6.0"]},
     python_requires=">=3.8",
     install_requires=[
-        'numpy==1.*',
+        'numpy',
         'PyYAML',
         'pandas==2.*',
         'rasterio',
