@@ -99,9 +99,12 @@ class ImpactDl(Impact):
         self._create_data_generator_valid()
         self._define_model()
 
-        # Early stopping
-        callback = keras.callbacks.EarlyStopping(
+        # Early stopping callbacks
+        early_stopping_loss = keras.callbacks.EarlyStopping(
             monitor='val_loss', patience=20, restore_best_weights=True)
+        early_stopping_csi = CustomEarlyStopping(
+            monitor='val_csi', patience=5, min_value=0.01)
+        callbacks = [early_stopping_loss, early_stopping_csi]
 
         # Define the optimizer
         optimizer = self._define_optimizer(
@@ -131,7 +134,7 @@ class ImpactDl(Impact):
             self.dg_train,
             epochs=self.options.epochs,
             validation_data=self.dg_val,
-            callbacks=[callback],
+            callbacks=callbacks,
             verbose=verbose,
             shuffle=False
         )
@@ -459,3 +462,26 @@ class ImpactDl(Impact):
                     f'{now.strftime("%Y-%m-%d_%H-%M-%S")}.png')
         if show_plots:
             plt.show()
+
+
+# Define a custom early stopping callback to stop when the CSI is almost 0
+class CustomEarlyStopping(keras.callbacks.Callback):
+    def __init__(self, monitor='val_csi', patience=5, min_value=0.001):
+        super(CustomEarlyStopping, self).__init__()
+        self.monitor = monitor
+        self.patience = patience
+        self.min_value = min_value
+        self.wait = 0
+
+    def on_epoch_end(self, epoch, logs=None):
+        current = logs.get(self.monitor)
+        if current is None:
+            return
+
+        if current < self.min_value:
+            self.wait += 1
+            if self.wait >= self.patience:
+                self.model.stop_training = True
+                print(f"\nEpoch {epoch + 1}: early stopping due to {self.monitor} falling below {self.min_value} for {self.patience} consecutive epochs.")
+        else:
+            self.wait = 0
