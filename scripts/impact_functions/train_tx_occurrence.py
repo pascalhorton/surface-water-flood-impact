@@ -2,7 +2,11 @@
 Train a deep learning model to predict the occurrence of damages.
 """
 
+import random
 import time
+import keras
+import numpy as np
+import tensorflow as tf
 import pandas as pd
 
 from swafi.config import Config
@@ -26,8 +30,14 @@ def main():
     options.print_options()
     assert options.is_ok()
 
-    year_start = None
-    year_end = None
+    # Clear session and set the seed
+    keras.backend.clear_session()
+    if options.random_state is not None:
+        random.seed(options.random_state)
+        np.random.seed(options.random_state)
+        tf.random.set_seed(options.random_state)
+        keras.utils.set_random_seed(options.random_state)
+
     if options.dataset == 'mobiliar':
         year_start = config.get('YEAR_START_MOBILIAR')
         year_end = config.get('YEAR_END_MOBILIAR')
