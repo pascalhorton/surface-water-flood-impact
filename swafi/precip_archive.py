@@ -317,8 +317,19 @@ class PrecipitationArchive(Precipitation):
                     data = pickle.load(f_in)
                     precip = data[self.precip_var]
                     min_precip = float(precip.min())  # Might not be 0 when log-transformed
-                    data[self.precip_var] = ((precip - min_precip) /
-                                             (q99 - min_precip)).astype('float32')
+
+                    # Check if the sizes match
+                    if precip.shape != q99.shape:
+                        print(f"Size mismatch on {t}: precip shape {precip.shape}, q99 shape {q99.shape}")
+
+                        # Broadcast q99 and min_precip to match the dimensions of precip
+                        q99_broadcasted = xr.DataArray(q99, dims=precip.dims, coords=precip.coords)
+                        min_precip_broadcasted = xr.DataArray(min_precip, dims=precip.dims, coords=precip.coords)
+                        data[self.precip_var] = ((precip - min_precip_broadcasted) /
+                                                 (q99_broadcasted - min_precip_broadcasted)).astype('float32')
+                    else:
+                        data[self.precip_var] = ((precip - min_precip) /
+                                                 (q99 - min_precip)).astype('float32')
 
                     with open(tmp_filename, 'wb') as f_out:
                         pickle.dump(data, f_out)
