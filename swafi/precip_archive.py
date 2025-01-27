@@ -319,7 +319,7 @@ class PrecipitationArchive(Precipitation):
                     min_precip = float(precip.min())  # Might not be 0 when log-transformed
 
                     # Check if the sizes match
-                    if precip.shape != q99.shape:
+                    if precip.shape[1:] != q99.shape:
                         print(f"Size mismatch on {t}: precip shape {precip.shape}, q99 shape {q99.shape}")
 
                         # Broadcast q99 and min_precip to match the dimensions of precip
