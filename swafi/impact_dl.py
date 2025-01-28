@@ -103,7 +103,7 @@ class ImpactDl(Impact):
         early_stopping_loss = keras.callbacks.EarlyStopping(
             monitor='val_loss', patience=20, restore_best_weights=True)
         early_stopping_csi = CustomEarlyStopping(
-            monitor='val_csi', patience=5, min_value=0.01)
+            monitor='val_csi', patience=5, min_value=0.0001)
         callbacks = [early_stopping_loss, early_stopping_csi]
 
         # Define the optimizer
