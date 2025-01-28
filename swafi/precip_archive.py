@@ -300,6 +300,9 @@ class PrecipitationArchive(Precipitation):
         q99: np.array
             The 99th quantile (per pixel)
         """
+        # Add dimension to q99
+        q99 = np.expand_dims(q99, axis=0)
+
         for idx in tqdm(range(len(self.time_index)),
                         desc="Normalizing precipitation data"):
             original_file = self.pickle_files[idx]
