@@ -338,6 +338,12 @@ class PrecipitationArchive(Precipitation):
                     print(f"precip_norm dims: {precip_norm.dims}")
                     print(f"precip dims: {precip.dims}")
 
+                    # print size of the x and y dimensions
+                    print(f"precip_norm x size: {precip_norm.sizes['x']}")
+                    print(f"precip_norm y size: {precip_norm.sizes['y']}")
+                    print(f"precip x size: {precip.sizes['x']}")
+                    print(f"precip y size: {precip.sizes['y']}")
+
                     data[self.precip_var] = precip_norm
 
                     print("----------------------------------------")
