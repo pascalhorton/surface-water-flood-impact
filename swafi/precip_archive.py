@@ -330,10 +330,6 @@ class PrecipitationArchive(Precipitation):
 
                     print(f"precip_norm shape: {precip_norm.shape}")
 
-                    # Ensure precip_norm has the same coordinates as data[self.precip_var]
-                    precip_norm = xr.DataArray(precip_norm, dims=data[self.precip_var].dims,
-                                               coords=data[self.precip_var].coords)
-
                     # print dimension names of precip_norm and precip
                     print(f"precip_norm dims: {precip_norm.dims}")
                     print(f"precip dims: {precip.dims}")
