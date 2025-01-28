@@ -321,28 +321,7 @@ class PrecipitationArchive(Precipitation):
                     precip = data[self.precip_var]
                     min_precip = float(precip.min())  # Might not be 0 when log-transformed
 
-                    print(f"Size match on {t}")
-                    print(f"precip shape {precip.shape}, q99 shape {q99.shape}")
-                    print(f"min_precip: {min_precip}, q99: {q99}")
-                    print(f"data[self.precip_var].shape: {data[self.precip_var].shape}")
-
-                    precip_norm = ((precip - min_precip) / (q99 - min_precip)).astype('float32')
-
-                    print(f"precip_norm shape: {precip_norm.shape}")
-
-                    # print dimension names of precip_norm and precip
-                    print(f"precip_norm dims: {precip_norm.dims}")
-                    print(f"precip dims: {precip.dims}")
-
-                    # print size of the x and y dimensions
-                    print(f"precip_norm x size: {precip_norm.sizes['x']}")
-                    print(f"precip_norm y size: {precip_norm.sizes['y']}")
-                    print(f"precip x size: {precip.sizes['x']}")
-                    print(f"precip y size: {precip.sizes['y']}")
-
-                    data[self.precip_var] = precip_norm
-
-                    print("----------------------------------------")
+                    data[self.precip_var] = ((precip - min_precip) / (q99 - min_precip)).astype('float32')
 
                     with open(tmp_filename, 'wb') as f_out:
                         pickle.dump(data, f_out)
