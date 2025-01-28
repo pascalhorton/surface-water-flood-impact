@@ -328,6 +328,11 @@ class PrecipitationArchive(Precipitation):
                         data[self.precip_var] = ((precip - min_precip_broadcasted) /
                                                  (q99_broadcasted - min_precip_broadcasted)).astype('float32')
                     else:
+                        print(f"Size match on {t}")
+                        print(f"precip shape {precip.shape}, q99 shape {q99.shape}")
+                        print(f"min_precip: {min_precip}, q99: {q99}")
+                        print(f"data[self.precip_var].shape: {data[self.precip_var].shape}")
+
                         data[self.precip_var] = ((precip - min_precip) /
                                                  (q99 - min_precip)).astype('float32')
 
