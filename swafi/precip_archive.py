@@ -318,23 +318,16 @@ class PrecipitationArchive(Precipitation):
                     precip = data[self.precip_var]
                     min_precip = float(precip.min())  # Might not be 0 when log-transformed
 
-                    # Check if the sizes match
-                    if precip.shape[1:] != q99.shape:
-                        print(f"Size mismatch on {t}: precip shape {precip.shape}, q99 shape {q99.shape}")
+                    print(f"Size match on {t}")
+                    print(f"precip shape {precip.shape}, q99 shape {q99.shape}")
+                    print(f"min_precip: {min_precip}, q99: {q99}")
+                    print(f"data[self.precip_var].shape: {data[self.precip_var].shape}")
 
-                        # Broadcast q99 and min_precip to match the dimensions of precip
-                        q99_broadcasted = xr.DataArray(q99, dims=precip.dims, coords=precip.coords)
-                        min_precip_broadcasted = xr.DataArray(min_precip, dims=precip.dims, coords=precip.coords)
-                        data[self.precip_var] = ((precip - min_precip_broadcasted) /
-                                                 (q99_broadcasted - min_precip_broadcasted)).astype('float32')
-                    else:
-                        print(f"Size match on {t}")
-                        print(f"precip shape {precip.shape}, q99 shape {q99.shape}")
-                        print(f"min_precip: {min_precip}, q99: {q99}")
-                        print(f"data[self.precip_var].shape: {data[self.precip_var].shape}")
+                    precip_norm = ((precip - min_precip) / (q99 - min_precip)).astype('float32')
 
-                        data[self.precip_var] = ((precip - min_precip) /
-                                                 (q99 - min_precip)).astype('float32')
+                    print(f"precip_norm shape: {precip_norm.shape}")
+
+                    data[self.precip_var] = precip_norm
 
                     with open(tmp_filename, 'wb') as f_out:
                         pickle.dump(data, f_out)
