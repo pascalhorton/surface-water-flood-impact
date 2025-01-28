@@ -330,7 +330,14 @@ class PrecipitationArchive(Precipitation):
 
                     print(f"precip_norm shape: {precip_norm.shape}")
 
+                    # print dimension names of precip_norm and precip
+                    print(f"precip_norm dims: {precip_norm.dims}")
+                    print(f"precip dims: {precip.dims}")
+
+
                     data[self.precip_var] = precip_norm
+
+                    print("----------------------------------------")
 
                     with open(tmp_filename, 'wb') as f_out:
                         pickle.dump(data, f_out)
