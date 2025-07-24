@@ -504,7 +504,7 @@ class PrecipitationArchive(Precipitation):
                     if data_chunk is None:
                         data_chunk = data_file
                     else:
-                        data_chunk = np.concatenate((data_chunk, data_file))
+                        data_chunk = np.concatenate((data_chunk, data_file), axis=0)
             except EOFError:
                 raise EOFError(f"Error: {original_file} is empty or corrupted.")
 
@@ -604,8 +604,10 @@ class PrecipitationArchive(Precipitation):
 
         data['time'] = pd.to_datetime(data['time'])
 
-        for idx in tqdm(range(len(self.time_index)),
-                        desc="Generating pickle files for precipitation data"):
+        for idx in tqdm(
+                range(len(self.time_index)),
+                desc="Generating pickle files for precipitation data"
+        ):
             t = self.time_index[idx]
             filename = (f"precip_{self.dataset_name.lower()}_full_{t.year}-"
                         f"{t.month:02}_{self.hash_tag}.pickle")

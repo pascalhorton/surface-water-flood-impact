@@ -178,8 +178,10 @@ class ImpactCnn(ImpactDl):
             print("Precipitation is not used and is therefore not loaded.")
             return
 
-        precipitation.prepare_data(resolution=self.options.precip_resolution,
-                                   time_step=self.options.precip_time_step)
+        precipitation.prepare_data(
+            resolution=self.options.precip_resolution,
+            time_step=self.options.precip_time_step
+        )
 
         # Check the shape of the precipitation and the DEM
         if self.dem is not None:
