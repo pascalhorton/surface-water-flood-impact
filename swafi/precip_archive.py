@@ -250,6 +250,36 @@ class PrecipitationArchive(Precipitation):
                     data = pickle.load(f_in)
                     data = data.sel({self.x_axis: x_axis, self.y_axis: y_axis})
 
+                    # If the array is smaller than the expected size, fill with NaN
+                    if data[self.precip_var].shape[1:] != (len(y_axis), len(x_axis)):
+                        expected_shape = (
+                            len(data[self.time_axis]),
+                            len(y_axis),
+                            len(x_axis)
+                        )
+
+                        # Create an array filled with np.nan of the expected shape
+                        filled_data = np.full(expected_shape, np.nan, dtype='float32')
+
+                        # Get the available x and y coordinates in the data
+                        data_x = data[self.x_axis].values
+                        data_y = data[self.y_axis].values
+
+                        # Find the intersection indices for x and y
+                        x_idx = [i for i, x in enumerate(x_axis) if x in data_x]
+                        y_idx = [i for i, y in enumerate(y_axis) if y in data_y]
+
+                        # Find the corresponding indices in the data
+                        data_x_i = [np.where(data_x == x_axis[i])[0][0] for i in x_idx]
+                        data_y_i = [np.where(data_y == y_axis[i])[0][0] for i in y_idx]
+
+                        # Place the available data into the correct positions
+                        filled_data[:, y_idx, x_idx] = \
+                            data[self.precip_var].values[:, data_y_i, :][:,:, data_x_i]
+
+                        # Assign the filled data back to the xarray DataArray
+                        data[self.precip_var] = filled_data
+
                     with open(tmp_filename, 'wb') as f_out:
                         pickle.dump(data, f_out)
 
@@ -507,6 +537,9 @@ class PrecipitationArchive(Precipitation):
                         data_chunk = np.concatenate((data_chunk, data_file), axis=0)
             except EOFError:
                 raise EOFError(f"Error: {original_file} is empty or corrupted.")
+            except ValueError as e:
+                raise ValueError(f"Error with file {original_file} at indices "
+                                 f"{i}:{i + x_size}, {j}:{j + y_size}: {e}")
 
         return data_chunk
 
