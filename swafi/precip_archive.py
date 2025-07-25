@@ -274,8 +274,7 @@ class PrecipitationArchive(Precipitation):
                         data_y_i = [np.where(data_y == y_axis[i])[0][0] for i in y_idx]
 
                         # Place the available data into the correct positions
-                        filled_data[:, y_idx, x_idx] = \
-                            data[self.precip_var].values[:, data_y_i, :][:,:, data_x_i]
+                        filled_data[:, np.ix_(y_idx, x_idx)] = data[self.precip_var].values[:, np.ix_(data_y_i, data_x_i)]
 
                         # Assign the filled data back to the xarray DataArray
                         data[self.precip_var] = filled_data
