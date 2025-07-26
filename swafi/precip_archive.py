@@ -258,6 +258,11 @@ class PrecipitationArchive(Precipitation):
                             len(x_axis)
                         )
 
+                        print(f"Filling missing values for {t.year}-{t.month:02} "
+                              f"with NaN in {self.precip_var} variable. "
+                              f"Expected shape: {expected_shape}, "
+                              f"actual shape: {data[self.precip_var].shape[1:]}")
+
                         # Create an array filled with np.nan of the expected shape
                         filled_data = np.full(expected_shape, np.nan, dtype='float32')
 
