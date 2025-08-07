@@ -372,11 +372,14 @@ class PrecipitationArchive(Precipitation):
         """
         Log-transform the precipitation data.
         """
+        if not self.hash_tag.startswith("log_"):
+            self.hash_tag = "log_" + self.hash_tag
+
         for idx in tqdm(range(len(self.time_index)),
                         desc="Log-transforming precipitation data"):
             original_file = self.pickle_files[idx]
             t = self.time_index[idx]
-            filename = (f"precip_{self.dataset_name.lower()}_log_{t.year}-"
+            filename = (f"precip_{self.dataset_name.lower()}_subdomain_{t.year}-"
                         f"{t.month:02}_{self.hash_tag}.pickle")
             tmp_filename = self.tmp_dir / filename
             self.pickle_files[idx] = tmp_filename
