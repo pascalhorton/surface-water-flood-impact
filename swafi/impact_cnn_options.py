@@ -274,6 +274,8 @@ class ImpactCnnOptions(ImpactDlOptions):
                     'nb_dense_units_decreasing',
                     'inner_activation_dense',
                     'dropout_rate_dense',
+                    'use_batchnorm_cnn',
+                    'use_batchnorm_dense',
                     'batch_size',
                     'learning_rate',
                     'weight_denominator'
