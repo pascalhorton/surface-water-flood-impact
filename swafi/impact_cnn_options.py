@@ -30,6 +30,8 @@ class ImpactCnnOptions(ImpactDlOptions):
         The number of days before the event to use for the precipitation.
     precip_days_after: int
         The number of days after the event to use for the precipitation.
+    use_3d_cnn: bool
+        Whether to use a 3D CNN or not.
     dropout_rate_cnn: float
         The dropout rate for the CNN.
     use_spatial_dropout: bool
@@ -66,6 +68,7 @@ class ImpactCnnOptions(ImpactDlOptions):
         self.precip_days_after = None
 
         # Model options
+        self.use_3d_cnn = None
         self.dropout_rate_cnn = None
         self.use_spatial_dropout = None
         self.use_batchnorm_cnn = None
@@ -138,6 +141,12 @@ class ImpactCnnOptions(ImpactDlOptions):
             type=int,
             default=1,
             help='The number of days after the claim/event to use for the precipitation'
+        )
+        self.parser.add_argument(
+            '--use-3d-cnn',
+            action=argparse.BooleanOptionalAction,
+            default=True,
+            help='Use a 3D CNN (default: True, False for 2D CNN)'
         )
         self.parser.add_argument(
             '--dropout-rate-cnn',
@@ -215,6 +224,7 @@ class ImpactCnnOptions(ImpactDlOptions):
         self.precip_time_step = args.precip_time_step
         self.precip_days_before = args.precip_days_before
         self.precip_days_after = args.precip_days_after
+        self.use_3d_cnn = args.use_3d_cnn
         self.dropout_rate_cnn = args.dropout_rate_cnn
         self.use_spatial_dropout = args.use_spatial_dropout
         self.use_batchnorm_cnn = args.use_batchnorm_cnn
@@ -247,7 +257,7 @@ class ImpactCnnOptions(ImpactDlOptions):
             Options are: weight_denominator, precip_window_size, precip_time_step,
             precip_days_before, precip_resolution, precip_days_after, transform_static,
             transform_precip, log_transform_precip, batch_size, learning_rate,
-            dropout_rate_dense, dropout_rate_cnn, use_spatial_dropout,
+            dropout_rate_dense, use_3d_cnn, dropout_rate_cnn, use_spatial_dropout,
             use_batchnorm_cnn, use_batchnorm_dense, kernel_size_spatial,
             kernel_size_temporal, nb_filters, pool_size_spatial, pool_size_temporal,
             nb_conv_blocks, nb_dense_layers, nb_dense_units, nb_dense_units_decreasing,
@@ -268,6 +278,7 @@ class ImpactCnnOptions(ImpactDlOptions):
                     'kernel_size_temporal',
                     'pool_size_temporal',
                     'inner_activation_cnn',
+                    'use_3d_cnn',
                     'dropout_rate_cnn',
                     'nb_dense_layers',
                     'nb_dense_units',
@@ -332,6 +343,9 @@ class ImpactCnnOptions(ImpactDlOptions):
         if 'precip_days_after' in hp_to_optimize:
             self.precip_days_after = trial.suggest_int(
                 'precip_days_after', 1, 2)
+        if 'use_3d_cnn' in hp_to_optimize:
+            self.use_3d_cnn = trial.suggest_categorical(
+                'use_3d_cnn', [True, False])
         if 'dropout_rate_cnn' in hp_to_optimize:
             self.dropout_rate_cnn = trial.suggest_float(
                 'dropout_rate_cnn', 0.2, 0.5)
@@ -406,6 +420,7 @@ class ImpactCnnOptions(ImpactDlOptions):
             print("- precip_days_before: ", self.precip_days_before)
             print("- precip_days_after: ", self.precip_days_after)
             print("- use_spatial_dropout: ", self.use_spatial_dropout)
+            print("- use_3d_cnn: ", self.use_3d_cnn)
             print("- dropout_rate_cnn: ", self.dropout_rate_cnn)
             print("- use_batchnorm_cnn: ", self.use_batchnorm_cnn)
             print("- kernel_size_spatial: ", self.kernel_size_spatial)

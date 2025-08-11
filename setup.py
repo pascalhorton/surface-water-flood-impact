@@ -27,7 +27,7 @@ setup(
         'tqdm',
         'pyarrow',
         'scikit-learn',
-        'tensorflow[and-cuda]',
+        'tensorflow',
         'keras',
         'xarray',
         'dask',
