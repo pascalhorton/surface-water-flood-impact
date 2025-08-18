@@ -4,6 +4,7 @@ Class to generate the data for the CNN model.
 from .impact_dl_data_generator import ImpactDlDataGenerator
 
 import numpy as np
+import pandas as pd
 
 
 class ImpactCnnDataGenerator(ImpactDlDataGenerator):
@@ -97,6 +98,7 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
         self.X_precip = x_precip
         self.X_dem = x_dem
 
+        self._adapt_event_times()
         self._compute_predictor_statistics()
 
         if transform_static == 'standardize':
@@ -142,6 +144,20 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
             self.X_precip.normalize(self.q99_precip)
         if self.X_dem is not None:
             self.X_dem = (self.X_dem - self.min_dem) / (self.max_dem - self.min_dem)
+
+    def _adapt_event_times(self):
+        """
+        Adapt the event times to the precipitation time step.
+        """
+        if self.X_precip is None:
+            return
+
+        if self.precip_time_step == 1:
+            return
+
+        time_step = f'{self.precip_time_step}h'
+        dates = pd.to_datetime(self.event_props[:, 0])
+        self.event_props[:, 0] = dates.round(time_step)
 
     def _compute_predictor_statistics(self):
         self._compute_static_predictor_statistics()
@@ -251,7 +267,7 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
             x_dem_ev = np.expand_dims(x_dem_ev, axis=-1)
 
             # Concatenate
-            x_3d_ev = np.concatenate([x_dem_ev, x_precip_ev], axis=-1)
+            x_3d_ev = np.concatenate([x_precip_ev, x_dem_ev], axis=-1)
         else:
             x_3d_ev = x_precip_ev
 
@@ -280,6 +296,6 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
                 empty_block = self._create_empty_precip_block(
                     (x_3d_ev.shape[0], x_3d_ev.shape[1], -diff))
 
-                x_3d_ev = np.concatenate([x_3d_ev, empty_block], axis=-1)
+                x_3d_ev = np.concatenate([empty_block, x_3d_ev], axis=-1)
 
         return x_3d_ev
