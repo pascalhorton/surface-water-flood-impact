@@ -170,7 +170,7 @@ class ImpactDlDataGenerator(keras.utils.Sequence):
         """Create an empty precipitation block. Log-transform if needed."""
         empty_block = np.zeros(shape)
         if self.log_transform_precip:
-            empty_block = (np.log(empty_block + 0.1)).astype('float32')
+            empty_block = (np.log1p(empty_block)).astype('float32')
 
         return empty_block
 
