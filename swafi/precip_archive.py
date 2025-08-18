@@ -18,7 +18,7 @@ config = Config()
 
 
 class PrecipitationArchive(Precipitation):
-    def __init__(self, year_start, year_end, cid_file=None):
+    def __init__(self, year_start=None, year_end=None, cid_file=None):
         """
         The generic PrecipitationArchive class.
         Must be netCDF files as relies on xarray.
@@ -36,8 +36,9 @@ class PrecipitationArchive(Precipitation):
 
         self.year_start = year_start
         self.year_end = year_end
-        self.time_index = pd.date_range(start=f'{year_start}-01-01',
-                                        end=f'{year_end}-12-31', freq='MS')
+        if year_start is not None or year_end is not None:
+            self.time_index = pd.date_range(start=f'{year_start}-01-01',
+                                            end=f'{year_end}-12-31', freq='MS')
         self.missing = None
 
         self.hash_tag = None
@@ -391,7 +392,7 @@ class PrecipitationArchive(Precipitation):
                 with open(original_file, 'rb') as f_in:
                     data = pickle.load(f_in)
                     precip = data[self.precip_var]
-                    data[self.precip_var] = (np.log(precip + 1.0)).astype('float32')
+                    data[self.precip_var] = (np.log1p(precip)).astype('float32')
 
                     with open(tmp_filename, 'wb') as f_out:
                         pickle.dump(data, f_out)

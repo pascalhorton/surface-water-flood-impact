@@ -28,7 +28,7 @@ class CombiPrecip(PrecipitationArchive):
         ('2022-10-17', '2022-10-23'),
     ]
 
-    def __init__(self, year_start, year_end, cid_file=None):
+    def __init__(self, year_start=None, year_end=None, cid_file=None):
         """
         The Precipitation class for CombiPrecip data. Must be netCDF files.
 
@@ -44,9 +44,9 @@ class CombiPrecip(PrecipitationArchive):
         super().__init__(year_start, year_end, cid_file)
         self.dataset_name = "CombiPrecip"
 
-    def prepare_data(self, data_path=None, resolution=1, time_step=1):
+    def open_files(self, data_path=None, resolution=1, time_step=1):
         """
-        Load the precipitation data from the given path.
+        Open the precipitation data from the given path.
 
         Parameters
         ----------
@@ -76,6 +76,22 @@ class CombiPrecip(PrecipitationArchive):
         data = data.rename_vars({'CPC': 'precip'})
         data = data.rename({'REFERENCE_TS': 'time'})
 
+        return data
+
+    def prepare_data(self, data_path=None, resolution=1, time_step=1):
+        """
+        Load the precipitation data from the given path.
+
+        Parameters
+        ----------
+        data_path: str|None
+            The path to the data files
+        resolution: int
+            The resolution [km] of the precipitation data (default: 1)
+        time_step: int
+            The time step [h] of the precipitation data (default: 1)
+        """
+        data = self.open_files(data_path, resolution, time_step)
         self._generate_pickle_files(data)
 
     def _check_files(self, files):
