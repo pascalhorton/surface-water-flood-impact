@@ -109,9 +109,6 @@ class ImpactCnn(ImpactDl):
             debug=DEBUG
         )
 
-        if self.factor_neg_reduction != 1:
-            self.dg_val.reduce_negatives(self.factor_neg_reduction)
-
     def _create_data_generator_test(self):
         self.dg_test = ImpactCnnDataGenerator(
             event_props=self.events_test,
