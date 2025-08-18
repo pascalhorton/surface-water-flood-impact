@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 # coding: utf-8
 
+import os
+import multiprocessing
 import concurrent.futures
 import pandas as pd
 import numpy as np
@@ -12,21 +14,9 @@ from swafi.domain import Domain
 from swafi.precip_combiprecip import CombiPrecip
 
 # Configuration for the script
-n_parts = 20  # Number of parts to split the data into for parallel processing
-year_start = 2005
-year_end = 2023
+n_cpus = multiprocessing.cpu_count()
+n_parts = int(n_cpus * 0.9)  # Number of parts to split the data into for parallel processing
 
-
-
-config = Config()
-
-# Get the precipitation data domain
-domain = Domain()
-coords_df = domain.get_coordinates_df()
-
-# Load precipitation files
-cpc = CombiPrecip(year_start, year_end)
-data_full = cpc.open_files(config.get('DIR_PRECIP'))
 
 # Function the calculates the events
 def get_events(coords_row, data):
@@ -77,7 +67,7 @@ def get_events(coords_row, data):
     events = events[events.p_sum >= 10].reset_index(drop=True)
 
     # Calculate percentiles of score for each event characteristics
-    ranks = events.iloc[:, 2:-1].rank(pct=True).astype("float32")
+    ranks = events.iloc[:, 2:-1].rank(pct=True)
     ranks.columns = ["duration_q", "p_sum_q", "i_max_q", "i_mean_q", "i_sd_q", "api_q"]
     events = pd.concat([events, ranks], axis=1)
 
@@ -88,28 +78,59 @@ def get_events(coords_row, data):
     return events
 
 
-# Split the coordinates DataFrame into parts for processing
-parts = np.array_split(coords_df, n_parts)
-
-for i, part in enumerate(parts):
+def process_part(i, part, config):
+    # Load precipitation files
+    cpc = CombiPrecip()
+    data = cpc.open_files(config.get('DIR_PRECIP'))
 
     # Extract coordinates and precipitation data for each part
-    data = data_full.sel(x=slice(part.x.min() - 5000, part.x.max() + 5000),
-                         y=slice(part.y.max() + 5000, part.y.min() - 5000))
-    data.load()
+    data = data.sel(x=slice(part.x.min() - 5000, part.x.max() + 5000),
+                    y=slice(part.y.max() + 5000, part.y.min() - 5000))
 
     # Apply the 3x3km smoothing
     data = data.fillna(0)
     data.precip.values = uniform_filter(data.precip, size=(0, 3, 3))
 
-    # Define progress bar
-    tq = tqdm(range(0, len(part)), leave=True, position=0)
-
     # Apply get_events() function to all grid cells in part
     list_of_events = []
-    for (index, row), t in zip(part.iterrows(), tq):
+    for _, row in part.iterrows():
         list_of_events.append(get_events(row, data))
 
     # Store and save data as a .parquet file
     events = pd.concat(list_of_events, axis=0).reset_index(drop=True)
     events.to_parquet(f"event_parts/part_{i}.parquet")
+
+    return True
+
+
+if __name__ == "__main__":
+    config = Config()
+
+    # Get the precipitation data domain
+    domain = Domain()
+    coords_df = domain.get_coordinates_df()
+
+    # Split the coordinates DataFrame into parts for processing
+    parts = np.array_split(coords_df, n_parts)
+
+    # Create a directory to store the event parts
+    os.makedirs("event_parts", exist_ok=True)
+
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        futures = [executor.submit(process_part, i, part, config) for i, part in enumerate(parts)]
+        results = []
+        for f in tqdm(concurrent.futures.as_completed(futures), total=len(futures), desc="Parts completed"):
+            results.append(f.result())
+        assert all(results), "Some parts failed to process."
+
+    print("All parts processed successfully. Events saved in 'event_parts/' directory.")
+
+    # Merge all parts into a single DataFrame
+    all_events = []
+    for i in range(len(parts)):
+        part_events = pd.read_parquet(f"event_parts/part_{i}.parquet")
+        all_events.append(part_events)
+    all_events_df = pd.concat(all_events, ignore_index=True)
+    all_events_df.to_parquet("events_cpc_model_domain_3x3_2005_2024.parquet")
+
+    print("All parts merged into a single DataFrame.")
