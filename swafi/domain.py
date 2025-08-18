@@ -5,6 +5,7 @@ Class to define the spatial domain and cell IDs.
 import pickle
 import rasterio
 import numpy as np
+import pandas as pd
 import importlib.resources as pkg_resources
 from pathlib import Path
 
@@ -116,6 +117,26 @@ class Domain:
         y = self.cids['ys'][idx[0][0], idx[1][0]]
 
         return x, y
+
+    def get_coordinates_df(self):
+        """
+        Get a DataFrame with the coordinates of the cell IDs.
+
+        Returns
+        -------
+        pandas.DataFrame
+            A DataFrame with columns 'cid', 'x', 'y'.
+        """
+        cids = self.cids['ids_map'].flatten()
+        xs = self.cids['xs'].flatten()
+        ys = self.cids['ys'].flatten()
+
+        df = pd.DataFrame({'cid': cids, 'x': xs, 'y': ys})
+        df = df[df['cid'] != 0]  # Exclude zero CIDs
+        df = df[df['cid'].notnull()]
+        df = df.reset_index(drop=True)
+
+        return df
 
     def _load_cid_file(self, cid_file):
         """
