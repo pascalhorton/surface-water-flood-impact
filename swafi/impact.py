@@ -199,6 +199,7 @@ class Impact:
         # Transform the dates to a date without time
         df['e_start'] = pd.to_datetime(df['e_start']).dt.date
         df['e_end'] = pd.to_datetime(df['e_end']).dt.date
+
         # Remove lines with NaN values
         len_before = len(df)
         df.dropna(subset=self.features, inplace=True)

@@ -600,8 +600,14 @@ class PrecipitationArchive(Precipitation):
             return ts
 
         # Get the index/indices in the temporal index
-        idx_start = self.time_index.get_loc(t_start.normalize().replace(day=1))
-        idx_end = self.time_index.get_loc(t_end.normalize().replace(day=1))
+        try:
+            idx_start = self.time_index.get_loc(t_start.normalize().replace(day=1))
+        except KeyError:
+            idx_start = 0
+        try:
+            idx_end = self.time_index.get_loc(t_end.normalize().replace(day=1))
+        except KeyError:
+            idx_end = len(self.time_index) - 1
 
         data = None
         for idx in range(idx_start, idx_end + 1):
