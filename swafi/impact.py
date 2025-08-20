@@ -187,10 +187,12 @@ class Impact:
             The size of the set for testing proportionally to the length of the
             validation and testing split (default: 0.25)
         ref_date: str
-            The reference date to use for the precipitation extraction. Options are:
-            'middle' (default), 'end', 'i_max'. If 'middle', the date is the middle of the
-            event. if 'end', the date is the end of the event. If 'i_max', the date is the
-            date of the maximum precipitation intensity.
+            The reference date to use for the precipitation extraction when claim dates are missing (no damage class).
+            Options are:
+            - 'middle' (default): missing dates are filled with the mean of the event start and end date.
+            - 'end': missing dates are filled with the event end date.
+            - 'i_max': missing dates are filled with the date of the maximum precipitation intensity.
+            - 'i_max_only': only the date of the maximum precipitation intensity is used, claim dates are discarded.
         stratify_by: str
             The temporal unit to use for stratification. Options are: 'day' (default) or
             'month'. If 'day', the stratification is done based on days with any damages.
@@ -210,8 +212,12 @@ class Impact:
         elif ref_date == 'end':
             df.rename(columns={'date_claim': 'date'}, inplace=True)
             # Fill NaN values with the event end date
-            df['date'] = df['date'].fillna(df[['e_end']])
+            df['date'] = df['date'].fillna(df['e_end'])
         elif ref_date == 'i_max':
+            df.rename(columns={'date_claim': 'date'}, inplace=True)
+            # Fill NaN values with the date of the maximum precipitation intensity
+            df['date'] = pd.to_datetime(df['i_max_date'])
+        elif ref_date == 'i_max_only':
             df.rename(columns={'i_max_date': 'date'}, inplace=True)
             df['date'] = pd.to_datetime(df['date'])
         else:
