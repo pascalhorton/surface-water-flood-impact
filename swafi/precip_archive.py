@@ -18,7 +18,7 @@ config = Config()
 
 
 class PrecipitationArchive(Precipitation):
-    def __init__(self, year_start, year_end, cid_file=None):
+    def __init__(self, year_start=None, year_end=None, cid_file=None):
         """
         The generic PrecipitationArchive class.
         Must be netCDF files as relies on xarray.
@@ -36,14 +36,23 @@ class PrecipitationArchive(Precipitation):
 
         self.year_start = year_start
         self.year_end = year_end
-        self.time_index = pd.date_range(start=f'{year_start}-01-01',
-                                        end=f'{year_end}-12-31', freq='MS')
+        if year_start is not None or year_end is not None:
+            self.time_index = pd.date_range(start=f'{year_start}-01-01',
+                                            end=f'{year_end}-12-31', freq='MS')
         self.missing = None
 
         self.hash_tag = None
         self.pickle_files = []
         self.cid_time_series = None
         self.mem_nb_pixels = 64  # Number of pixels to process at once (per spatial dimension; e.g. 100x100)
+
+    def reset(self):
+        """
+        Reset the data.
+        """
+        self.hash_tag = None
+        self.pickle_files = []
+        self.cid_time_series = None
 
     def prepare_data(self):
         raise NotImplementedError("This method must be implemented in the child class.")
@@ -242,6 +251,45 @@ class PrecipitationArchive(Precipitation):
                     data = pickle.load(f_in)
                     data = data.sel({self.x_axis: x_axis, self.y_axis: y_axis})
 
+                    # If the array is smaller than the expected size, fill with NaN
+                    if data[self.precip_var].shape[1:] != (len(y_axis), len(x_axis)):
+                        expected_shape = (
+                            len(data[self.time_axis]),
+                            len(y_axis),
+                            len(x_axis)
+                        )
+
+                        print(f"Filling missing values for {t.year}-{t.month:02} "
+                              f"with NaN in {self.precip_var} variable. "
+                              f"Expected shape: {expected_shape}, "
+                              f"actual shape: {data[self.precip_var].shape}")
+
+                        # Create an array filled with np.nan of the expected shape
+                        filled_data = np.full(expected_shape, np.nan, dtype='float32')
+
+                        # Get the available x and y coordinates in the data
+                        data_x = data[self.x_axis].values
+                        data_y = data[self.y_axis].values
+
+                        # Find the intersection indices for x and y
+                        x_idx = [i for i, x in enumerate(x_axis) if x in data_x]
+                        y_idx = [i for i, y in enumerate(y_axis) if y in data_y]
+
+                        # Find the corresponding indices in the data
+                        data_x_i = [np.where(data_x == x_axis[i])[0][0] for i in x_idx]
+                        data_y_i = [np.where(data_y == y_axis[i])[0][0] for i in y_idx]
+
+                        # Place the available data into the correct positions
+                        for i in range(len(data_x_i)):
+                            for j in range(len(data_y_i)):
+                                x_i = data_x_i[i]
+                                y_i = data_y_i[j]
+                                filled_data[:, y_idx[j], x_idx[i]] = \
+                                    data[self.precip_var].values[:, y_i, x_i]
+
+                        # Assign the filled data back to the xarray DataArray
+                        data[self.precip_var] = filled_data
+
                     with open(tmp_filename, 'wb') as f_out:
                         pickle.dump(data, f_out)
 
@@ -292,6 +340,9 @@ class PrecipitationArchive(Precipitation):
         q99: np.array
             The 99th quantile (per pixel)
         """
+        # Add dimension to q99
+        q99 = np.expand_dims(q99, axis=0)
+
         for idx in tqdm(range(len(self.time_index)),
                         desc="Normalizing precipitation data"):
             original_file = self.pickle_files[idx]
@@ -309,8 +360,8 @@ class PrecipitationArchive(Precipitation):
                     data = pickle.load(f_in)
                     precip = data[self.precip_var]
                     min_precip = float(precip.min())  # Might not be 0 when log-transformed
-                    data[self.precip_var] = ((precip - min_precip) /
-                                             (q99 - min_precip)).astype('float32')
+
+                    data[self.precip_var] = ((precip - min_precip) / (q99 - min_precip)).astype('float32')
 
                     with open(tmp_filename, 'wb') as f_out:
                         pickle.dump(data, f_out)
@@ -322,11 +373,14 @@ class PrecipitationArchive(Precipitation):
         """
         Log-transform the precipitation data.
         """
+        if not self.hash_tag.startswith("log_"):
+            self.hash_tag = "log_" + self.hash_tag
+
         for idx in tqdm(range(len(self.time_index)),
                         desc="Log-transforming precipitation data"):
             original_file = self.pickle_files[idx]
             t = self.time_index[idx]
-            filename = (f"precip_{self.dataset_name.lower()}_log_{t.year}-"
+            filename = (f"precip_{self.dataset_name.lower()}_subdomain_{t.year}-"
                         f"{t.month:02}_{self.hash_tag}.pickle")
             tmp_filename = self.tmp_dir / filename
             self.pickle_files[idx] = tmp_filename
@@ -338,7 +392,7 @@ class PrecipitationArchive(Precipitation):
                 with open(original_file, 'rb') as f_in:
                     data = pickle.load(f_in)
                     precip = data[self.precip_var]
-                    data[self.precip_var] = (np.log(precip + 0.1)).astype('float32')
+                    data[self.precip_var] = (np.log1p(precip)).astype('float32')
 
                     with open(tmp_filename, 'wb') as f_out:
                         pickle.dump(data, f_out)
@@ -493,9 +547,12 @@ class PrecipitationArchive(Precipitation):
                     if data_chunk is None:
                         data_chunk = data_file
                     else:
-                        data_chunk = np.concatenate((data_chunk, data_file))
+                        data_chunk = np.concatenate((data_chunk, data_file), axis=0)
             except EOFError:
                 raise EOFError(f"Error: {original_file} is empty or corrupted.")
+            except ValueError as e:
+                raise ValueError(f"Error with file {original_file} at indices "
+                                 f"{i}:{i + x_size}, {j}:{j + y_size}: {e}")
 
         return data_chunk
 
@@ -543,8 +600,14 @@ class PrecipitationArchive(Precipitation):
             return ts
 
         # Get the index/indices in the temporal index
-        idx_start = self.time_index.get_loc(t_start.normalize().replace(day=1))
-        idx_end = self.time_index.get_loc(t_end.normalize().replace(day=1))
+        try:
+            idx_start = self.time_index.get_loc(t_start.normalize().replace(day=1))
+        except KeyError:
+            idx_start = 0
+        try:
+            idx_end = self.time_index.get_loc(t_end.normalize().replace(day=1))
+        except KeyError:
+            idx_end = len(self.time_index) - 1
 
         data = None
         for idx in range(idx_start, idx_end + 1):
@@ -593,8 +656,10 @@ class PrecipitationArchive(Precipitation):
 
         data['time'] = pd.to_datetime(data['time'])
 
-        for idx in tqdm(range(len(self.time_index)),
-                        desc="Generating pickle files for precipitation data"):
+        for idx in tqdm(
+                range(len(self.time_index)),
+                desc="Generating pickle files for precipitation data"
+        ):
             t = self.time_index[idx]
             filename = (f"precip_{self.dataset_name.lower()}_full_{t.year}-"
                         f"{t.month:02}_{self.hash_tag}.pickle")

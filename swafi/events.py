@@ -221,6 +221,7 @@ class Events:
     def reduce_number_of_negatives(self, nb_keep, random_state=None):
         """
         Reduce the number of events with target = 0.
+        Not used in the current version!
 
         Parameters
         ----------
@@ -242,8 +243,8 @@ class Events:
         positives = self.events[self.events['target'] > 0]
         self.events = pd.concat([positives, negatives])
 
-        # Sort the events by eid
-        self.events = self.events.sort_values(by=['eid'])
+        # Shuffle the events
+        self.events = self.events.sample(frac=1, random_state=random_state).reset_index(drop=True)
 
         print(f"Number of events after reduction: {len(self.events)}")
 

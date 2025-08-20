@@ -12,7 +12,7 @@ from pathlib import Path
 from sklearn.model_selection import train_test_split
 
 from .utils.verification import compute_confusion_matrix, print_classic_scores, \
-    assess_roc_auc, compute_score_binary, store_classic_scores
+    assess_roc_auc, store_classic_scores
 
 
 class Impact:
@@ -173,7 +173,7 @@ class Impact:
         self.df = self.df[(self.df['nb_claims'] == 0) |
                           (self.df['nb_claims'] >= threshold)]
 
-    def split_sample(self, valid_test_size=0.4, test_size=0.25):
+    def split_sample(self, valid_test_size=0.4, test_size=0.25, ref_date='middle', stratify_by='day'):
         """
         Split the sample into training, validation and test sets. The split is
         stratified on the target, i.e. the proportion of events with and without
@@ -186,6 +186,17 @@ class Impact:
         test_size: float
             The size of the set for testing proportionally to the length of the
             validation and testing split (default: 0.25)
+        ref_date: str
+            The reference date to use for the precipitation extraction when claim dates are missing (no damage class).
+            Options are:
+            - 'middle' (default): missing dates are filled with the mean of the event start and end date.
+            - 'end': missing dates are filled with the event end date.
+            - 'i_max': missing dates are filled with the date of the maximum precipitation intensity.
+            - 'i_max_only': only the date of the maximum precipitation intensity is used, claim dates are discarded.
+        stratify_by: str
+            The temporal unit to use for stratification. Options are: 'day' (default) or
+            'month'. If 'day', the stratification is done based on days with any damages.
+            If 'month', the stratification is done based on monthly damage ratios.
         """
         df = self.df.copy()
 
@@ -193,16 +204,29 @@ class Impact:
             self.df = self.df[(self.df['nb_claims'] == 0) |
                               (self.df['nb_claims'] >= self.options.min_nb_claims)]
 
-        # Rename the column date_claim to date
-        df.rename(columns={'date_claim': 'date'}, inplace=True)
-        # Transform the dates to a date without time
-        df['e_end'] = pd.to_datetime(df['e_end']).dt.date
-        df['date'] = pd.to_datetime(df['date']).dt.date
-        # Fill NaN values with the event end date (as date, not datetime)
-        df['date'] = df['date'].fillna(df['e_end'])
+        # Set the reference date for the precipitation extraction
+        if ref_date == 'middle':
+            df.rename(columns={'date_claim': 'date'}, inplace=True)
+            # Fill NaN values with the mean of the event start and end date
+            df['date'] = df['date'].fillna(df[['e_start', 'e_end']].mean(axis=1))
+        elif ref_date == 'end':
+            df.rename(columns={'date_claim': 'date'}, inplace=True)
+            # Fill NaN values with the event end date
+            df['date'] = df['date'].fillna(df['e_end'])
+        elif ref_date == 'i_max':
+            df.rename(columns={'date_claim': 'date'}, inplace=True)
+            # Fill NaN values with the date of the maximum precipitation intensity
+            df['date'] = pd.to_datetime(df['i_max_date'])
+        elif ref_date == 'i_max_only':
+            df.rename(columns={'i_max_date': 'date'}, inplace=True)
+            df['date'] = pd.to_datetime(df['date'])
+        else:
+            raise ValueError(f"Unknown reference date: {ref_date}. "
+                             f"Options are: 'middle', 'i_max'")
 
-        # Add a column to flag any claim (1 if there is a damage, 0 otherwise)
-        df['damage_class'] = (df['target'] > 0).astype(int)
+        # Transform the dates to a date without time
+        df['e_start'] = pd.to_datetime(df['e_start']).dt.date
+        df['e_end'] = pd.to_datetime(df['e_end']).dt.date
 
         # Remove lines with NaN values
         len_before = len(df)
@@ -210,30 +234,69 @@ class Impact:
         len_after = len(df)
         print(f"Number of NaN values removed: {len_before - len_after}")
 
-        # Group all events by date and damage class to split by date without mixing.
-        date_label_df = df.groupby('date')['damage_class'].max().reset_index()
+        if stratify_by == 'day':
+            # Add a column to flag any claim (1 if there is a damage, 0 otherwise)
+            df['damage_class'] = (df['target'] > 0).astype(int)
 
-        # Split by dates while stratifying on `damage_class`
-        train_dates, temp_dates = train_test_split(
-            date_label_df['date'],
-            test_size=valid_test_size,
-            stratify=date_label_df['damage_class'],
-            random_state=self.random_state,
-            shuffle=True
-        )
-        val_dates, test_dates = train_test_split(
-            temp_dates,
-            test_size=test_size,
-            stratify=date_label_df.loc[
-                date_label_df['date'].isin(temp_dates), 'damage_class'],
-            random_state=self.random_state,
-            shuffle=True
-        )
+            # Group all events by date and damage class to split by date without mixing.
+            date_label_df = df.groupby('date')['damage_class'].max().reset_index()
 
-        # Filter the original df to get train, validation, and test sets
-        train_df = df[df['date'].isin(train_dates)]
-        val_df = df[df['date'].isin(val_dates)]
-        test_df = df[df['date'].isin(test_dates)]
+            # Split by dates while stratifying on `damage_class`
+            train_dates, temp_dates = train_test_split(
+                date_label_df['date'],
+                test_size=valid_test_size,
+                stratify=date_label_df['damage_class'],
+                random_state=self.random_state,
+                shuffle=True
+            )
+            val_dates, test_dates = train_test_split(
+                temp_dates,
+                test_size=test_size,
+                stratify=date_label_df.loc[
+                    date_label_df['date'].isin(temp_dates), 'damage_class'],
+                random_state=self.random_state,
+                shuffle=True
+            )
+
+            # Filter the original df to get train, validation, and test sets
+            train_df = df[df['date'].isin(train_dates)]
+            val_df = df[df['date'].isin(val_dates)]
+            test_df = df[df['date'].isin(test_dates)]
+
+        elif stratify_by == 'month':
+            # Compute the ratio of events with and without damages on an annual basis
+            df['year'] = df['date'].dt.year
+            df['month'] = df['date'].dt.month
+            df['class'] = np.where(df['target'] > 0, 1, 0)
+            events_month = df.groupby(['year', 'month'])['class'].value_counts().unstack(fill_value=0)
+            events_month['pos_ratio'] = events_month[1] / (events_month[0] + events_month[1])
+            events_month['pos_ratio_ranks'] = events_month['pos_ratio'].rank(method='first')
+            events_month['ratio_class'] = pd.cut(events_month['pos_ratio_ranks'], bins=5, labels=False)
+
+            # Split with stratification on the ratio class
+            train_slct, tmp_slct = train_test_split(
+                events_month,
+                test_size=valid_test_size,
+                random_state=self.random_state,
+                shuffle=True,
+                stratify=events_month['ratio_class']
+            )
+            val_slct, test_slct = train_test_split(
+                tmp_slct,
+                test_size=test_size,
+                random_state=self.random_state,
+                shuffle=True,
+                stratify=tmp_slct['ratio_class']
+            )
+
+            # Filter the original df to get train, validation, and test sets
+            train_df = df[pd.MultiIndex.from_arrays([df['year'], df['month']]).isin(train_slct.index)]
+            val_df = df[pd.MultiIndex.from_arrays([df['year'], df['month']]).isin(val_slct.index)]
+            test_df = df[pd.MultiIndex.from_arrays([df['year'], df['month']]).isin(test_slct.index)]
+
+        else:
+            raise ValueError(f"Unknown stratification method: {stratify_by}. "
+                             f"Options are: 'day', 'month'")
 
         self.x_train = train_df[self.features].to_numpy()
         self.x_valid = val_df[self.features].to_numpy()
@@ -288,15 +351,24 @@ class Impact:
         self.x_valid = (self.x_valid - mean) / std
         self.x_test = (self.x_test - mean) / std
 
-    def compute_balanced_class_weights(self):
+    def compute_balanced_class_weights(self, factor_neg_reduction=1):
         """
         Compute balanced the class weights.
+
+        Parameters
+        ----------
+        factor_neg_reduction: float
+            The factor to reduce the number of negative events.
         """
         if self.target_type != 'occurrence':
             raise NotImplemented("Class weights are only available for occurrence")
 
         n_classes = len(np.unique(self.y_train))
         self.weights = len(self.y_train) / (n_classes * np.bincount(self.y_train))
+
+        # Reduce the number of negative events
+        if factor_neg_reduction > 1:
+            self.weights[1] /= factor_neg_reduction
 
     def compute_corrected_class_weights(self, weight_denominator):
         """
@@ -383,19 +455,22 @@ class Impact:
         df_res = self._assess_model(self.x_test, self.y_test, 'test', df_res)
 
         if save_results:
-            output_dir = self.config.output_dir
-            date_tag = pd.Timestamp.now().strftime('%Y-%m-%d_%H%M%S')
-            dataset = self.options.dataset
-            seed_tag = ''
-            if self.random_state is not None:
-                seed_tag = f'_seed_{self.random_state}'
-            base_name = f'results_{dataset}_{file_tag}{seed_tag}_{date_tag}'
-            file_name = f'{output_dir}/{base_name}.csv'
-            df_res.to_csv(file_name, index=False)
-            file_name_options = f'{output_dir}/{base_name}_options.csv'
-            df_options = pd.DataFrame(self.options.__dict__.items(), columns=['option', 'value'])
-            df_options.to_csv(file_name_options, index=False)
-            print(f"Results saved to {file_name}")
+            self._save_results_csv(df_res, file_tag)
+
+    def _save_results_csv(self, df_res, file_tag):
+        output_dir = self.config.output_dir
+        date_tag = pd.Timestamp.now().strftime('%Y-%m-%d_%H%M%S')
+        dataset = self.options.dataset
+        seed_tag = ''
+        if self.random_state is not None:
+            seed_tag = f'_seed_{self.random_state}'
+        base_name = f'results_{dataset}_{file_tag}{seed_tag}_{date_tag}'
+        file_name = f'{output_dir}/{base_name}.csv'
+        df_res.to_csv(file_name, index=False)
+        file_name_options = f'{output_dir}/{base_name}_options.csv'
+        df_options = pd.DataFrame(self.options.__dict__.items(), columns=['option', 'value'])
+        df_options.to_csv(file_name_options, index=False)
+        print(f"Results saved to {file_name}")
 
     def _assess_model(self, x, y, period_name, df_res):
         """
@@ -462,15 +537,14 @@ class Impact:
         if self.options.use_static_attributes:
             if not self.options.use_all_static_attributes:
                 self.tabular_features['terrain'] = [
-                    'dem_010m_curv_plan_mean', 'dem_010m_curv_plan_std',
-                    'dem_010m_slope_min', 'dem_010m_slope_median']
+                    'dem_050m_curv_plan_median', 'dem_050m_slope_min',
+                    'dem_100m_curv_plan_median', 'dem_100m_slope_min',
+                    'dem_250m_curv_plan_median', 'dem_250m_slope_min']
                 self.tabular_features['swf_map'] = [
                     'area_low', 'area_med', 'area_high',
-                    'n_buildings_high', 'n_buildings']
+                    'n_buildings_low', 'n_buildings_med', 'n_buildings_high']
                 self.tabular_features['flowacc'] = [
-                    'dem_010m_flowacc_max', 'dem_010m_flowacc_median',
-                    'dem_050m_flowacc_max', 'dem_050m_flowacc_median',
-                    'dem_100m_flowacc_max', 'dem_100m_flowacc_median']
+                    'dem_100m_flowacc_median', 'dem_250m_flowacc_median']
                 self.tabular_features['twi'] = [
                     'dem_010m_twi_max', 'dem_010m_twi_median']
                 self.tabular_features['land_cover'] = [

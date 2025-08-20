@@ -28,7 +28,7 @@ class CombiPrecip(PrecipitationArchive):
         ('2022-10-17', '2022-10-23'),
     ]
 
-    def __init__(self, year_start, year_end, cid_file=None):
+    def __init__(self, year_start=None, year_end=None, cid_file=None):
         """
         The Precipitation class for CombiPrecip data. Must be netCDF files.
 
@@ -44,9 +44,9 @@ class CombiPrecip(PrecipitationArchive):
         super().__init__(year_start, year_end, cid_file)
         self.dataset_name = "CombiPrecip"
 
-    def prepare_data(self, data_path=None, resolution=1, time_step=1):
+    def open_files(self, data_path=None, resolution=1, time_step=1):
         """
-        Load the precipitation data from the given path.
+        Open the precipitation data from the given path.
 
         Parameters
         ----------
@@ -67,8 +67,57 @@ class CombiPrecip(PrecipitationArchive):
         self.time_step = time_step
 
         files = sorted(glob(f"{self.data_path}/*.nc"))
-        data = xr.open_mfdataset(files, parallel=False, chunks={'time': 1000})
+        self._check_files(files)
+        data = xr.open_mfdataset(
+            files,
+            parallel=False,
+            chunks={'time': 1000}
+        )
         data = data.rename_vars({'CPC': 'precip'})
         data = data.rename({'REFERENCE_TS': 'time'})
 
+        return data
+
+    def prepare_data(self, data_path=None, resolution=1, time_step=1):
+        """
+        Load the precipitation data from the given path.
+
+        Parameters
+        ----------
+        data_path: str|None
+            The path to the data files
+        resolution: int
+            The resolution [km] of the precipitation data (default: 1)
+        time_step: int
+            The time step [h] of the precipitation data (default: 1)
+        """
+        data = self.open_files(data_path, resolution, time_step)
         self._generate_pickle_files(data)
+
+    def _check_files(self, files):
+        """
+        The original file are named such as: CPC_00060_H_20221128000000_20221204230000.nc
+        Here, we check that there is no overlapping period between files (not handled
+        by xarray) using the dates in the file names.
+
+        Parameters
+        ----------
+        files: list
+            The list of files
+
+        Raises
+        ------
+        ValueError
+            If there is an overlapping period between files
+        """
+        for i in range(1, len(files)):
+            file1 = files[i-1]
+            file2 = files[i]
+            date1 = file1.split('_')[-1]
+            date2 = file2.split('_')[-2]
+            if date1 >= date2:
+                filename1 = file1.split('/')[-1]
+                filename1 = filename1.split('\\')[-1]
+                filename2 = file2.split('/')[-1]
+                filename2 = filename2.split('\\')[-1]
+                raise ValueError(f"Overlapping period between {filename1} and {filename2}")

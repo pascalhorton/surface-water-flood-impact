@@ -83,18 +83,38 @@ class ModelCnn(models.Model):
         if self.input_3d_size is not None:
             input_3d = layers.Input(shape=self.input_3d_size, name='input_3d')
 
-            # 3D convolution
-            x = input_3d
+            if not self.options.use_3d_cnn:
+                # If 3D CNN is not used, remove the last dimension (channels)
+                x = layers.Reshape(
+                    (self.input_3d_size[0], self.input_3d_size[1], self.input_3d_size[2]),
+                    name='reshape_input_3d'
+                )(input_3d)
+            else:
+                x = input_3d
+
+            # Convolution
             for i in range(self.options.nb_conv_blocks):
                 nb_filters = self.options.nb_filters * (2 ** i)
-                kernel_size = (self.options.kernel_size_spatial,
-                               self.options.kernel_size_spatial,
-                               self.options.kernel_size_temporal)
-                pool_size = (self.options.pool_size_spatial,
-                             self.options.pool_size_spatial,
-                             self.options.pool_size_temporal)
-                x = self.conv3d_block(x, i, filters=nb_filters, kernel_size=kernel_size,
-                                      pool_size=pool_size)
+                if self.options.use_3d_cnn:
+                    kernel_size = (self.options.kernel_size_spatial,
+                                   self.options.kernel_size_spatial,
+                                   self.options.kernel_size_temporal)
+                    pool_size = (self.options.pool_size_spatial,
+                                 self.options.pool_size_spatial,
+                                 self.options.pool_size_temporal)
+                    x = self.conv3d_block(
+                        x, i,
+                        filters=nb_filters,
+                        kernel_size=kernel_size,
+                        pool_size=pool_size
+                    )
+                else:
+                    x = self.conv2d_block(
+                        x, i,
+                        filters=nb_filters,
+                        kernel_size=self.options.kernel_size_spatial,
+                        pool_size=self.options.pool_size_spatial
+                    )
 
             # Flatten
             x = layers.Flatten()(x)
@@ -110,6 +130,8 @@ class ModelCnn(models.Model):
         for i in range(self.options.nb_dense_layers):
             if self.options.nb_dense_units_decreasing:
                 nb_units = self.options.nb_dense_units // (2 ** i)
+                # Keep at least 4 units
+                nb_units = max(nb_units, 4)
             else:
                 nb_units = self.options.nb_dense_units
             x = layers.Dense(nb_units, activation=self.options.inner_activation_dense,
@@ -201,6 +223,79 @@ class ModelCnn(models.Model):
         if self.options.dropout_rate_cnn > 0:
             if self.options.use_spatial_dropout and x.shape[1] > 1 and x.shape[2] > 1:
                 x = layers.SpatialDropout3D(
+                    rate=self.options.dropout_rate_cnn,
+                    name=f'spatial_dropout_cnn_{i}',
+                )(x)
+            else:
+                x = layers.Dropout(
+                    rate=self.options.dropout_rate_cnn,
+                    name=f'dropout_cnn_{i}',
+                )(x)
+
+        return x
+
+    def conv2d_block(self, x, i, filters, kernel_size=3,
+                     initializer='he_normal', activation='default',
+                     pool_size=2):
+        """
+        2D convolution block.
+
+        Parameters
+        ----------
+        x: layers.Layer
+            The input layer.
+        i: int
+            The index of the block.
+        filters: int
+            The number of filters.
+        kernel_size: int
+            The kernel size (default: 3).
+        initializer: str
+            The initializer.
+        activation: str
+            The activation function.
+        pool_size: int
+            The pool size for the 2D max pooling (default: 2).
+
+        Returns
+        -------
+        The output layer.
+        """
+        if activation == 'default':
+            activation = self.options.inner_activation_cnn
+
+        x = layers.Conv2D(
+            filters=filters,
+            kernel_size=(kernel_size, kernel_size),
+            strides=(1, 1),
+            padding='same',
+            activation=activation,
+            kernel_initializer=initializer,
+            name=f'conv2d_{i}a',
+        )(x)
+        x = layers.Conv2D(
+            filters=filters,
+            kernel_size=(kernel_size, kernel_size),
+            strides=(1, 1),
+            padding='same',
+            activation=activation,
+            kernel_initializer=initializer,
+            name=f'conv2d_{i}b',
+        )(x)
+
+        if self.options.use_batchnorm_cnn:
+            x = layers.BatchNormalization(
+                name=f'batchnorm_cnn_{i}'
+            )(x)
+
+        x = layers.MaxPooling2D(
+            pool_size=pool_size,
+            name=f'maxpool2d_cnn_{i}',
+        )(x)
+
+        if self.options.dropout_rate_cnn > 0:
+            if self.options.use_spatial_dropout and x.shape[1] > 1 and x.shape[2] > 1:
+                x = layers.SpatialDropout2D(
                     rate=self.options.dropout_rate_cnn,
                     name=f'spatial_dropout_cnn_{i}',
                 )(x)

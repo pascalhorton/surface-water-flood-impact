@@ -2,7 +2,11 @@
 Train a deep learning model to predict the occurrence of damages.
 """
 
+import random
 import time
+import keras
+import numpy as np
+import tensorflow as tf
 import pandas as pd
 
 from swafi.config import Config
@@ -26,8 +30,14 @@ def main():
     options.print_options()
     assert options.is_ok()
 
-    year_start = None
-    year_end = None
+    # Clear session and set the seed
+    keras.backend.clear_session()
+    if options.random_state is not None:
+        random.seed(options.random_state)
+        np.random.seed(options.random_state)
+        tf.random.set_seed(options.random_state)
+        keras.utils.set_random_seed(options.random_state)
+
     if options.dataset == 'mobiliar':
         year_start = config.get('YEAR_START_MOBILIAR')
         year_end = config.get('YEAR_END_MOBILIAR')
@@ -42,14 +52,9 @@ def main():
     events = load_events_from_pickle(filename=events_filename)
 
     # Remove dates where the precipitation data is not available
-    precip_days_before = max(options.precip_daily_days_nb,
-                             options.precip_hf_days_before)
-    precip_days_after = options.precip_hf_days_after
     for date_range in MISSING_DATES:
-        remove_start = (pd.to_datetime(date_range[0])
-                        - pd.Timedelta(days=precip_days_before + 1))
-        remove_end = (pd.to_datetime(date_range[1])
-                      + pd.Timedelta(days=precip_days_after + 1))
+        remove_start = (pd.to_datetime(date_range[0]) - pd.Timedelta(days=4))
+        remove_end = (pd.to_datetime(date_range[1]) + pd.Timedelta(days=2))
         events.remove_period(remove_start, remove_end)
 
     precip_hf = None
@@ -65,15 +70,14 @@ def main():
         tx = _setup_model(options, events, precip_hf, precip_daily)
         tx.fit(dir_plots=config.get('OUTPUT_DIR'),
                tag=options.run_name, show_plots=SHOW_PLOTS)
-        tx.assess_model_on_all_periods()
+        tx.assess_model_on_all_periods(save_results=True, file_tag=f'cnn_{tx.options.run_name}')
         if SAVE_MODEL:
             tx.save_model(dir_output=config.get('OUTPUT_DIR'), base_name='model_tx')
             print(f"Model saved in {config.get('OUTPUT_DIR')}")
 
     else:
-        tx = optimize_model_with_optuna(options, events, precip_hf, precip_daily,
-                                         dir_plots=config.get('OUTPUT_DIR'))
-        tx.assess_model_on_all_periods()
+        optimize_model_with_optuna(options, events, precip_hf, precip_daily,
+                                   dir_plots=config.get('OUTPUT_DIR'))
 
 
 def _setup_model(options, events, precip_hf, precip_daily):
@@ -87,7 +91,7 @@ def _setup_model(options, events, precip_hf, precip_daily):
         tx.load_features(tx.options.simple_feature_classes)
     tx.split_sample()
     tx.reduce_negatives_for_training(tx.options.factor_neg_reduction)
-    tx.compute_balanced_class_weights()
+    tx.compute_balanced_class_weights(tx.options.factor_neg_reduction)
     tx.compute_corrected_class_weights(
         weight_denominator=tx.options.weight_denominator)
     return tx
@@ -131,18 +135,18 @@ def optimize_model_with_optuna(options, events, precip_hf=None, precip_daily=Non
         options_c = options.copy()
         options_c.generate_for_optuna(trial)
         options_c.print_options(show_optuna_params=True)
+        precip_hf.reset()
+        precip_daily.reset()
         tx_trial = _setup_model(options_c, events, precip_hf, precip_daily)
 
-        start_time = time.time()
-
         # Fit the model
-        tx_trial.fit(do_plot=False, silent=True)
-
+        start_time = time.time()
+        tx_trial.fit(do_plot=False)
         end_time = time.time()
         print(f"Model fitting took {end_time - start_time:.2f} seconds")
 
         # Assess the model
-        score = tx_trial.compute_f1_score(tx_trial.dg_val)
+        score = tx_trial.compute_f1_score_full_data(tx_trial.dg_val)
 
         return score
 
@@ -156,14 +160,6 @@ def optimize_model_with_optuna(options, events, precip_hf=None, precip_daily=Non
     print("  Params: ")
     for key, value in best_trial.params.items():
         print(f"    {key}: {value}")
-
-    # Fit the model with the best parameters
-    options_best = options.copy()
-    options_best.generate_for_optuna(best_trial)
-    tx = _setup_model(options_best, events, precip_hf, precip_daily)
-    tx.fit(dir_plots=dir_plots, tag='best_optuna_' + tx.options.run_name)
-
-    return tx
 
 
 if __name__ == '__main__':

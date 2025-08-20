@@ -4,12 +4,13 @@ It is not meant to be used directly, but to be inherited by other classes.
 """
 from .impact import Impact
 from .utils.verification import compute_confusion_matrix, print_classic_scores, \
-    assess_roc_auc, compute_score_binary
+    assess_roc_auc, store_classic_scores
 
-import hashlib
-import pickle
+import os
+import random
 import keras
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 import tensorflow as tf
 import datetime
@@ -41,6 +42,7 @@ class ImpactDl(Impact):
     def __init__(self, events, options, reload_trained_models=False):
         super().__init__(events, options=options)
         self.reload_trained_models = reload_trained_models
+        self._set_random_state()
 
         self.precipitation_hf = None
         self.precipitation_daily = None
@@ -92,20 +94,17 @@ class ImpactDl(Impact):
         silent: bool
             Hide model summary and training progress.
         """
+        self._set_random_state()
         self._create_data_generator_train()
         self._create_data_generator_valid()
         self._define_model()
 
-        # Early stopping
-        callback = keras.callbacks.EarlyStopping(
-            monitor='val_loss', patience=20, restore_best_weights=True)
-
-        # Clear session and set the seed
-        keras.backend.clear_session()
-        if self.options.random_state is not None:
-            np.random.seed(self.options.random_state)
-            tf.random.set_seed(self.options.random_state)
-            keras.utils.set_random_seed(self.options.random_state)
+        # Early stopping callbacks
+        early_stopping_loss = keras.callbacks.EarlyStopping(
+            monitor='val_loss', patience=40, restore_best_weights=True)
+        early_stopping_csi = CustomEarlyStopping(
+            monitor='val_csi', patience=30, min_value=0.00001)
+        callbacks = [early_stopping_loss, early_stopping_csi]
 
         # Define the optimizer
         optimizer = self._define_optimizer(
@@ -135,7 +134,7 @@ class ImpactDl(Impact):
             self.dg_train,
             epochs=self.options.epochs,
             validation_data=self.dg_val,
-            callbacks=[callback],
+            callbacks=callbacks,
             verbose=verbose,
             shuffle=False
         )
@@ -155,23 +154,52 @@ class ImpactDl(Impact):
         """
         self.factor_neg_reduction = factor
 
-    def assess_model_on_all_periods(self):
+    def assess_model_on_all_periods(self, save_results=False, file_tag=''):
         """
         Assess the model on all periods.
-        """
-        print("Assessing the model on all periods.")
-        self._create_data_generator_test()
-        self._assess_model_dg(self.dg_train, 'Train period')
-        self._assess_model_dg(self.dg_val, 'Validation period')
-        self._assess_model_dg(self.dg_test, 'Test period')
 
-    def _assess_model_dg(self, dg, period_name):
+        Parameters
+        ----------
+        save_results: bool
+            Save the results to a file.
+        file_tag: str
+            The tag to add to the file name.
+        """
+        print("Creating test data generator.")
+        self._create_data_generator_test()  # Implement this method in the child class
+
+        print("Assessing the model on all periods.")
+        df_res = pd.DataFrame(columns=['split'])
+        df_res = self._assess_model_dg(self.dg_train, 'train', df_res)
+        df_res = self._assess_model_dg(self.dg_val, 'valid', df_res)
+        df_res = self._assess_model_dg(self.dg_test, 'test', df_res)
+
+        if save_results:
+            self._save_results_csv(df_res, file_tag)
+
+    def _set_random_state(self):
+        """
+        Set the random state.
+        """
+        # Clear session and set the seed
+        keras.backend.clear_session()
+        if self.options.random_state is not None:
+            os.environ['PYTHONHASHSEED'] = str(self.options.random_state)
+            random.seed(self.options.random_state)
+            np.random.seed(self.options.random_state)
+            tf.random.set_seed(self.options.random_state)
+            keras.utils.set_random_seed(self.options.random_state)
+
+    def _assess_model_dg(self, dg, period_name, df_res):
         """
         Assess the model on a single period.
         """
         if self.model is None:
             raise ValueError("Model not defined")
 
+        # Changing the batch size to speed up the evaluation
+        batch_size_orig = dg.batch_size
+        dg.batch_size = 1024
         n_batches = dg.get_number_of_batches_for_full_dataset()
 
         # Predict
@@ -186,24 +214,36 @@ class ImpactDl(Impact):
             y_pred_batch = y_pred_batch.squeeze()
             all_pred.append(y_pred_batch)
 
+        dg.batch_size = batch_size_orig
+
         # Concatenate predictions and obs from all batches
         y_pred = np.concatenate(all_pred, axis=0)
         y_obs = np.concatenate(all_obs, axis=0)
 
         print(f"\nSplit: {period_name}")
 
+        df_tmp = pd.DataFrame(columns=df_res.columns)
+        df_tmp['split'] = [period_name]
+
         # Compute the scores
         if self.target_type == 'occurrence':
             y_pred_class = (y_pred > 0.5).astype(int)
             tp, tn, fp, fn = compute_confusion_matrix(y_obs, y_pred_class)
             print_classic_scores(tp, tn, fp, fn)
-            assess_roc_auc(y_obs, y_pred)
+            store_classic_scores(tp, tn, fp, fn, df_tmp)
+            roc = assess_roc_auc(y_obs, y_pred)
+            df_tmp['ROC_AUC'] = [roc]
         else:
             rmse = np.sqrt(np.mean((y_obs - y_pred) ** 2))
             print(f"RMSE: {rmse}")
+            df_tmp['RMSE'] = [rmse]
         print(f"----------------------------------------")
 
-    def compute_f1_score(self, dg):
+        df_res = pd.concat([df_res, df_tmp])
+
+        return df_res
+
+    def compute_f1_score_full_data(self, dg):
         """
         Compute the F1 score on the given set.
 
@@ -217,14 +257,22 @@ class ImpactDl(Impact):
         float
             The F1 score.
         """
-        n_batches = dg.__len__()
-        epsilon = 1e-7  # a small constant to avoid division by zero
+        if self.model is None:
+            raise ValueError("Model not defined")
+
+        if self.target_type != 'occurrence':
+            raise ValueError("F1 score is only available for occurrence models.")
+
+        # Changing the batch size to speed up the evaluation
+        batch_size_orig = dg.batch_size
+        dg.batch_size = 1024
+        n_batches = dg.get_number_of_batches_for_full_dataset()
 
         # Predict
         all_pred = []
         all_obs = []
         for i in range(n_batches):
-            x, y = dg.__getitem__(i)
+            x, y = dg.get_ordered_batch_from_full_dataset(i)
             all_obs.append(y)
             y_pred_batch = self.model.predict(x, verbose=0)
 
@@ -232,12 +280,16 @@ class ImpactDl(Impact):
             y_pred_batch = y_pred_batch.squeeze()
             all_pred.append(y_pred_batch)
 
+        dg.batch_size = batch_size_orig
+
         # Concatenate predictions and obs from all batches
         y_pred = np.concatenate(all_pred, axis=0)
         y_obs = np.concatenate(all_obs, axis=0)
 
+        # Compute the score
         y_pred_class = (y_pred > 0.5).astype(int)
         tp, tn, fp, fn = compute_confusion_matrix(y_obs, y_pred_class)
+        epsilon = 1e-7  # a small constant to avoid division by zero
         f1 = 2 * tp / (2 * tp + fp + fn + epsilon)
 
         return f1
@@ -410,3 +462,26 @@ class ImpactDl(Impact):
                     f'{now.strftime("%Y-%m-%d_%H-%M-%S")}.png')
         if show_plots:
             plt.show()
+
+
+# Define a custom early stopping callback to stop when the CSI is almost 0
+class CustomEarlyStopping(keras.callbacks.Callback):
+    def __init__(self, monitor='val_csi', patience=30, min_value=0.00001):
+        super(CustomEarlyStopping, self).__init__()
+        self.monitor = monitor
+        self.patience = patience
+        self.min_value = min_value
+        self.wait = 0
+
+    def on_epoch_end(self, epoch, logs=None):
+        current = logs.get(self.monitor)
+        if current is None:
+            return
+
+        if current < self.min_value:
+            self.wait += 1
+            if self.wait >= self.patience:
+                self.model.stop_training = True
+                print(f"\nEpoch {epoch + 1}: early stopping due to {self.monitor} falling below {self.min_value} for {self.patience} consecutive epochs.")
+        else:
+            self.wait = 0

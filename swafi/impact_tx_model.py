@@ -140,12 +140,12 @@ class ModelTransformer(models.Model):
                 daily_prec_size=self.input_daily_prec_size,
                 high_freq_prec_size=self.input_high_freq_prec_size,
                 embeddings_activation=embeddings_activation,
-                embeddings_2_layers=self.options.embeddings_2_layers
+                embeddings_2_layers=self.options.embeddings_2_layers,
+                use_flag_embedding=self.options.use_precip_type_embedding
             )(x)
 
             # Project the attributes input into the model dimension
-            single_attributes_vector = True
-            if single_attributes_vector:
+            if self.options.use_single_attributes_vector:
                 x_attributes = layers.Dense(
                     self.options.tx_model_dim,
                     name=f'dense_proj_{int(1e6 * np.random.uniform())}',
@@ -208,6 +208,8 @@ class ModelTransformer(models.Model):
         for i in range(self.options.nb_dense_layers):
             if self.options.nb_dense_units_decreasing:
                 nb_units = self.options.nb_dense_units // (2 ** i)
+                # Keep at least 4 units
+                nb_units = max(nb_units, 4)
             else:
                 nb_units = self.options.nb_dense_units
             x = layers.Dense(nb_units, activation=self.options.inner_activation_dense,
@@ -340,15 +342,17 @@ class AddLearnedPositionalEmbedding(layers.Layer):
     learned positional embedding layer.
     """
     def __init__(self, model_dim, daily_prec_size, high_freq_prec_size,
-                 embeddings_activation, embeddings_2_layers):
+                 embeddings_activation, embeddings_2_layers, use_flag_embedding=True):
         super().__init__()
         self.model_dim = model_dim
         self.daily_prec_size = daily_prec_size
         self.high_freq_prec_size = high_freq_prec_size
         self.embeddings_activation = embeddings_activation
         self.embeddings_2_layers = embeddings_2_layers
+        self.use_flag_embedding = use_flag_embedding
         self.temporal_embedding = self.get_temporal_embedding()
-        self.flag_embedding = self.get_flag_embedding()
+        if self.use_flag_embedding:
+            self.flag_embedding = self.get_flag_embedding()
 
     def get_temporal_embedding(self):
         """
@@ -431,9 +435,13 @@ class AddLearnedPositionalEmbedding(layers.Layer):
         The output tensor.
         """
         t_emb = self.temporal_embedding
-        flags = self.flag_embedding
 
-        embedding = t_emb + flags
+        if self.use_flag_embedding:
+            flags = self.flag_embedding
+            embedding = t_emb + flags
+        else:
+            embedding = t_emb
+
         target_shape = tf.shape(x)
         embedding = tf.broadcast_to(embedding, target_shape)
 

@@ -51,5 +51,4 @@ class PrecipitationForecast(Precipitation):
         """
         Log-transform the precipitation data.
         """
-        # Use (np.log(precip + 0.1)).astype('float32')
         raise NotImplementedError("This method must be implemented.")

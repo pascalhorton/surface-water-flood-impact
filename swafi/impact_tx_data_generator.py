@@ -200,6 +200,9 @@ class ImpactTxDataGenerator(ImpactDlDataGenerator):
         """Generate one batch of data"""
         idxs = self.idxs[i * self.batch_size:(i + 1) * self.batch_size]
 
+        return self._generate_batch(idxs)
+
+    def _generate_batch(self, idxs):
         # Select the events
         y = self.y[idxs]
 
@@ -209,7 +212,7 @@ class ImpactTxDataGenerator(ImpactDlDataGenerator):
 
         # Select the high-frequency precipitation data
         if self.X_precip_hf is not None:
-            x_precip_hf = np.zeros((self.batch_size,
+            x_precip_hf = np.zeros((len(idxs),
                                     self.get_precip_hf_length()))
 
             for i_b, event in enumerate(self.event_props[idxs]):
@@ -217,7 +220,7 @@ class ImpactTxDataGenerator(ImpactDlDataGenerator):
 
         # Select the daily precipitation data
         if self.X_precip_daily is not None:
-            x_precip_daily = np.zeros((self.batch_size,
+            x_precip_daily = np.zeros((len(idxs),
                                        self.get_precip_daily_length()))
 
             for i_b, event in enumerate(self.event_props[idxs]):

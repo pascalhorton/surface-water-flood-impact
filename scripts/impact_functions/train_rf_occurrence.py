@@ -35,7 +35,7 @@ def main():
     if not options.optimize_with_optuna:
         rf = _setup_model(options, events)
         rf.fit()
-        rf.assess_model_on_all_periods()
+        rf.assess_model_on_all_periods(save_results=True, file_tag=f'rf_{rf.options.run_name}')
         rf.plot_feature_importance(tag='feature_importance_' + rf.options.run_name,
                                    dir_output=config.get('OUTPUT_DIR'))
         if SAVE_MODEL:
@@ -44,14 +44,7 @@ def main():
             print(f"Model saved in {config.get('OUTPUT_DIR')}")
 
     else:
-        rf = optimize_model_with_optuna(options, events, dir_plots=config.get('OUTPUT_DIR'))
-        rf.assess_model_on_all_periods()
-        rf.plot_feature_importance(tag='feature_importance_optuna_' + rf.options.run_name,
-                                   dir_output=config.get('OUTPUT_DIR'))
-        if SAVE_MODEL:
-            rf.save_model(dir_output=config.get('OUTPUT_DIR'),
-                          base_name='model_rf_optuna_' + rf.options.run_name)
-            print(f"Model saved in {config.get('OUTPUT_DIR')}")
+        optimize_model_with_optuna(options, events, dir_plots=config.get('OUTPUT_DIR'))
 
 
 def _setup_model(options, events):
@@ -127,13 +120,6 @@ def optimize_model_with_optuna(options, events, dir_plots=None):
     for key, value in best_trial.params.items():
         print(f"    {key}: {value}")
 
-    # Fit the model with the best parameters
-    options_best = options.copy()
-    options_best.generate_for_optuna(best_trial)
-    rf = _setup_model(options_best, events)
-    rf.fit()
-
-    return rf
 
 if __name__ == '__main__':
     main()

@@ -107,7 +107,7 @@ class ImpactDlOptions(ImpactBasicOptions):
             '--batch-size', type=int, default=64,
             help='The batch size')
         self.parser.add_argument(
-            '--epochs', type=int, default=200,
+            '--epochs', type=int, default=300,
             help='The number of epochs')
         self.parser.add_argument(
             '--learning-rate', type=float, default=0.001,
@@ -119,16 +119,16 @@ class ImpactDlOptions(ImpactBasicOptions):
             '--use-batchnorm-dense', action=argparse.BooleanOptionalAction,
             default=True, help='Use batch normalization for the dense layers')
         self.parser.add_argument(
-            '--nb-dense-layers', type=int, default=5,
+            '--nb-dense-layers', type=int, default=4,
             help='The number of dense layers')
         self.parser.add_argument(
-            '--nb-dense-units', type=int, default=256,
+            '--nb-dense-units', type=int, default=1024,
             help='The number of dense units')
         self.parser.add_argument(
-            '--dense-units-decreasing', action=argparse.BooleanOptionalAction,
-            default=False, help='The number of dense units should decrease')
+            '--nb-dense-units-decreasing', action=argparse.BooleanOptionalAction,
+            default=True, help='The number of dense units should decrease')
         self.parser.add_argument(
-            '--inner-activation-dense', type=str, default='relu',
+            '--inner-activation-dense', type=str, default='leaky_relu',
             help='The inner activation function for the dense layers')
 
     def _parse_dl_args(self, args):
@@ -150,7 +150,7 @@ class ImpactDlOptions(ImpactBasicOptions):
         self.use_batchnorm_dense = args.use_batchnorm_dense
         self.nb_dense_layers = args.nb_dense_layers
         self.nb_dense_units = args.nb_dense_units
-        self.nb_dense_units_decreasing = args.dense_units_decreasing
+        self.nb_dense_units_decreasing = args.nb_dense_units_decreasing
         self.inner_activation_dense = args.inner_activation_dense
 
     def _generate_for_optuna(self, trial, hp_to_optimize):
@@ -200,8 +200,8 @@ class ImpactDlOptions(ImpactBasicOptions):
         if 'inner_activation_dense' in hp_to_optimize:
             self.inner_activation_dense = trial.suggest_categorical(
                 'inner_activation_dense',
-                ['relu', 'silu', 'elu', 'selu', 'leaky_relu',
-                 'linear', 'gelu', 'softplus'])
+                ['relu', 'leaky_relu', 'silu', 'hard_silu', 'elu', 'selu',
+                 'gelu', 'softplus', 'mish'])
 
         return True
 

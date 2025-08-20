@@ -4,6 +4,7 @@ Class to generate the data for the CNN model.
 from .impact_dl_data_generator import ImpactDlDataGenerator
 
 import numpy as np
+import pandas as pd
 
 
 class ImpactCnnDataGenerator(ImpactDlDataGenerator):
@@ -97,6 +98,7 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
         self.X_precip = x_precip
         self.X_dem = x_dem
 
+        self._adapt_event_times()
         self._compute_predictor_statistics()
 
         if transform_static == 'standardize':
@@ -143,6 +145,17 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
         if self.X_dem is not None:
             self.X_dem = (self.X_dem - self.min_dem) / (self.max_dem - self.min_dem)
 
+    def _adapt_event_times(self):
+        """
+        Adapt the event times to the precipitation time step.
+        """
+        if self.X_precip is None:
+            return
+
+        time_step = f'{self.precip_time_step}h'
+        dates = pd.to_datetime(self.event_props[:, 0])
+        self.event_props[:, 0] = dates.round(time_step)
+
     def _compute_predictor_statistics(self):
         self._compute_static_predictor_statistics()
 
@@ -179,6 +192,9 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
         """Generate one batch of data"""
         idxs = self.idxs[i * self.batch_size:(i + 1) * self.batch_size]
 
+        return self._generate_batch(idxs)
+
+    def _generate_batch(self, idxs):
         # Select the events
         y = self.y[idxs]
 
@@ -188,7 +204,7 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
         # Select the 3D data
         if self.X_precip is not None:
             pixels_nb = int(self.precip_window_size / self.precip_resolution)
-            x_3d = np.zeros((self.batch_size,
+            x_3d = np.zeros((len(idxs),
                              pixels_nb,
                              pixels_nb,
                              self.get_third_dim_size()))
@@ -248,7 +264,7 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
             x_dem_ev = np.expand_dims(x_dem_ev, axis=-1)
 
             # Concatenate
-            x_3d_ev = np.concatenate([x_dem_ev, x_precip_ev], axis=-1)
+            x_3d_ev = np.concatenate([x_precip_ev, x_dem_ev], axis=-1)
         else:
             x_3d_ev = x_precip_ev
 
@@ -277,6 +293,6 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
                 empty_block = self._create_empty_precip_block(
                     (x_3d_ev.shape[0], x_3d_ev.shape[1], -diff))
 
-                x_3d_ev = np.concatenate([x_3d_ev, empty_block], axis=-1)
+                x_3d_ev = np.concatenate([empty_block, x_3d_ev], axis=-1)
 
         return x_3d_ev

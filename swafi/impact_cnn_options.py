@@ -16,6 +16,10 @@ class ImpactCnnOptions(ImpactDlOptions):
     ----------
     use_dem: bool
         Whether to use DEM data or not.
+    optimize_precip_spatial_extent: bool
+        Whether to allow the precipitation spatial extent to be optimized.
+    optimize_precip_time_step: bool
+        Whether to allow the precipitation time step to be optimized.
     precip_window_size: int
         The precipitation window size [km].
     precip_resolution: int
@@ -26,6 +30,8 @@ class ImpactCnnOptions(ImpactDlOptions):
         The number of days before the event to use for the precipitation.
     precip_days_after: int
         The number of days after the event to use for the precipitation.
+    use_3d_cnn: bool
+        Whether to use a 3D CNN or not.
     dropout_rate_cnn: float
         The dropout rate for the CNN.
     use_spatial_dropout: bool
@@ -53,6 +59,8 @@ class ImpactCnnOptions(ImpactDlOptions):
 
         # Data options
         self.use_dem = None
+        self.optimize_precip_spatial_extent = None
+        self.optimize_precip_time_step = None
         self.precip_window_size = None
         self.precip_resolution = None
         self.precip_time_step = None
@@ -60,6 +68,7 @@ class ImpactCnnOptions(ImpactDlOptions):
         self.precip_days_after = None
 
         # Model options
+        self.use_3d_cnn = None
         self.dropout_rate_cnn = None
         self.use_spatial_dropout = None
         self.use_batchnorm_cnn = None
@@ -86,53 +95,119 @@ class ImpactCnnOptions(ImpactDlOptions):
         Set the parser arguments.
         """
         self.parser.add_argument(
-            '--use-dem', action=argparse.BooleanOptionalAction, default=False,
-            help='Use DEM data')
+            '--use-dem',
+            action=argparse.BooleanOptionalAction,
+            default=False,
+            help='Use DEM data'
+        )
         self.parser.add_argument(
-            '--precip-window-size', type=int, default=1,
-            help='The precipitation window size [km]')
+            '--optimize-precip-spatial-extent',
+            action=argparse.BooleanOptionalAction,
+            default=True,
+            help='Allow the precipitation spatial extent to be optimized'
+        )
         self.parser.add_argument(
-            '--precip-resolution', type=int, default=1,
-            help='The precipitation resolution [km]')
+            '--optimize-precip-time-step',
+            action=argparse.BooleanOptionalAction,
+            default=True,
+            help='Allow the precipitation time step to be optimized'
+        )
         self.parser.add_argument(
-            '--precip-time-step', type=int, default=6,
-            help='The precipitation time step [h]')
+            '--precip-window-size',
+            type=int,
+            default=1,
+            help='The precipitation window size [km]'
+        )
         self.parser.add_argument(
-            '--precip-days-before', type=int, default=7,
-            help='The number of days before the event to use for the precipitation')
+            '--precip-resolution',
+            type=int,
+            default=1,
+            help='The precipitation resolution [km]'
+        )
         self.parser.add_argument(
-            '--precip-days-after', type=int, default=1,
-            help='The number of days after the event to use for the precipitation')
+            '--precip-time-step',
+            type=int,
+            default=6,
+            help='The precipitation time step [h]'
+        )
         self.parser.add_argument(
-            '--dropout-rate-cnn', type=float, default=0.4,
-            help='The dropout rate for the CNN')
+            '--precip-days-before',
+            type=int,
+            default=7,
+            help='The number of days before the claim/event to use for the precipitation'
+        )
         self.parser.add_argument(
-            '--use-spatial-dropout', action=argparse.BooleanOptionalAction,
-            default=True, help='Use spatial dropout')
+            '--precip-days-after',
+            type=int,
+            default=1,
+            help='The number of days after the claim/event to use for the precipitation'
+        )
         self.parser.add_argument(
-            '--use-batchnorm-cnn', action=argparse.BooleanOptionalAction,
-            default=True, help='Use batch normalization for the CNN')
+            '--use-3d-cnn',
+            action=argparse.BooleanOptionalAction,
+            default=True,
+            help='Use a 3D CNN (default: True, False for 2D CNN)'
+        )
         self.parser.add_argument(
-            '--kernel-size-spatial', type=int, default=3,
-            help='The kernel size for the spatial convolution')
+            '--dropout-rate-cnn',
+            type=float,
+            default=0.4,
+            help='The dropout rate for the CNN'
+        )
         self.parser.add_argument(
-            '--kernel-size-temporal', type=int, default=3,
-            help='The kernel size for the temporal convolution')
+            '--use-spatial-dropout',
+            action=argparse.BooleanOptionalAction,
+            default=True,
+            help='Use spatial dropout'
+        )
         self.parser.add_argument(
-            '--nb-filters', type=int, default=32,
-            help='The number of filters')
+            '--use-batchnorm-cnn',
+            action=argparse.BooleanOptionalAction,
+            default=True,
+            help='Use batch normalization for the CNN'
+        )
         self.parser.add_argument(
-            '--pool-size-spatial', type=int, default=1,
-            help='The pool size for the spatial (max) pooling')
+            '--kernel-size-spatial',
+            type=int,
+            default=3,
+            help='The kernel size for the spatial convolution'
+        )
         self.parser.add_argument(
-            '--pool-size-temporal', type=int, default=2,
-            help='The pool size for the temporal (max) pooling')
+            '--kernel-size-temporal',
+            type=int,
+            default=3,
+            help='The kernel size for the temporal convolution'
+        )
         self.parser.add_argument(
-            '--nb-conv-blocks', type=int, default=4,
-            help='The number of convolutional blocks')
+            '--nb-filters',
+            type=int,
+            default=32,
+            help='The number of filters'
+        )
         self.parser.add_argument(
-            '--inner-activation-cnn', type=str, default='elu',
-            help='The inner activation function for the CNN')
+            '--pool-size-spatial',
+            type=int,
+            default=1,
+            help='The pool size for the spatial (max) pooling'
+        )
+        self.parser.add_argument(
+            '--pool-size-temporal',
+            type=int,
+            default=2,
+            help='The pool size for the temporal (max) pooling'
+        )
+        self.parser.add_argument(
+            '--nb-conv-blocks',
+            type=int,
+            default=4,
+            help='The number of convolutional blocks'
+        )
+        self.parser.add_argument(
+            '--inner-activation-cnn',
+            type=str,
+            default='elu',
+            help='The inner activation function for the CNN'
+        )
 
     def parse_args(self):
         """
@@ -142,11 +217,14 @@ class ImpactCnnOptions(ImpactDlOptions):
         self._parse_dl_args(args)
 
         self.use_dem = args.use_dem
+        self.optimize_precip_spatial_extent = args.optimize_precip_spatial_extent
+        self.optimize_precip_time_step = args.optimize_precip_time_step
         self.precip_window_size = args.precip_window_size
         self.precip_resolution = args.precip_resolution
         self.precip_time_step = args.precip_time_step
         self.precip_days_before = args.precip_days_before
         self.precip_days_after = args.precip_days_after
+        self.use_3d_cnn = args.use_3d_cnn
         self.dropout_rate_cnn = args.dropout_rate_cnn
         self.use_spatial_dropout = args.use_spatial_dropout
         self.use_batchnorm_cnn = args.use_batchnorm_cnn
@@ -157,6 +235,11 @@ class ImpactCnnOptions(ImpactDlOptions):
         self.pool_size_temporal = args.pool_size_temporal
         self.nb_conv_blocks = args.nb_conv_blocks
         self.inner_activation_cnn = args.inner_activation_cnn
+
+        if self.precip_window_size==1:
+            self.kernel_size_spatial = 1
+            self.pool_size_spatial = 1
+            self.use_spatial_dropout = False
 
         if self.optimize_with_optuna:
             print("Optimizing with Optuna; some options will be ignored.")
@@ -174,7 +257,7 @@ class ImpactCnnOptions(ImpactDlOptions):
             Options are: weight_denominator, precip_window_size, precip_time_step,
             precip_days_before, precip_resolution, precip_days_after, transform_static,
             transform_precip, log_transform_precip, batch_size, learning_rate,
-            dropout_rate_dense, dropout_rate_cnn, use_spatial_dropout,
+            dropout_rate_dense, use_3d_cnn, dropout_rate_cnn, use_spatial_dropout,
             use_batchnorm_cnn, use_batchnorm_dense, kernel_size_spatial,
             kernel_size_temporal, nb_filters, pool_size_spatial, pool_size_temporal,
             nb_conv_blocks, nb_dense_layers, nb_dense_units, nb_dense_units_decreasing,
@@ -188,18 +271,55 @@ class ImpactCnnOptions(ImpactDlOptions):
         if isinstance(hp_to_optimize, str) and hp_to_optimize == 'default':
             if self.use_precip:
                 hp_to_optimize = [
-                    'precip_time_step', 'precip_days_before', 'transform_precip',
-                    'log_transform_precip', 'batch_size', 'dropout_rate_dense',
-                    'dropout_rate_cnn', 'kernel_size_spatial', 'kernel_size_temporal',
-                    'nb_filters', 'pool_size_spatial', 'pool_size_temporal',
-                    'nb_dense_layers', 'nb_dense_units', 'inner_activation_dense',
-                    'inner_activation_cnn', 'use_batchnorm_cnn',
-                    'use_batchnorm_dense', 'nb_conv_blocks', 'learning_rate']
+                    'precip_days_before',
+                    'log_transform_precip',
+                    'nb_conv_blocks',
+                    'nb_filters',
+                    'kernel_size_temporal',
+                    'pool_size_temporal',
+                    'inner_activation_cnn',
+                    'use_3d_cnn',
+                    'dropout_rate_cnn',
+                    'nb_dense_layers',
+                    'nb_dense_units',
+                    'nb_dense_units_decreasing',
+                    'inner_activation_dense',
+                    'dropout_rate_dense',
+                    'use_batchnorm_cnn',
+                    'use_batchnorm_dense',
+                    'batch_size',
+                    'learning_rate',
+                    'weight_denominator'
+                ]
+
+                if self.optimize_precip_spatial_extent:
+                    hp_to_optimize.append([
+                        'precip_window_size',
+                        'kernel_size_spatial',
+                        'pool_size_spatial'
+                    ])
+                else:
+                    self.precip_window_size = 1
+                    self.kernel_size_spatial = 1
+                    self.pool_size_spatial = 1
+                    self.use_spatial_dropout = False
+
+                if self.optimize_precip_time_step:
+                    hp_to_optimize.append('precip_time_step')
+                else:
+                    self.precip_time_step = 1
+
             else:
                 hp_to_optimize = [
-                    'batch_size', 'dropout_rate_dense', 'nb_dense_layers',
-                    'nb_dense_units', 'inner_activation_dense',
-                    'use_batchnorm_dense', 'learning_rate']
+                    'nb_dense_layers',
+                    'nb_dense_units',
+                    'nb_dense_units_decreasing',
+                    'inner_activation_dense',
+                    'dropout_rate_dense',
+                    'batch_size',
+                    'learning_rate',
+                    'weight_denominator'
+                ]
 
         self._generate_for_optuna(trial, hp_to_optimize)
 
@@ -210,8 +330,10 @@ class ImpactCnnOptions(ImpactDlOptions):
             self.precip_window_size = trial.suggest_categorical(
                 'precip_window_size', [1, 3, 5, 7])
         if 'precip_resolution' in hp_to_optimize:
-            self.precip_resolution = trial.suggest_categorical(
-                'precip_resolution', [1, 3, 5])
+            choices = [v for v in [1, 3, 5] if v <= self.precip_window_size]
+            precip_resolution_index =  trial.suggest_int(
+                'precip_resolution_index', 0, len(choices) - 1)
+            self.precip_resolution = choices[precip_resolution_index]
         if 'precip_time_step' in hp_to_optimize:
             self.precip_time_step = trial.suggest_categorical(
                 'precip_time_step', [1, 2, 4, 6, 12, 24])
@@ -221,6 +343,9 @@ class ImpactCnnOptions(ImpactDlOptions):
         if 'precip_days_after' in hp_to_optimize:
             self.precip_days_after = trial.suggest_int(
                 'precip_days_after', 1, 2)
+        if 'use_3d_cnn' in hp_to_optimize:
+            self.use_3d_cnn = trial.suggest_categorical(
+                'use_3d_cnn', [True, False])
         if 'dropout_rate_cnn' in hp_to_optimize:
             self.dropout_rate_cnn = trial.suggest_float(
                 'dropout_rate_cnn', 0.2, 0.5)
@@ -231,8 +356,11 @@ class ImpactCnnOptions(ImpactDlOptions):
             self.use_batchnorm_cnn = trial.suggest_categorical(
                 'use_batchnorm_cnn', [True, False])
         if 'kernel_size_spatial' in hp_to_optimize:
-            self.kernel_size_spatial = trial.suggest_categorical(
-                'kernel_size_spatial', [1, 3, 5])
+            max_val = min(self.precip_window_size / self.precip_resolution, 5)
+            choices = [v for v in [1, 3, 5] if v <= max_val]
+            kernel_size_spatial_index = trial.suggest_int(
+                'kernel_size_spatial_index', 0, len(choices) - 1)
+            self.kernel_size_spatial = choices[kernel_size_spatial_index]
         if 'kernel_size_temporal' in hp_to_optimize:
             self.kernel_size_temporal = trial.suggest_categorical(
                 'kernel_size_temporal', [1, 3, 5, 7, 9, 11])
@@ -240,36 +368,26 @@ class ImpactCnnOptions(ImpactDlOptions):
             self.nb_filters = trial.suggest_categorical(
                 'nb_filters', [32, 64, 128, 256, 512])
         if 'pool_size_spatial' in hp_to_optimize:
-            self.pool_size_spatial = trial.suggest_categorical(
-                'pool_size_spatial', [1, 2, 3, 4])
+            max_val = min(self.precip_window_size / self.precip_resolution, 4)
+            self.pool_size_spatial = trial.suggest_int(
+                'pool_size_spatial', 1, max_val)
         if 'pool_size_temporal' in hp_to_optimize:
             self.pool_size_temporal = trial.suggest_categorical(
                 'pool_size_temporal', [1, 2, 3, 4, 5, 6, 9, 12])
         if 'nb_conv_blocks' in hp_to_optimize:
+            max_val = 5
+            if self.pool_size_spatial > 1:
+                spatial_size = int(self.precip_window_size / self.precip_resolution)
+                max_val = min(max_val, math.floor(math.log(spatial_size, self.pool_size_spatial)))
+            if self.pool_size_temporal > 1:
+                temporal_size = (self.precip_days_before + self.precip_days_after + 1) * 24 / self.precip_time_step
+                max_val = min(max_val, math.floor(math.log(temporal_size, self.pool_size_temporal)))
             self.nb_conv_blocks = trial.suggest_int(
-                'nb_conv_blocks', 0, 5)
+                'nb_conv_blocks', 0, max_val)
         if 'inner_activation_cnn' in hp_to_optimize:
             self.inner_activation_cnn = trial.suggest_categorical(
                 'inner_activation_cnn',
-                ['relu', 'tanh', 'sigmoid', 'silu', 'elu', 'selu', 'leaky_relu',
-                 'linear', 'gelu', 'hard_sigmoid', 'hard_silu', 'softplus'])
-
-        # Check the input 3D size vs nb_conv_blocks
-        pixels_nb = int(self.precip_window_size / self.precip_resolution)
-        time_steps = int((self.precip_days_before + self.precip_days_after + 1) *
-                         24 / self.precip_time_step)
-
-        nb_conv_blocks_max = self.nb_conv_blocks
-        if self.pool_size_spatial > 1:
-            nb_conv_blocks_max = min(
-                nb_conv_blocks_max, math.floor(
-                    math.log(pixels_nb, self.pool_size_spatial)))
-        if self.pool_size_temporal > 1:
-            nb_conv_blocks_max = min(
-                nb_conv_blocks_max, math.floor(
-                    math.log(time_steps, self.pool_size_temporal)))
-        if self.nb_conv_blocks > nb_conv_blocks_max:
-            return False  # Not valid
+                ['relu', 'leaky_relu', 'silu', 'hard_silu', 'softplus', 'mish'])
 
         return True
 
@@ -288,9 +406,12 @@ class ImpactCnnOptions(ImpactDlOptions):
 
         print("- use_dem: ", self.use_dem)
 
-        if self.optimize_with_optuna and not show_optuna_params:
-            print("-" * 80)
-            return
+        if self.optimize_with_optuna:
+            print("- optimize_precip_spatial_extent: ", self.optimize_precip_spatial_extent)
+            print("- optimize_precip_time_step: ", self.optimize_precip_time_step)
+            if not show_optuna_params:
+                print("-" * 80)
+                return
 
         if self.use_precip:
             print("- precip_window_size: ", self.precip_window_size)
@@ -299,6 +420,7 @@ class ImpactCnnOptions(ImpactDlOptions):
             print("- precip_days_before: ", self.precip_days_before)
             print("- precip_days_after: ", self.precip_days_after)
             print("- use_spatial_dropout: ", self.use_spatial_dropout)
+            print("- use_3d_cnn: ", self.use_3d_cnn)
             print("- dropout_rate_cnn: ", self.dropout_rate_cnn)
             print("- use_batchnorm_cnn: ", self.use_batchnorm_cnn)
             print("- kernel_size_spatial: ", self.kernel_size_spatial)

@@ -2,8 +2,12 @@
 Train a CNN model to predict the occurrence of damages to buildings.
 """
 
+import random
 import time
 import warnings
+import keras
+import numpy as np
+import tensorflow as tf
 import xarray as xr
 import rioxarray as rxr
 import pandas as pd
@@ -29,8 +33,14 @@ def main():
     options.print_options()
     assert options.is_ok()
 
-    year_start = None
-    year_end = None
+    # Clear session and set the seed
+    keras.backend.clear_session()
+    if options.random_state is not None:
+        random.seed(options.random_state)
+        np.random.seed(options.random_state)
+        tf.random.set_seed(options.random_state)
+        keras.utils.set_random_seed(options.random_state)
+
     if options.dataset == 'mobiliar':
         year_start = config.get('YEAR_START_MOBILIAR')
         year_end = config.get('YEAR_END_MOBILIAR')
@@ -46,10 +56,8 @@ def main():
 
     # Remove dates where the precipitation data is not available
     for date_range in MISSING_DATES:
-        remove_start = (pd.to_datetime(date_range[0])
-                        - pd.Timedelta(days=options.precip_days_before + 1))
-        remove_end = (pd.to_datetime(date_range[1])
-                      + pd.Timedelta(days=options.precip_days_after + 1))
+        remove_start = (pd.to_datetime(date_range[0]) - pd.Timedelta(days=8))
+        remove_end = (pd.to_datetime(date_range[1]) + pd.Timedelta(days=2))
         events.remove_period(remove_start, remove_end)
 
     dem = None
@@ -69,15 +77,14 @@ def main():
         cnn = _setup_model(options, events, precip, dem)
         cnn.fit(dir_plots=config.get('OUTPUT_DIR'),
                 tag=options.run_name, show_plots=SHOW_PLOTS)
-        cnn.assess_model_on_all_periods()
+        cnn.assess_model_on_all_periods(save_results=True, file_tag=f'cnn_{cnn.options.run_name}')
         if SAVE_MODEL:
             cnn.save_model(dir_output=config.get('OUTPUT_DIR'), base_name='model_cnn')
             print(f"Model saved in {config.get('OUTPUT_DIR')}")
 
     else:
-        cnn = optimize_model_with_optuna(options, events, precip, dem,
-                                         dir_plots=config.get('OUTPUT_DIR'))
-        cnn.assess_model_on_all_periods()
+        optimize_model_with_optuna(options, events, precip, dem,
+                                   dir_plots=config.get('OUTPUT_DIR'))
 
 
 def _setup_model(options, events, precip, dem):
@@ -91,7 +98,7 @@ def _setup_model(options, events, precip, dem):
         cnn.load_features(cnn.options.simple_feature_classes)
     cnn.split_sample()
     cnn.reduce_negatives_for_training(cnn.options.factor_neg_reduction)
-    cnn.compute_balanced_class_weights()
+    cnn.compute_balanced_class_weights(cnn.options.factor_neg_reduction)
     cnn.compute_corrected_class_weights(
         weight_denominator=cnn.options.weight_denominator)
     return cnn
@@ -134,18 +141,18 @@ def optimize_model_with_optuna(options, events, precip=None, dem=None, dir_plots
         options_c = options.copy()
         options_c.generate_for_optuna(trial)
         options_c.print_options(show_optuna_params=True)
+        if precip is not None:
+            precip.reset()
         cnn_trial = _setup_model(options_c, events, precip, dem)
 
-        start_time = time.time()
-
         # Fit the model
-        cnn_trial.fit(do_plot=False, silent=True)
-
+        start_time = time.time()
+        cnn_trial.fit(do_plot=False)
         end_time = time.time()
         print(f"Model fitting took {end_time - start_time:.2f} seconds")
 
         # Assess the model
-        score = cnn_trial.compute_f1_score(cnn_trial.dg_val)
+        score = cnn_trial.compute_f1_score_full_data(cnn_trial.dg_val)
 
         return score
 
@@ -159,14 +166,6 @@ def optimize_model_with_optuna(options, events, precip=None, dem=None, dir_plots
     print("  Params: ")
     for key, value in best_trial.params.items():
         print(f"    {key}: {value}")
-
-    # Fit the model with the best parameters
-    options_best = options.copy()
-    options_best.generate_for_optuna(best_trial)
-    cnn = _setup_model(options_best, events, precip, dem)
-    cnn.fit(dir_plots=dir_plots, tag='best_optuna_' + cnn.options.run_name)
-
-    return cnn
 
 
 if __name__ == '__main__':

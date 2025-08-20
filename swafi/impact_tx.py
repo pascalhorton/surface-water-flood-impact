@@ -112,9 +112,6 @@ class ImpactTransformer(ImpactDl):
             debug=DEBUG
         )
 
-        if self.factor_neg_reduction != 1:
-            self.dg_val.reduce_negatives(self.factor_neg_reduction)
-
     def _create_data_generator_test(self):
         self.dg_test = ImpactTxDataGenerator(
             event_props=self.events_test,
@@ -232,13 +229,15 @@ class ImpactTransformer(ImpactDl):
             return
 
         # Extract events dates
-        events = self.df[['e_end', 'date_claim']].copy()
+        events = self.df[['e_start', 'e_end', 'date_claim']].copy()
         events.rename(columns={'date_claim': 'date'}, inplace=True)
+
+        # Fill NaN values with the mean of the event start and end date (as date, not datetime)
+        events['date'] = events['date'].fillna(events[['e_start', 'e_end']].mean(axis=1))
+        
+        events['e_start'] = pd.to_datetime(events['e_start']).dt.date
         events['e_end'] = pd.to_datetime(events['e_end']).dt.date
         events['date'] = pd.to_datetime(events['date']).dt.date
-
-        # Fill NaN values with the event end date (as date, not datetime)
-        events['date'] = events['date'].fillna(events['e_end'])
 
         # Precipitation period
         p_hf_start = pd.to_datetime(f'{self.precipitation_hf.year_start}-01-01').date()
