@@ -207,14 +207,20 @@ class Impact:
         # Set the reference date for the precipitation extraction
         if ref_date == 'middle':
             df.rename(columns={'date_claim': 'date'}, inplace=True)
+            # Set a time to the claim date (18:00 by default)
+            df['date'] = pd.to_datetime(df['date'], errors='coerce') + pd.Timedelta(hours=18)
             # Fill NaN values with the mean of the event start and end date
             df['date'] = df['date'].fillna(df[['e_start', 'e_end']].mean(axis=1))
         elif ref_date == 'end':
             df.rename(columns={'date_claim': 'date'}, inplace=True)
+            # Set a time to the claim date (18:00 by default)
+            df['date'] = pd.to_datetime(df['date'], errors='coerce') + pd.Timedelta(hours=18)
             # Fill NaN values with the event end date
             df['date'] = df['date'].fillna(df['e_end'])
         elif ref_date == 'i_max':
             df.rename(columns={'date_claim': 'date'}, inplace=True)
+            # Set a time to the claim date (18:00 by default)
+            df['date'] = pd.to_datetime(df['date'], errors='coerce') + pd.Timedelta(hours=18)
             # Fill NaN values with the date of the maximum precipitation intensity
             df['date'] = df['date'].fillna(df['i_max_date'])
         elif ref_date == 'i_max_only':

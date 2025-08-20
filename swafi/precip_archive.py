@@ -400,6 +400,9 @@ class PrecipitationArchive(Precipitation):
             except EOFError:
                 raise EOFError(f"Error: {original_file} is empty or corrupted.")
 
+            except ValueError as e:
+                raise ValueError(f"Error with file {original_file} at time {t}: {e}")
+
     def compute_mean_and_std_per_pixel(self):
         """
         Compute the mean and standard deviation of the precipitation data for each pixel.
