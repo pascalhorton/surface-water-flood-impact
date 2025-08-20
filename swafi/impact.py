@@ -173,7 +173,7 @@ class Impact:
         self.df = self.df[(self.df['nb_claims'] == 0) |
                           (self.df['nb_claims'] >= threshold)]
 
-    def split_sample(self, valid_test_size=0.4, test_size=0.25, ref_date='middle', stratify_by='day'):
+    def split_sample(self, valid_test_size=0.3, test_size=0.5, ref_date='i_max', stratify_by='day'):
         """
         Split the sample into training, validation and test sets. The split is
         stratified on the target, i.e. the proportion of events with and without
@@ -189,9 +189,9 @@ class Impact:
         ref_date: str
             The reference date to use for the precipitation extraction when claim dates are missing (no damage class).
             Options are:
-            - 'middle' (default): missing dates are filled with the mean of the event start and end date.
+            - 'middle': missing dates are filled with the mean of the event start and end date.
             - 'end': missing dates are filled with the event end date.
-            - 'i_max': missing dates are filled with the date of the maximum precipitation intensity.
+            - 'i_max' (default): missing dates are filled with the date of the maximum precipitation intensity.
             - 'i_max_only': only the date of the maximum precipitation intensity is used, claim dates are discarded.
         stratify_by: str
             The temporal unit to use for stratification. Options are: 'day' (default) or
@@ -207,16 +207,22 @@ class Impact:
         # Set the reference date for the precipitation extraction
         if ref_date == 'middle':
             df.rename(columns={'date_claim': 'date'}, inplace=True)
+            # Set a time to the claim date (18:00 by default)
+            df['date'] = pd.to_datetime(df['date'], errors='coerce') + pd.Timedelta(hours=18)
             # Fill NaN values with the mean of the event start and end date
             df['date'] = df['date'].fillna(df[['e_start', 'e_end']].mean(axis=1))
         elif ref_date == 'end':
             df.rename(columns={'date_claim': 'date'}, inplace=True)
+            # Set a time to the claim date (18:00 by default)
+            df['date'] = pd.to_datetime(df['date'], errors='coerce') + pd.Timedelta(hours=18)
             # Fill NaN values with the event end date
             df['date'] = df['date'].fillna(df['e_end'])
         elif ref_date == 'i_max':
             df.rename(columns={'date_claim': 'date'}, inplace=True)
+            # Set a time to the claim date (18:00 by default)
+            df['date'] = pd.to_datetime(df['date'], errors='coerce') + pd.Timedelta(hours=18)
             # Fill NaN values with the date of the maximum precipitation intensity
-            df['date'] = pd.to_datetime(df['i_max_date'])
+            df['date'] = df['date'].fillna(df['i_max_date'])
         elif ref_date == 'i_max_only':
             df.rename(columns={'i_max_date': 'date'}, inplace=True)
             df['date'] = pd.to_datetime(df['date'])

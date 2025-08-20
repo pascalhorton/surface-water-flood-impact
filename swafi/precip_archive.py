@@ -181,6 +181,10 @@ class PrecipitationArchive(Precipitation):
 
         self.cid_time_series['cid'] = cids
 
+        # Check again that the file was not created in the meantime
+        if tmp_filename.exists():
+            return
+
         with open(tmp_filename, 'wb') as f:
             pickle.dump(self.cid_time_series, f)
 
@@ -290,6 +294,10 @@ class PrecipitationArchive(Precipitation):
                         # Assign the filled data back to the xarray DataArray
                         data[self.precip_var] = filled_data
 
+                    # Check again that the file was not created in the meantime
+                    if tmp_filename.exists():
+                        continue
+
                     with open(tmp_filename, 'wb') as f_out:
                         pickle.dump(data, f_out)
 
@@ -324,6 +332,10 @@ class PrecipitationArchive(Precipitation):
                     data = pickle.load(f_in)
                     precip = data[self.precip_var]
                     data[self.precip_var] = ((precip - mean) / std).astype('float32')
+
+                    # Check again that the file was not created in the meantime
+                    if tmp_filename.exists():
+                        continue
 
                     with open(tmp_filename, 'wb') as f_out:
                         pickle.dump(data, f_out)
@@ -363,6 +375,10 @@ class PrecipitationArchive(Precipitation):
 
                     data[self.precip_var] = ((precip - min_precip) / (q99 - min_precip)).astype('float32')
 
+                    # Check again that the file was not created in the meantime
+                    if tmp_filename.exists():
+                        continue
+
                     with open(tmp_filename, 'wb') as f_out:
                         pickle.dump(data, f_out)
 
@@ -394,11 +410,18 @@ class PrecipitationArchive(Precipitation):
                     precip = data[self.precip_var]
                     data[self.precip_var] = (np.log1p(precip)).astype('float32')
 
+                    # Check again that the file was not created in the meantime
+                    if tmp_filename.exists():
+                        continue
+
                     with open(tmp_filename, 'wb') as f_out:
                         pickle.dump(data, f_out)
 
             except EOFError:
                 raise EOFError(f"Error: {original_file} is empty or corrupted.")
+
+            except ValueError as e:
+                raise ValueError(f"Error with file {original_file}: {e}")
 
     def compute_mean_and_std_per_pixel(self):
         """
@@ -453,10 +476,12 @@ class PrecipitationArchive(Precipitation):
                 std[i:i + x_size, j:j + y_size] = np.nanstd(data, axis=0)
 
         # Save mean and standard deviation
-        with open(mean_file, 'wb') as f:
-            pickle.dump(mean, f)
-        with open(std_file, 'wb') as f:
-            pickle.dump(std, f)
+        if not mean_file.exists():
+            with open(mean_file, 'wb') as f:
+                pickle.dump(mean, f)
+        if not std_file.exists():
+            with open(std_file, 'wb') as f:
+                pickle.dump(std, f)
 
         return mean, std
 
@@ -510,8 +535,9 @@ class PrecipitationArchive(Precipitation):
                 gc.collect()
 
         # Save quantile
-        with open(tmp_filename, 'wb') as f:
-            pickle.dump(quantiles, f)
+        if not tmp_filename.exists():
+            with open(tmp_filename, 'wb') as f:
+                pickle.dump(quantiles, f)
 
         return quantiles
 
@@ -683,6 +709,10 @@ class PrecipitationArchive(Precipitation):
                     f"Duplicate timestamps found in subset for {t.year}-{t.month:02}")
 
             assert len(subset.dims) == 3, "Precipitation must be 3D"
+
+            # Check again that the file was not created in the meantime
+            if tmp_filename.exists():
+                continue
 
             with open(tmp_filename, 'wb') as f:
                 pickle.dump(subset, f)
