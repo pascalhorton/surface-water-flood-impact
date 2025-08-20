@@ -93,7 +93,7 @@ class ImpactDlOptions(ImpactBasicOptions):
             help='The weight denominator to reduce the negative class weights')
         self.parser.add_argument(
             '--use-precip', action=argparse.BooleanOptionalAction, default=True,
-            help='Do not use precipitation data')
+            help='Use precipitation data')
         self.parser.add_argument(
             '--log-transform-precip', action=argparse.BooleanOptionalAction,
             default=True, help='Log-transform the precipitation')
