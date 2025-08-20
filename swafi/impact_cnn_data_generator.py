@@ -152,9 +152,6 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
         if self.X_precip is None:
             return
 
-        if self.precip_time_step == 1:
-            return
-
         time_step = f'{self.precip_time_step}h'
         dates = pd.to_datetime(self.event_props[:, 0])
         self.event_props[:, 0] = dates.round(time_step)
