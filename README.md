@@ -21,19 +21,17 @@ pip install -r requirements-optional.txt
 
 ## Structure of the repository
 The repository is structured as follows:
-- `files`: contains a file (`cids.tif`) with the IDs of the precipitation dataset cells.
-- `swafi`: contains the code of the package with the most important functions.
-- `scripts`: contains scripts to run different operations. They can be used as a starting point to run the code.
-  - `data_analyses`: contains scripts to perform data analyses.
-  - `data_preparation`: contains scripts to prepare the data for the different operations.
-  - `impact_functions`: contains scripts to train and evaluate the different impact functions.
-  - `link_claims_events`: contains scripts to link claims and events.
-- `config_example.yaml`: contains an example of the configuration file needed to run the code. 
+- `swafi`: core of the package with the most important functions.
+- `scripts`: scripts to run different operations. They can be used as a starting point to run the code.
+  - `data_analyses`: scripts to perform data analyses.
+  - `data_preparation`: scripts to prepare the data (e.g. events extraction or computation of static attributes).
+  - `impact_functions`: scripts to train and evaluate the different impact functions.
+  - `link_claims_events`: scripts to link claims and events.
+- `config_example.yaml`: an example of the configuration file needed to run the code. 
   The file should be renamed to `config.yaml` and adapted to the specific use case.
 
 ## Data needed
 For most of the operations, the following data is needed:
-- A DEM (Digital Elevation Model) in GeoTIFF format
 - Precipitation data in netCDF format. For now, only the 
   [CombiPrecip](https://www.meteoswiss.admin.ch/services-and-publications/service/weather-and-climate-products/combiprecip.html) 
   dataset is supported, but the code can be easily adapted to other datasets.
@@ -41,6 +39,7 @@ For most of the operations, the following data is needed:
   For now, claims data from the Swiss Mobiliar Insurance Company as GeoTIFF or from the 
   GVZ (Building insurance Canton Zurich) as netCDF are supported. 
   The code can be easily adapted to other datasets.
+- A DEM (Digital Elevation Model) in GeoTIFF format (optional)
 
 ## Main components
 
@@ -48,7 +47,10 @@ For most of the operations, the following data is needed:
 
 The events are precipitation events per cell extracted from the gridded precipitation dataset (CombiPrecip).
 These are managed by the `Events` class in `swafi/events.py` and are handled internally as a Pandas dataframe.
-Different characteristics are calculated for each event:
+Different characteristics are extracted for each event:
+- `cid`: unique identifier for the cell (pixel) in the precipitation dataset
+- `x`: x coordinate of the cell (pixel) in the precipitation dataset
+- `y`: y coordinate of the cell (pixel) in the precipitation dataset
 - `e_start`: start date of the event
 - `e_end`: end date of the event
 - `duration`: duration of the event in hours
@@ -57,6 +59,7 @@ Different characteristics are calculated for each event:
 - `p_sum_q`: quantile equivalent for the total precipitation
 - `i_max`: maximum precipitation intensity of the event in mm/h
 - `i_max_q`: quantile equivalent for the maximum precipitation intensity
+- `i_max_date`: date (and time) of the maximum precipitation intensity
 - `i_mean`: mean precipitation intensity of the event in mm/h
 - `i_mean_q`: quantile equivalent for the mean precipitation intensity
 - `i_sd`: standard deviation of the precipitation intensity of the event in mm/h
@@ -127,8 +130,8 @@ The following impact functions are implemented:
   This is the approach introduced by [Bernet et al. (2019)](https://dx.doi.org/10.1088/1748-9326/ab127c).
 - `ImpactLogisticRegression` from the file `swafi/impact_lr.py`: predicts the damages using a regression model.
 - `ImpactRandomForest` from the file `swafi/impact_rf.py`: predicts the damages using a random forest model.
-- `ImpactDeepLearning` from the file `swafi/impact_dl.py`: predicts the damages using a deep learning model.
-  The deep-learning model itself (`DeepImpact`) is implemented in the file `model_dl.py` using the Keras and Tensorflow libraries. 
+- `ImpactCnn` from the file `swafi/impact_cnn.py`: predicts the damages using a convolutional neural network (CNN).
+- `ImpactTransformer` from the file `swafi/impact_tx.py`: predicts the damages using a transformer model.
 
 ## Workflow
 
@@ -265,104 +268,134 @@ The thresholds model is trained and evaluated using the `apply_thresholds_v2019.
 It requires the following data:
 - The events with the target values computed in step 2.
 
-#### Logistic regression model
+#### Logistic regression and random forest models
 
-The logistic regression model is trained and evaluated using the `train_lr_occurrence.py` script.
-It requires the following data:
+The logistic regression and random forest models are trained and evaluated using the `train_lr_occurrence.py` and `train_rf_occurrence.py` scripts respectively.
+They require the following data:
 - The events with the target values computed in step 2.
 - The static attributes computed in step 3 (optional).
 
-#### Random forest model
+#### CNN and Transformer models
 
-The random forest model is trained and evaluated using the `train_rf_occurrence.py` script.
-An optimisation of the hyperparameters is performed using the `train_rf_occurrence_hyperparameters.py` script.
-They requires the following data:
-- The events with the target values computed in step 2.
-- The static attributes computed in step 3 (optional).
-
-#### Deep learning model
-
-The deep learning model is trained and evaluated using the `train_dl_occurrence.py` script.
-it requires the following data:
+The CNN-based and the Transformer models are trained and evaluated using the `train_cnn_occurrence.py` and `train_tx_occurrence.py` scripts respectively.
+They require the following data:
 - The events with the target values computed in step 2.
 - The static attributes computed in step 3 (optional).
 - The original precipitation data in netCDF format.
 
-## Training the deep learning model
+## Training the CNN model
 
-The deep learning model is implemented in the `DeepImpact` class in the `model_dl.py` file.
+The CNN model is implemented in the `ModelCnn` class in the `impact_cnn_model.py` file.
 The model is built using the Keras and Tensorflow libraries.
-The model can be trained using the `train_dl_occurrence.py` script.
+The model can be trained using the `train_cnn_occurrence.py` script.
 The different input data (precipitation, DEM, static features) can be turned on or off.
 All the hyperparameters of the model can be set as options of the script.
 The model can be trained using the following command:
 
 ```bash
-train_cnn_occurrence.py [-h] [--run-id RUN_ID] [--optimize-with-optuna]
-                       [--target-type TARGET_TYPE]
-                       [--factor-neg-reduction FACTOR_NEG_REDUCTION]
-                       [--weight-denominator WEIGHT_DENOMINATOR]
-                       [--random-state RANDOM_STATE]
-                       [--do-not-use-precip] [--do-not-use-dem]
-                       [--do-not-use-simple-features]
-                       [--simple-feature-classes SIMPLE_FEATURE_CLASSES [SIMPLE_FEATURE_CLASSES ...]]
-                       [--replace-simple-features SIMPLE_FEATURES [SIMPLE_FEATURES ...]]
-                       [--precip-window-size PRECIP_WINDOW_SIZE]
-                       [--precip-resolution PRECIP_RESOLUTION]
-                       [--precip-time-step PRECIP_TIME_STEP]
-                       [--precip-days-before PRECIP_DAYS_BEFORE]
-                       [--precip-days-after PRECIP_DAYS_AFTER]
-                       [--transform-static TRANSFORM_STATIC]
-                       [--transform-2d TRANSFORM_2D]
-                       [--batch-size BATCH_SIZE] [--epochs EPOCHS]
-                       [--learning-rate LEARNING_RATE]
-                       [--dropout-rate DROPOUT_RATE]
-                       [--no-spatial-dropout] [--no-batchnorm]
-                       [--nb-filters NB_FILTERS]
-                       [--nb-conv-blocks NB_CONV_BLOCKS]
-                       [--nb-dense-layers NB_DENSE_LAYERS]
-                       [--nb-dense-units NB_DENSE_UNITS]
-                       [--no-dense-units-decreasing]
-                       [--inner-activation INNER_ACTIVATION]
+usage: train_cnn_occurrence.py 
+   [-h] 
+   [--run-name RUN_NAME] 
+   [--dataset DATASET] 
+   [--event-file-label EVENT_FILE_LABEL] 
+   [--min-nb-claims MIN_NB_CLAIMS] 
+   [--target-type TARGET_TYPE] 
+   [--random-state RANDOM_STATE] 
+   [--use-event-attributes | --no-use-event-attributes] 
+   [--use-static-attributes | --no-use-static-attributes]        
+   [--use-all-static-attributes | --no-use-all-static-attributes] 
+   [--simple-feature-classes SIMPLE_FEATURE_CLASSES [SIMPLE_FEATURE_CLASSES ...]]    
+   [--replace-simple-features REPLACE_SIMPLE_FEATURES [REPLACE_SIMPLE_FEATURES ...]] 
+   [--optimize-with-optuna] 
+   [--optuna-trials-nb OPTUNA_TRIALS_NB] 
+   [--optuna-study-name OPTUNA_STUDY_NAME] 
+   [--optuna-random-sampler | --no-optuna-random-sampler] 
+   [--factor-neg-reduction FACTOR_NEG_REDUCTION]     
+   [--weight-denominator WEIGHT_DENOMINATOR] 
+   [--use-precip | --no-use-precip] 
+   [--log-transform-precip | --no-log-transform-precip]                  
+   [--transform-precip TRANSFORM_PRECIP] 
+   [--transform-static TRANSFORM_STATIC] 
+   [--batch-size BATCH_SIZE] 
+   [--epochs EPOCHS]                          
+   [--learning-rate LEARNING_RATE] 
+   [--dropout-rate-dense DROPOUT_RATE_DENSE] 
+   [--use-batchnorm-dense | --no-use-batchnorm-dense]                     
+   [--nb-dense-layers NB_DENSE_LAYERS] 
+   [--nb-dense-units NB_DENSE_UNITS] 
+   [--nb-dense-units-decreasing | --no-nb-dense-units-decreasing]
+   [--inner-activation-dense INNER_ACTIVATION_DENSE] 
+   [--use-dem | --no-use-dem] 
+   [--optimize-precip-spatial-extent | --no-optimize-precip-spatial-extent]   
+   [--optimize-precip-time-step | --no-optimize-precip-time-step] 
+   [--precip-window-size PRECIP_WINDOW_SIZE] 
+   [--precip-resolution PRECIP_RESOLUTION]        
+   [--precip-time-step PRECIP_TIME_STEP] 
+   [--precip-days-before PRECIP_DAYS_BEFORE] 
+   [--precip-days-after PRECIP_DAYS_AFTER]
+   [--use-3d-cnn | --no-use-3d-cnn] 
+   [--dropout-rate-cnn DROPOUT_RATE_CNN] 
+   [--use-spatial-dropout | --no-use-spatial-dropout]
+   [--use-batchnorm-cnn | --no-use-batchnorm-cnn] 
+   [--kernel-size-spatial KERNEL_SIZE_SPATIAL] 
+   [--kernel-size-temporal KERNEL_SIZE_TEMPORAL]
+   [--nb-filters NB_FILTERS] 
+   [--pool-size-spatial POOL_SIZE_SPATIAL] 
+   [--pool-size-temporal POOL_SIZE_TEMPORAL] 
+   [--nb-conv-blocks NB_CONV_BLOCKS]
+   [--inner-activation-cnn INNER_ACTIVATION_CNN]
 ```
 
 Options
 * `-h`, `--help`: show this help message and exit
-* `--run-id RUN_ID`: The run ID
-* `--optimize-with-optuna`: Optimize the hyperparameters with Optuna
+* `--run-name RUN_NAME`: The run name
+* `--dataset DATASET`: The name of the dataset (mobiliar or gvz).
+* `--event-file-label EVENT_FILE_LABEL`: The event file label (default: 'default_occurrence').
+* `--min-nb-claims MIN_NB_CLAIMS`: The minimum number of claims for an event to be considered.
 * `--target-type TARGET_TYPE`: The target type. Options are: occurrence, damage_ratio
+* `--random-state RANDOM_STATE`: The random state to use for the random number generator
+* `--use-event-attributes`, `--no-use-event-attributes`: Use event attributes (i_max_q, p_sum_q, duration, ...)
+* `--use-static-attributes`, `--no-use-static-attributes`: Use static attributes (terrain, swf_map, flowacc, twi)
+* `--use-all-static-attributes`, `--no-use-all-static-attributes`: Use all static attributes.
+* `--simple-feature-classes SIMPLE_FEATURE_CLASSES [SIMPLE_FEATURE_CLASSES ...]`: The list of simple feature classes to use (e.g. event terrain)
+* `--replace-simple-features REPLACE_SIMPLE_FEATURES [REPLACE_SIMPLE_FEATURES ...]`: The list of specific simple features to use (e.g. event:i_max_q).If not specified, the default class features will be used.If specified, the default class features will be overridden forthis class only (e.g. event).
+* `--optimize-with-optuna`: Optimize the hyperparameters with Optuna
+* `--optuna-trials-nb OPTUNA_TRIALS_NB`: The number of trials for Optuna
+* `--optuna-study-name OPTUNA_STUDY_NAME`: The Optuna study name (default: using the date and time
+* `--optuna-random-sampler`, `--no-optuna-random-sampler`: Use the random sampler for Optuna
 * `--factor-neg-reduction FACTOR_NEG_REDUCTION`: The factor to reduce the number of negatives only for training
 * `--weight-denominator WEIGHT_DENOMINATOR`: The weight denominator to reduce the negative class weights
-* `--random-state RANDOM_STATE`: The random state to use for the random number generator
-* `--do-not-use-precip`: Do not use precipitation data
-* `--do-not-use-dem`: Do not use DEM data
-* `--do-not-use-simple-features`: Do not use simple features (event properties and static attributes)
-* `--simple-feature-classes SIMPLE_FEATURE_CLASSES [SIMPLE_FEATURE_CLASSES ...]`: The list of simple feature classes to use (e.g. event terrain)
-* `--replace-simple-features SIMPLE_FEATURES [SIMPLE_FEATURES ...]`: The list of specific simple features to use (e.g. event:i_max_q). If not specified, the default class features will be used. If specified, the default class features will be overridden for this class only (e.g. event).
-* `--precip-window-size PRECIP_WINDOW_SIZE`: The precipitation window size [km]
-* `--precip-resolution PRECIP_RESOLUTION`: The precipitation resolution [km]
-* `--precip-time-step PRECIP_TIME_STEP`: The precipitation time step [h]
-* `--precip-days-before PRECIP_DAYS_BEFORE`: The number of days before the event to use for the precipitation
-* `--precip-days-after PRECIP_DAYS_AFTER`: The number of days after the event to use for the precipitation
+* `--use-precip`, `--no-use-precip`: Use precipitation data
+* `--log-transform-precip`, `--no-log-transform-precip`: Log-transform the precipitation
+* `--transform-precip TRANSFORM_PRECIP`: The transformation to apply to the precipitation data
 * `--transform-static TRANSFORM_STATIC`: The transformation to apply to the static data
-* `--transform-2d TRANSFORM_2D`: The transformation to apply to the 2D data
 * `--batch-size BATCH_SIZE`: The batch size
 * `--epochs EPOCHS`: The number of epochs
 * `--learning-rate LEARNING_RATE`: The learning rate
-* `--dropout-rate DROPOUT_RATE`: The dropout rate
-* `--no-spatial-dropout`: Do not use spatial dropout
-* `--no-batchnorm`: Do not use batch normalization
-* `--nb-filters NB_FILTERS`: The number of filters
-* `--nb-conv-blocks NB_CONV_BLOCKS`: The number of convolutional blocks
+* `--dropout-rate-dense DROPOUT_RATE_DENSE`: The dropout rate for the dense layers
+* `--use-batchnorm-dense`, `--no-use-batchnorm-dense`: Use batch normalization for the dense layers
 * `--nb-dense-layers NB_DENSE_LAYERS`: The number of dense layers
 * `--nb-dense-units NB_DENSE_UNITS`: The number of dense units
-* `--no-dense-units-decreasing`: The number of dense units should not decrease
-* `--inner-activation INNER_ACTIVATION`: The inner activation function
+* `--nb-dense-units-decreasing`, `--no-nb-dense-units-decreasing`: The number of dense units should decrease
+* `--inner-activation-dense INNER_ACTIVATION_DENSE`: The inner activation function for the dense layers
+* `--use-dem`, `--no-use-dem`: Use DEM data
+* `--optimize-precip-spatial-extent`, `--no-optimize-precip-spatial-extent`: Allow the precipitation spatial extent to be optimized
+* `--optimize-precip-time-step`, `--no-optimize-precip-time-step`: Allow the precipitation time step to be optimized
+* `--precip-window-size PRECIP_WINDOW_SIZE`: The precipitation window size [km]
+* `--precip-resolution PRECIP_RESOLUTION`: The precipitation resolution [km]
+* `--precip-time-step PRECIP_TIME_STEP`: The precipitation time step [h]
+* `--precip-days-before PRECIP_DAYS_BEFORE`: The number of days before the claim/event to use for the precipitation
+* `--precip-days-after PRECIP_DAYS_AFTER`: The number of days after the claim/event to use for the precipitation
+* `--use-3d-cnn`, `--no-use-3d-cnn`: Use a 3D CNN (default: True, False for 2D CNN)
+* `--dropout-rate-cnn DROPOUT_RATE_CNN`:  The dropout rate for the CNN
+* `--use-spatial-dropout`, `--no-use-spatial-dropout`: Use spatial dropout
+* `--use-batchnorm-cnn`, `--no-use-batchnorm-cnn`: Use batch normalization for the CNN
+* `--kernel-size-spatial KERNEL_SIZE_SPATIAL`: The kernel size for the spatial convolution
+* `--kernel-size-temporal KERNEL_SIZE_TEMPORAL`: The kernel size for the temporal convolution
+* `--nb-filters NB_FILTERS`: The number of filters
+* `--pool-size-spatial POOL_SIZE_SPATIAL`: The pool size for the spatial (max) pooling
+* `--pool-size-temporal POOL_SIZE_TEMPORAL`: The pool size for the temporal (max) pooling
+* `--nb-conv-blocks NB_CONV_BLOCKS`: The number of convolutional blocks
+* `--inner-activation-cnn INNER_ACTIVATION_CNN`: The inner activation function for the CNN
 
-When using Optuna, all but the following options are opimized: `run-id`,
-`target-type`, `random-state`, `factor-neg-reduction`,
-`do-not-use-precip`, `do-not-use-dem`, `do-not-use-simple-features`, 
-`simple-feature-classes`, `simple-features`.
-
-## Applying the impact functions to other precipitation datasets
 
