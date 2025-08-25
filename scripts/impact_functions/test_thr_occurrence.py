@@ -2,6 +2,7 @@
 Test script for loading and evaluating different pre-trained models.
 """
 import pandas as pd
+from pathlib import Path
 
 from swafi.config import Config
 from swafi.impact_basic_options import ImpactBasicOptions
@@ -20,12 +21,21 @@ def main():
     assert options.is_ok()
 
     # Extract precipitation events
-    cpc = CombiPrecip(config.get('YEAR_START_TEST'), config.get('YEAR_END_TEST'))
-    cpc.open_files(config.get('DIR_PRECIP'))
-    cpc.apply_smoothing(filter_size=3)
-    events = cpc.extract_events()
+    year_start = config.get('YEAR_START_TEST')
+    year_end = config.get('YEAR_END_TEST')
+    events_filename = f'test_events_{year_start}-{year_end}.pickle'
+    events_path = Path(config.get('TMP_DIR')) / events_filename
 
-
+    if not events_path.exists():
+        print(f"Extracting events and saving to {events_path}...")
+        cpc = CombiPrecip(year_start, year_end)
+        cpc.open_files(config.get('DIR_PRECIP'))
+        print("Applying smoothing...")
+        cpc.apply_smoothing(filter_size=3)
+        events = cpc.extract_events()
+        events.save_to_pickle(events_filename)
+    else:
+        events = pd.read_pickle(events_filename)
 
     # Create the impact function
     thr = ImpactThresholds(options)

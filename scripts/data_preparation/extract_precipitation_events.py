@@ -7,7 +7,6 @@ import concurrent.futures
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
-from scipy.ndimage import uniform_filter
 
 from swafi.config import Config
 from swafi.domain import Domain

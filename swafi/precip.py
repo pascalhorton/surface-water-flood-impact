@@ -3,6 +3,7 @@ Class to handle the precipitation forecast data.
 """
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
 from pathlib import Path
 from scipy.ndimage import uniform_filter
 
@@ -76,7 +77,8 @@ class Precipitation:
             return self._extract_events(coords_row, api_days_nb, api_reg)
 
         list_of_events = []
-        for _, coords_row in self.domain.get_coordinates_df().iterrows():
+        coords_df = self.domain.get_coordinates_df()
+        for _, coords_row in tqdm(coords_df.iterrows(), total=len(coords_df), desc="Extracting events"):
             events = self._extract_events(coords_row, api_days_nb, api_reg)
             if events is not None:
                 list_of_events.append(events)
