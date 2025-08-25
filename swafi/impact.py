@@ -21,15 +21,15 @@ class Impact:
 
     Parameters
     ----------
-    events: Events
-        The events object.
     options: ImpactBasicOptions|ImpactDlOptions
         The model options.
+    events: Events
+        The events object.
     """
 
-    def __init__(self, events, options):
+    def __init__(self, options, events=None):
         self.options = options
-        self.df = events.events
+        self.df = events.events if events is not None else None
         self.target_type = options.target_type
         self.model = None
         self.events_train = None

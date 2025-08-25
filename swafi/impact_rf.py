@@ -28,14 +28,14 @@ class ImpactRandomForest(Impact):
 
     Parameters
     ----------
-    events: Events
-        The events object.
     options: ImpactOptions
         The model options.
+    events: Events
+        The events object.
     """
 
-    def __init__(self, events, options):
-        super().__init__(events, options)
+    def __init__(self, options, events=None):
+        super().__init__(options, events)
 
         self.n_jobs = 5
 

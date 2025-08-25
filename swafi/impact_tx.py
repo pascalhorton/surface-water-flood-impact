@@ -25,16 +25,16 @@ class ImpactTransformer(ImpactDl):
 
     Parameters
     ----------
-    events: Events
-        The events object.
     options: ImpactTransformerOptions
         The model options.
+    events: Events
+        The events object.
     reload_trained_models: bool
         Whether to reload the previously trained models or not.
     """
 
-    def __init__(self, events, options, reload_trained_models=False):
-        super().__init__(events, options, reload_trained_models)
+    def __init__(self, options, events=None, reload_trained_models=False):
+        super().__init__(options, events, reload_trained_models)
 
         if not self.options.is_ok():
             raise ValueError("Options are not ok.")
