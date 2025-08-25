@@ -88,7 +88,7 @@ def main():
 
 
 def _setup_model(options, events, precip, dem):
-    cnn = ImpactCnn(events, options=options)
+    cnn = ImpactCnn(options, events)
     cnn.set_dem(dem)
     cnn.set_precipitation(precip)
     cnn.remove_events_without_precipitation_data()

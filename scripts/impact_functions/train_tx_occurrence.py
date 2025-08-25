@@ -81,7 +81,7 @@ def main():
 
 
 def _setup_model(options, events, precip_hf, precip_daily):
-    tx = ImpactTransformer(events, options=options)
+    tx = ImpactTransformer(options, events)
     tx.set_precipitation_hf(precip_hf)
     tx.set_precipitation_daily(precip_daily)
     tx.remove_events_without_precipitation_data()

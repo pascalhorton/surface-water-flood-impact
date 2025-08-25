@@ -8,6 +8,8 @@ YEAR_START_MOBILIAR: 2013
 YEAR_END_MOBILIAR: 2022
 YEAR_START_GVZ: 2005
 YEAR_END_GVZ: 2022
+YEAR_START_TEST: 2023
+YEAR_END_TEST: 2024
 
 # CID (cells IDs) raster path (not needed for Switzerland)
 CID_PATH: 'path/to/cids.tif'

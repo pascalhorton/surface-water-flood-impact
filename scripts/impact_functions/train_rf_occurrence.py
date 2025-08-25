@@ -48,7 +48,7 @@ def main():
 
 
 def _setup_model(options, events):
-    rf = ImpactRandomForest(events, options=options)
+    rf = ImpactRandomForest(options, events)
     if rf.options.use_static_attributes or rf.options.use_event_attributes:
         rf.select_features(rf.options.replace_simple_features)
         rf.load_features(rf.options.simple_feature_classes)
