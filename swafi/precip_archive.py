@@ -676,11 +676,11 @@ class PrecipitationArchive(Precipitation):
 
         return hashlib.md5(tag_data).hexdigest()
 
-    def _generate_pickle_files(self, data):
+    def _generate_pickle_files(self):
         self.hash_tag = self._compute_hash_precip_full_data(
-            data['x'].to_numpy(), data['y'].to_numpy())
+            self.data['x'].to_numpy(), self.data['y'].to_numpy())
 
-        data['time'] = pd.to_datetime(data['time'])
+        self.data['time'] = pd.to_datetime(self.data['time'])
 
         for idx in tqdm(
                 range(len(self.time_index)),
@@ -697,7 +697,7 @@ class PrecipitationArchive(Precipitation):
 
             end_time = (t + pd.offsets.MonthEnd(0)).replace(
                 hour=23, minute=59, second=59)
-            subset = data.sel(time=slice(t, end_time)).compute()
+            subset = self.data.sel(time=slice(t, end_time)).compute()
             subset = self._remove_duplicate_timestamps(subset)
             subset = self._fill_missing_values(subset)
             subset = self._resample(subset)

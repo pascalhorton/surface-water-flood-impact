@@ -68,15 +68,19 @@ class CombiPrecip(PrecipitationArchive):
 
         files = sorted(glob(f"{self.data_path}/*.nc"))
         self._check_files(files)
-        data = xr.open_mfdataset(
+        self.data = xr.open_mfdataset(
             files,
             parallel=False,
             chunks={'time': 1000}
         )
-        data = data.rename_vars({'CPC': 'precip'})
-        data = data.rename({'REFERENCE_TS': 'time'})
+        self.data = self.data.rename_vars({'CPC': 'precip'})
+        self.data = self.data.rename({'REFERENCE_TS': 'time'})
 
-        return data
+        # Select the data for the given years
+        if self.year_start:
+            self.data = self.data.sel(time=slice(f'{self.year_start}-01-01', None))
+        if self.year_end:
+            self.data = self.data.sel(time=slice(None, f'{self.year_end}-12-31'))
 
     def prepare_data(self, data_path=None, resolution=1, time_step=1):
         """
@@ -91,8 +95,8 @@ class CombiPrecip(PrecipitationArchive):
         time_step: int
             The time step [h] of the precipitation data (default: 1)
         """
-        data = self.open_files(data_path, resolution, time_step)
-        self._generate_pickle_files(data)
+        self.open_files(data_path, resolution, time_step)
+        self._generate_pickle_files()
 
     def _check_files(self, files):
         """

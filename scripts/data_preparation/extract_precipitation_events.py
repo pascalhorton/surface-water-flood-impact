@@ -18,83 +18,24 @@ n_cpus = multiprocessing.cpu_count()
 n_parts = int(n_cpus * 0.9)  # Number of parts to split the data into for parallel processing
 
 
-# Function the calculates the events
-def get_events(coords_row, data):
-    # Select timeseries and convert it into a DataFrame
-    time_series = data.sel(x=coords_row.x, y=coords_row.y).to_dataframe().reset_index()
-
-    # Define parameters for the calculation of the Antecedent Precipitation Index (API)
-    n_days = 30
-    ts_per_day = 24
-    reg = 0.8
-
-    # Calculate the Antecedent Precipitation Index (API) using a convolution
-    window = n_days * ts_per_day
-    kernel = np.power(reg, np.arange(window) / ts_per_day)
-    precip = time_series.precip.values
-    api_full = np.convolve(precip, kernel, mode="full")
-    time_series["api"] = np.concatenate(([0.0], api_full[:len(precip)-1]))
-
-    # Group events by period of at least 8 hour without precipitation larger than 0.1mm/h and return group IDs
-    time_series_th = time_series[time_series.precip >= 0.1]
-    group_ids = time_series_th.groupby(
-        time_series_th.time.diff().gt("8h").cumsum()).ngroup() + 1
-
-    # Fill gaps between events to correctly calculate all event characteristics and then group again
-    time_series["group_ID"] = 0
-    time_series.group_ID = group_ids
-    ff = time_series.group_ID.ffill()
-    bf = time_series.group_ID.bfill()
-    time_series.group_ID = ff[ff == bf]
-    event_groups = time_series.groupby("group_ID")
-
-    # Get the date and time of the maximum precipitation intensity
-    i_max_date = event_groups.apply(lambda g: g.loc[g.precip.idxmax(), 'time'], include_groups=False)
-
-    # Calculate all precipitation characteristics
-    events = pd.concat([
-        event_groups.time.agg(["first", "last", "size"]),
-        event_groups.precip.agg(["sum", "max", "mean", "std"]),
-        event_groups.api.first(),
-        i_max_date.rename("i_max_date")
-    ], axis=1)
-    events = events.rename(
-        columns={"first": "e_start", "last": "e_end", "size": "duration", "sum": "p_sum",
-                 "max": "i_max", "mean": "i_mean", "std": "i_sd", "api": "api", "i_max_date": "i_max_date"})
-    events = events.astype({"duration": "int16", "i_sd": "float32", "api": "float32"})
-
-    # Drop events that do not fulfill the condition of minimal precipitation
-    events = events[events.p_sum >= 10].reset_index(drop=True)
-
-    # Calculate percentiles of score for each event characteristics
-    ranks = events.iloc[:, 2:-1].rank(pct=True)
-    ranks.columns = ["duration_q", "p_sum_q", "i_max_q", "i_mean_q", "i_sd_q", "api_q"]
-    events = pd.concat([events, ranks], axis=1)
-
-    # Add coordinates to the DataFrame and round all float values
-    df_coords = pd.concat([pd.DataFrame(coords_row).T] * len(events), ignore_index=True)
-    events = pd.concat([df_coords, events], axis=1).round(5)
-
-    return events
-
-
 def process_part(i, part, config):
     # Load precipitation files
     cpc = CombiPrecip()
-    data = cpc.open_files(config.get('DIR_PRECIP'))
+    cpc.open_files(config.get('DIR_PRECIP'))
 
     # Extract coordinates and precipitation data for each part
-    data = data.sel(x=slice(part.x.min() - 5000, part.x.max() + 5000),
-                    y=slice(part.y.max() + 5000, part.y.min() - 5000))
+    cpc.data = cpc.data.sel(
+        x=slice(part.x.min() - 5000, part.x.max() + 5000),
+        y=slice(part.y.max() + 5000, part.y.min() - 5000)
+    )
 
     # Apply the 3x3km smoothing
-    data = data.fillna(0)
-    data.precip.values = uniform_filter(data.precip, size=(0, 3, 3))
+    cpc.apply_smoothing(filter_size=3)
 
     # Apply get_events() function to all grid cells in part
     list_of_events = []
     for _, row in part.iterrows():
-        list_of_events.append(get_events(row, data))
+        list_of_events.append(cpc.extract_events(row))
 
     # Store and save data as a .parquet file
     events = pd.concat(list_of_events, axis=0).reset_index(drop=True)
