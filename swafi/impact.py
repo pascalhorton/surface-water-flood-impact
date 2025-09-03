@@ -148,6 +148,17 @@ class Impact:
 
             self.df.to_pickle(tmp_filename)
 
+    def set_events(self, events):
+        """
+        Set the events dataframe.
+
+        Parameters
+        ----------
+        events: pd.DataFrame
+            The events dataframe.
+        """
+        self.df = events
+
     def select_nb_contracts_greater_or_equal_to(self, threshold):
         """
         Select only events with a number of contracts above or equal to the given
@@ -525,9 +536,13 @@ class Impact:
             The unique file name
         """
         # Create unique hash for the data dataframe
-        tag_data = (pickle.dumps(feature_files) + pickle.dumps(self.df.shape) +
-                    pickle.dumps(self.df.columns) + pickle.dumps(self.df.iloc[0]) +
-                    pickle.dumps(self.features))
+        if self.df is not None:
+            tag_data = (pickle.dumps(feature_files) + pickle.dumps(self.df.shape) +
+                        pickle.dumps(self.df.columns) + pickle.dumps(self.df.iloc[0]) +
+                        pickle.dumps(self.features))
+        else:
+            tag_data = pickle.dumps(feature_files) + pickle.dumps(self.features)
+
         df_hashed_name = f'data_{hashlib.md5(tag_data).hexdigest()}.pickle'
         tmp_filename = self.tmp_dir / df_hashed_name
         return tmp_filename

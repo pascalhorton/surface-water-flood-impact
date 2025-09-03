@@ -1,14 +1,81 @@
 import math
+import numpy as np
 from sklearn.metrics import roc_auc_score
 
 
-def compute_confusion_matrix(y_test, y_pred):
+def prepare_full_domain_assessment(ds_pred, ds_damages, ignore_removed=True, relax_days=True, flatten=True):
+    """
+    Prepare the data for the full domain assessment.
+
+    Parameters
+    ----------
+    ds_pred: xr.Dataset
+        The dataset with the predictions.
+    ds_damages: xr.Dataset
+        The dataset with the damages.
+    ignore_removed: bool
+        Whether to ignore the removed claims.
+    relax_days: bool
+        Whether to relax the predictions by 1 day.
+    flatten: bool
+        Whether to flatten the arrays.
+
+    Returns
+    -------
+    y_true: array
+        The true values.
+    y_pred: array
+        The predicted values.
+    """
+    y_pred = ds_pred['predict'].to_numpy()
+    y_true = ds_damages['claims'].to_numpy()
+
+    assert y_pred.shape == y_true.shape
+
+    # Remove the days corresponding to the removed claims (different categories of claims)
+    if ignore_removed:
+        removed = ds_damages['removed_claims'].to_numpy()
+        y_true[removed == 1] = np.nan
+
+    # Relax the predictions by a number of days (to account for timing uncertainties)
+    # We move the predictions if there was a claim within the relax_days window
+    if relax_days:
+        for i in range(y_true.shape[1]):
+            for j in range(y_true.shape[2]):
+                claim_days = np.where(y_true[:, i, j] > 0)[0]
+                for day in claim_days:
+                    if y_pred[day, i, j] > 0:
+                        continue
+                    start_day = max(0, day - 1)
+                    end_day = min(y_true.shape[0], day + 1 + 1)
+                    if np.any(y_pred[start_day:end_day, i, j] > 0):
+                        if y_true[end_day - 1, i, j] == 0 and y_pred[end_day - 1, i, j] > 0:
+                            y_pred[day, i, j] = y_pred[end_day - 1, i, j]
+                            y_pred[end_day - 1, i, j] = 0
+                        elif y_true[start_day, i, j] == 0 and y_pred[start_day, i, j] > 0:
+                            y_pred[day, i, j] = y_pred[start_day, i, j]
+                            y_pred[start_day, i, j] = 0
+
+    # Flatten the results and remove NaN values
+    if flatten:
+        y_pred = y_pred.flatten()
+        y_true = y_true.flatten()
+        mask = ~np.isnan(y_true) & ~np.isnan(y_pred)
+        y_true = y_true[mask]
+        y_pred = y_pred[mask]
+        y_true = (y_true > 0).astype(int)
+        y_pred = (y_pred > 0).astype(int)
+
+    return y_true, y_pred
+
+
+def compute_confusion_matrix(y_true, y_pred):
     """
     Compute the confusion matrix.
 
     Parameters
     ----------
-    y_test: array
+    y_true: array
         The true values
     y_pred: array
         The predicted probabilities
@@ -17,10 +84,10 @@ def compute_confusion_matrix(y_test, y_pred):
     -------
     The confusion matrix components (tp, tn, fp, fn).
     """
-    tp = len(y_test[(y_test == 1) & (y_pred == 1)])
-    tn = len(y_test[(y_test == 0) & (y_pred == 0)])
-    fp = len(y_test[(y_test == 0) & (y_pred == 1)])
-    fn = len(y_test[(y_test == 1) & (y_pred == 0)])
+    tp = len(y_true[(y_true == 1) & (y_pred == 1)])
+    tn = len(y_true[(y_true == 0) & (y_pred == 0)])
+    fp = len(y_true[(y_true == 0) & (y_pred == 1)])
+    fn = len(y_true[(y_true == 1) & (y_pred == 0)])
 
     return tp, tn, fp, fn
 
@@ -350,13 +417,13 @@ def store_classic_scores(tp, tn, fp, fn, df_results):
     df_results['Recall'] = compute_score_binary('Recall', tp, tn, fp, fn)
     df_results['F1'] = compute_score_binary('F1', tp, tn, fp, fn)
 
-def assess_roc_auc(y_test, y_pred):
+def assess_roc_auc(y_true, y_pred):
     """
     Compute the ROC AUC score.
 
     Parameters
     ----------
-    y_test: array
+    y_true: array
         The true values
     y_pred: array
         The predicted probabilities
@@ -366,7 +433,7 @@ def assess_roc_auc(y_test, y_pred):
     The ROC AUC score.
     """
 
-    print(f"ROC AUC: {roc_auc_score(y_test, y_pred):.3f}")
+    print(f"ROC AUC: {roc_auc_score(y_true, y_pred):.3f}")
 
-    return roc_auc_score(y_test, y_pred)
+    return roc_auc_score(y_true, y_pred)
 

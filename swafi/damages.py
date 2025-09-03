@@ -453,7 +453,7 @@ class Damages:
                 x_idx = np.argmin(np.abs(xs - row["x"]))
                 y_idx = np.argmin(np.abs(ys - row["y"]))
                 if 0 <= t_idx < len(time) and 0 <= x_idx < len(xs) and 0 <= y_idx < len(ys):
-                    removed_claims_da[t_idx, y_idx, x_idx] = row["selection"]
+                    removed_claims_da[t_idx, y_idx, x_idx] = 1
 
         # Combine into a single dataset
         if removed_claims is not None and not removed_claims.empty:

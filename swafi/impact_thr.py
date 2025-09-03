@@ -39,17 +39,40 @@ class ImpactThresholds(Impact):
         self.thr_p_sum = thr_p_sum
         self.method = method
 
-    def _assess_model(self, x, y, period_name, df_res):
+    def predict(self):
         """
-        Assess the model on a single period.
+        Predict the impact for the events.
+
+        Returns
+        -------
+        np.ndarray
+            The predicted impact values.
         """
+        if self.df is None:
+            raise ValueError("Events are not set.")
+
+        x = self.df[self.tabular_features['event']].to_numpy()
+        y_pred = self._apply(x)
+
+        return y_pred
+
+    def _apply(self, x):
         # Apply the threshold method
-        y_pred = np.zeros(len(y))
+        y_pred = np.zeros(len(x[:, 0]), dtype=int)
         if self.method == 'union':
             y_pred[x[:, 0] >= self.thr_i_max] = 1
             y_pred[x[:, 1] >= self.thr_p_sum] = 1
         elif self.method == 'intersection':
             y_pred[(x[:, 0] >= self.thr_i_max) & (x[:, 1] >= self.thr_p_sum)] = 1
+
+        return y_pred
+
+    def _assess_model(self, x, y, period_name, df_res):
+        """
+        Assess the model on a single period.
+        """
+        # Apply the threshold method
+        y_pred = self._apply(x)
 
         print(f"\nSplit: {period_name}")
 
