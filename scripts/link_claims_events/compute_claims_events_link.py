@@ -89,6 +89,8 @@ def main():
 
 
 def get_damages_linked_to_events():
+    year_start = CONFIG.get('YEAR_START')
+    year_end = CONFIG.get('YEAR_END')
     label = LABEL_DAMAGE_LINK.replace(" ", "_")
     filename = f'damages_{DATASET}_linked_{label}.pickle'
     file_path = Path(PICKLES_DIR + '/' + filename)
@@ -96,28 +98,20 @@ def get_damages_linked_to_events():
     if file_path.exists():
         print(f"Link for {CRITERIA} already computed.")
         if DATASET == 'mobiliar':
-            damages = DamagesMobiliar(pickle_file=filename,
-                                      year_start=CONFIG.get('YEAR_START'),
-                                      year_end=CONFIG.get('YEAR_END'))
+            damages = DamagesMobiliar(pickle_file=filename, year_start=year_start, year_end=year_end)
         elif DATASET == 'gvz':
-            damages = DamagesGvz(pickle_file=filename,
-                                 year_start=CONFIG.get('YEAR_START'),
-                                 year_end=CONFIG.get('YEAR_END'))
+            damages = DamagesGvz(pickle_file=filename, year_start=year_start, year_end=year_end)
         else:
             raise ValueError(f"Unknown damage dataset: {DATASET}")
         return damages, None
 
     print(f"Computing link for {CRITERIA}")
     if DATASET == 'mobiliar':
-        damages = DamagesMobiliar(dir_exposure=CONFIG.get('DIR_EXPOSURE'),
-                                  dir_claims=CONFIG.get('DIR_CLAIMS'),
-                                  year_start=CONFIG.get('YEAR_START'),
-                                  year_end=CONFIG.get('YEAR_END'))
+        damages = DamagesMobiliar(dir_exposure=CONFIG.get('DIR_EXPOSURE'), dir_claims=CONFIG.get('DIR_CLAIMS'),
+                                  year_start=year_start, year_end=year_end)
     elif DATASET == 'gvz':
-        damages = DamagesGvz(dir_exposure=CONFIG.get('DIR_EXPOSURE'),
-                             dir_claims=CONFIG.get('DIR_CLAIMS'),
-                             year_start=CONFIG.get('YEAR_START'),
-                             year_end=CONFIG.get('YEAR_END'))
+        damages = DamagesGvz(dir_exposure=CONFIG.get('DIR_EXPOSURE'), dir_claims=CONFIG.get('DIR_CLAIMS'),
+                             year_start=year_start, year_end=year_end)
     else:
         raise ValueError(f"Unknown damage dataset: {DATASET}")
 

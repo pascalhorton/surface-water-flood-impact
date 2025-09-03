@@ -96,7 +96,7 @@ class DamagesMobiliar(Damages):
             'Wasser_Privat_GB']
 
         self._create_exposure_claims_df()
-        self._load_from_dump('damages_mobiliar.pickle')
+        self._load_from_dump(f'damages_mobiliar_{year_start}-{year_end}.pickle')
 
         if dir_exposure is not None:
             self.load_exposure(dir_exposure)
@@ -257,6 +257,12 @@ class DamagesMobiliar(Damages):
 
         for i_file in tqdm(range(len(files)), desc=f"Extracting {category}"):
             file = files[i_file]
+            date = self._extract_date_from_filename(file)
+            if date < datetime(self.year_start, 1, 1).date():
+                continue
+            if date > datetime(self.year_end, 12, 31).date():
+                continue
+
             with rasterio.open(file) as dataset:
                 self.domain.check_projection(dataset, file)
                 self.domain.check_resolution(dataset, file)
@@ -269,7 +275,6 @@ class DamagesMobiliar(Damages):
                     continue
 
                 indices, values = self._extract_non_null_claims(data[0, :, :])
-                date = self._extract_date_from_filename(file)
                 df_case = pd.DataFrame(columns=['date_claim', 'mask_index', category])
                 df_case['date_claim'] = [date] * len(indices)
                 df_case['mask_index'] = indices

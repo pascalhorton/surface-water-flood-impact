@@ -59,7 +59,7 @@ class DamagesGvz(Damages):
             'E']  # most likely fluvial flood
 
         self._create_exposure_claims_df()
-        self._load_from_dump('damages_gvz.pickle')
+        self._load_from_dump(f'damages_gvz_{year_start}-{year_end}.pickle')
 
         if dir_exposure is not None:
             self.load_exposure(dir_exposure)

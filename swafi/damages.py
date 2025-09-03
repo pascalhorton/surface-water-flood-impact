@@ -370,7 +370,7 @@ class Damages:
         midpoint_date = claims.e_start + (claims.e_end - claims.e_start) / 2
         self.claims[field_name] = (midpoint_date - claims.date_claim).dt.days
 
-    def to_xarray(self, save_to_nc=True):
+    def to_xarray(self, save_to_nc=True, removed_claims=None):
         """
         Convert the exposure and claims dataframes to xarray datasets.
 
@@ -378,14 +378,18 @@ class Damages:
         ----------
         save_to_nc: bool
             Whether to save the datasets to netCDF4 files. Default is True.
+        removed_claims: DataFrame
+            The claims that have been removed from the dataset when selecting
+            the claim categories.
 
         Returns
         -------
-        A tuple containing the exposure and claims xarray datasets.
+        xr.Dataset
+            The xarray dataset containing the exposure and claims data.
         """
         # Pickle file path
         pickle_path = Path(self.pickles_dir) / f'damages_{self.name}_{self.year_start}_{self.year_end}_xr.pickle'
-        if self.use_dump and pickle_path.exists() and False:
+        if self.use_dump and pickle_path.exists():
             with open(pickle_path, 'rb') as f:
                 claims_ds = pickle.load(f)
             print(f"Claims datasets reloaded from pickle file: {pickle_path}")
@@ -415,6 +419,13 @@ class Damages:
             dims=["time", "y", "x"],
             name="exposure"
         )
+        if removed_claims is not None and not removed_claims.empty:
+            removed_claims_da = xr.DataArray(
+                np.ones((len(time), len(ys), len(xs)), dtype=np.float32) * np.nan,
+                coords={"time": time, "y": ys, "x": xs},
+                dims=["time", "y", "x"],
+                name="removed_claims"
+            )
 
         # Set values to 0 where there is exposure
         for _, row in tqdm(self.exposure.iterrows(), total=len(self.exposure), desc="Processing exposure"):
@@ -422,11 +433,8 @@ class Damages:
                 continue
             year = row['year']
             year_mask = (time.year == year)
-            x_idx = np.searchsorted(xs, row["x"])
-            y_idx = np.searchsorted(ys, row["y"])
-            if y_idx == len(ys):
-                reversed_idx = np.searchsorted(ys[::-1], row["y"], side='left')
-                y_idx = len(ys) - 1 - reversed_idx
+            x_idx = np.argmin(np.abs(xs - row["x"]))
+            y_idx = np.argmin(np.abs(ys - row["y"]))
             if 0 <= x_idx < len(xs) and 0 <= y_idx < len(ys):
                 exposure_da[year_mask, y_idx, x_idx] = row['selection']
                 claims_da[year_mask, y_idx, x_idx] = 0
@@ -434,16 +442,31 @@ class Damages:
         # Place each claim's selection value
         for _, row in tqdm(self.claims.iterrows(), total=len(self.claims), desc="Processing claims"):
             t_idx = np.searchsorted(time, pd.to_datetime(row["date_claim"]))
-            x_idx = np.searchsorted(xs, row["x"])
-            y_idx = np.searchsorted(ys, row["y"])
-            if y_idx == len(ys):
-                reversed_idx = np.searchsorted(ys[::-1], row["y"], side='left')
-                y_idx = len(ys) - 1 - reversed_idx
+            x_idx = np.argmin(np.abs(xs - row["x"]))
+            y_idx = np.argmin(np.abs(ys - row["y"]))
             if 0 <= t_idx < len(time) and 0 <= x_idx < len(xs) and 0 <= y_idx < len(ys):
                 claims_da[t_idx, y_idx, x_idx] = row["selection"]
 
+        if removed_claims is not None and not removed_claims.empty:
+            for _, row in tqdm(removed_claims.iterrows(), total=len(removed_claims), desc="Processing removed claims"):
+                t_idx = np.searchsorted(time, pd.to_datetime(row["date_claim"]))
+                x_idx = np.argmin(np.abs(xs - row["x"]))
+                y_idx = np.argmin(np.abs(ys - row["y"]))
+                if 0 <= t_idx < len(time) and 0 <= x_idx < len(xs) and 0 <= y_idx < len(ys):
+                    removed_claims_da[t_idx, y_idx, x_idx] = row["selection"]
+
         # Combine into a single dataset
-        xr_ds = xr.Dataset({"claims": claims_da, "exposure": exposure_da})
+        if removed_claims is not None and not removed_claims.empty:
+            xr_ds = xr.Dataset({
+                "claims": claims_da,
+                "exposure": exposure_da,
+                "removed_claims": removed_claims_da
+            })
+        else:
+            xr_ds = xr.Dataset({
+                "claims": claims_da,
+                "exposure": exposure_da
+            })
         xr_ds.attrs['year_start'] = self.year_start
         xr_ds.attrs['year_end'] = self.year_end
         xr_ds.attrs['exposure_categories'] = self.selected_exposure_categories
