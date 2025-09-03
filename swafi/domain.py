@@ -138,6 +138,28 @@ class Domain:
 
         return df
 
+    def get_x_axis(self):
+        """
+        Get the x coordinates axis.
+
+        Returns
+        -------
+        numpy.ndarray
+            The x coordinates as a 1D array.
+        """
+        return self.cids['xs'][0, :]
+
+    def get_y_axis(self):
+        """
+        Get the y coordinates axis.
+
+        Returns
+        -------
+        numpy.ndarray
+            The y coordinates as a 1D array.
+        """
+        return self.cids['ys'][:, 0]
+
     def _load_cid_file(self, cid_file):
         """
         Load the file containing the CIDs.

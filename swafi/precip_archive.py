@@ -37,8 +37,11 @@ class PrecipitationArchive(Precipitation):
         self.year_start = year_start
         self.year_end = year_end
         if year_start is not None or year_end is not None:
-            self.time_index = pd.date_range(start=f'{year_start}-01-01',
-                                            end=f'{year_end}-12-31', freq='MS')
+            self.time_index = pd.date_range(
+                start=f'{year_start}-01-01',
+                end=f'{year_end}-12-31',
+                freq='MS'
+            )
         self.missing = None
 
         self.hash_tag = None
