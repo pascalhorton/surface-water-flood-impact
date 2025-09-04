@@ -63,8 +63,6 @@ def prepare_full_domain_assessment(ds_pred, ds_damages, ignore_removed=True, rel
         mask = ~np.isnan(y_true) & ~np.isnan(y_pred)
         y_true = y_true[mask]
         y_pred = y_pred[mask]
-        y_true = (y_true > 0).astype(int)
-        y_pred = (y_pred > 0).astype(int)
 
     return y_true, y_pred
 

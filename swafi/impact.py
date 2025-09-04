@@ -89,15 +89,20 @@ class Impact:
         for feature_class in features_selection:
             self.tabular_features[feature_class] = features_selection[feature_class]
 
-    def load_features(self, feature_types):
+    def get_feature_files(self, feature_types):
         """
-        Load the features from the given feature types.
+        Get the list of feature files to load based on the selected feature types.
 
         Parameters
         ----------
         feature_types: list
             The list of feature types to load. Options are: 'event', 'terrain',
             'swf_map', 'flowacc', 'land_cover', 'runoff_coeff'
+
+        Returns
+        -------
+        list
+            The list of feature files to load.
         """
         feature_files = []
         for feature_type in feature_types:
@@ -124,6 +129,54 @@ class Impact:
                 feature_files.append(self.config.get('CSV_FILE_RUNOFF_COEFF'))
             else:
                 raise ValueError(f"Unknown file for feature type: {feature_type}")
+
+        return feature_files
+
+    def get_all_features(self, feature_types):
+        """
+        Get all features from the given feature files.
+
+        Parameters
+        ----------
+        feature_types: list
+            The list of feature types to load. Options are: 'event', 'terrain',
+            'swf_map', 'flowacc', 'land_cover', 'runoff_coeff'
+
+        Returns
+        -------
+        pd.DataFrame
+            The dataframe with all features.
+        """
+        feature_files = self.get_feature_files(feature_types)
+
+        all_features = None
+
+        for f in feature_files:
+            df_features = pd.read_csv(f)
+
+            # Filter out valid column names
+            valid_columns = [col for col in self.features
+                             if col in df_features.columns] + ['cid']
+            df_features = df_features[valid_columns]
+
+            if all_features is None:
+                all_features = df_features
+            else:
+                all_features = all_features.merge(df_features, on='cid', how='left')
+
+        return all_features
+
+    def load_features(self, feature_types):
+        """
+        Load the features from the given feature types.
+
+        Parameters
+        ----------
+        feature_types: list
+            The list of feature types to load. Options are: 'event', 'terrain',
+            'swf_map', 'flowacc', 'land_cover', 'runoff_coeff'
+        """
+        feature_files = self.get_feature_files(feature_types)
 
         # Create unique hash for the data dataframe
         tmp_filename = self._create_data_tmp_file_name(feature_files)
@@ -158,6 +211,30 @@ class Impact:
             The events dataframe.
         """
         self.df = events
+
+    def set_features(self, features):
+        """
+        Set the features to use for the model.
+
+        Parameters
+        ----------
+        features: pd.DataFrame
+            The features dataframe. Must contain a 'cid' column to merge with the
+            events dataframe.
+        """
+        self.df = self.df.merge(features, on='cid', how='left')
+
+    def set_exposure(self, exposure):
+        """
+        Set the exposure dataframe.
+
+        Parameters
+        ----------
+        exposure: pd.DataFrame
+            The exposure dataframe. Must contain a 'cid' column to merge with the
+            events dataframe.
+        """
+        self.df = self.df.merge(exposure, on='cid', how='left')
 
     def select_nb_contracts_greater_or_equal_to(self, threshold):
         """

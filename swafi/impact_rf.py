@@ -70,32 +70,6 @@ class ImpactRandomForest(Impact):
 
         print(f"Model saved: {filename}")
 
-    def _define_model(self):
-        """
-        Define the model.
-        """
-        if self.target_type == 'occurrence':
-            self.model = RandomForestClassifier(
-                n_estimators=self.options.n_estimators,
-                max_depth=self.options.max_depth,
-                min_samples_split=self.options.min_samples_split,
-                min_samples_leaf=self.options.min_samples_leaf,
-                max_features=self.options.max_features,
-                class_weight=self.class_weight,
-                random_state=self.random_state,
-                n_jobs=self.n_jobs)
-        elif self.target_type == 'damage_ratio':
-            self.model = RandomForestRegressor(
-                n_estimators=self.options.n_estimators,
-                max_depth=self.options.max_depth,
-                min_samples_split=self.options.min_samples_split,
-                min_samples_leaf=self.options.min_samples_leaf,
-                max_features=self.options.max_features,
-                random_state=self.random_state,
-                n_jobs=self.n_jobs)
-        else:
-            raise ValueError(f"Unknown target type: {self.target_type}")
-
     def compute_f1_score(self, x_valid, y_valid):
         """
         Compute the F1 score on the given set.
@@ -146,3 +120,40 @@ class ImpactRandomForest(Impact):
         plot_random_forest_feature_importance(
             self.model, self.features, importances, fig_filename,
             dir_output=dir_output, n_features=20)
+
+    def set_model(self, model):
+        """
+        Set the model.
+
+        Parameters
+        ----------
+        model: RandomForestClassifier|RandomForestRegressor
+            The model to set.
+        """
+        self.model = model
+
+    def _define_model(self):
+        """
+        Define the model.
+        """
+        if self.target_type == 'occurrence':
+            self.model = RandomForestClassifier(
+                n_estimators=self.options.n_estimators,
+                max_depth=self.options.max_depth,
+                min_samples_split=self.options.min_samples_split,
+                min_samples_leaf=self.options.min_samples_leaf,
+                max_features=self.options.max_features,
+                class_weight=self.class_weight,
+                random_state=self.random_state,
+                n_jobs=self.n_jobs)
+        elif self.target_type == 'damage_ratio':
+            self.model = RandomForestRegressor(
+                n_estimators=self.options.n_estimators,
+                max_depth=self.options.max_depth,
+                min_samples_split=self.options.min_samples_split,
+                min_samples_leaf=self.options.min_samples_leaf,
+                max_features=self.options.max_features,
+                random_state=self.random_state,
+                n_jobs=self.n_jobs)
+        else:
+            raise ValueError(f"Unknown target type: {self.target_type}")

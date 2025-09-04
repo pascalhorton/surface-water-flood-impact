@@ -17,7 +17,6 @@ from swafi.damages_gvz import DamagesGvz
 from swafi.utils.verification import compute_confusion_matrix, print_classic_scores, prepare_full_domain_assessment
 
 DO_ASSESS = True
-LABEL_DAMAGE_LINK = 'default'
 
 config = Config()
 
@@ -25,6 +24,8 @@ config = Config()
 def assess(result_path, ds_damages, ignore_removed=True, relax_days=True):
     ds_pred = xr.open_dataset(result_path)
     y_true, y_pred = prepare_full_domain_assessment(ds_pred, ds_damages, ignore_removed, relax_days, flatten=True)
+    y_true = (y_true > 0).astype(int)
+    y_pred = (y_pred > 0).astype(int)
     tp, tn, fp, fn = compute_confusion_matrix(y_true, y_pred)
     print_classic_scores(tp, tn, fp, fn)
     print("*************************************")
