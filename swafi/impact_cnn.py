@@ -163,7 +163,8 @@ class ImpactCnn(ImpactDl):
                              self.dg_train.get_third_dim_size(),
                              1] # 1 channel
 
-        self.model = ModelCnn(
+        self.model = ModelCnn()
+        self.model.build_model(
             task=self.target_type,
             options=self.options,
             input_3d_size=input_3d_size,

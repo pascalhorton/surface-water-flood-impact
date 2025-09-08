@@ -9,75 +9,36 @@ from keras import layers, models
 class ModelCnn(models.Model):
     """
     CNN model factory.
-
-    Parameters
-    ----------
-    task: str
-        The task. Options are: 'regression', 'classification'
-    options: ImpactCnnOptions
-        The options.
-    input_3d_size: list, None
-        The input 3D size.
-    input_1d_size: list, None
-        The input 1D size.
     """
 
-    def __init__(self, task, options, input_3d_size, input_1d_size):
-        super(ModelCnn, self).__init__()
+    def __init__(self, *args, **kwargs):
+        super(ModelCnn, self).__init__(*args, **kwargs)
         self.model = None
-        self.task = task
-        self.options = options
+        self.task = None
+        self.options = None
+        self.input_3d_size = None
+        self.input_1d_size = None
+        self.last_activation = None
 
-        if input_3d_size is None:
-            self.input_3d_size = None
-        else:
-            self.input_3d_size = list(input_3d_size)
-
-        if input_1d_size is None:
-            self.input_1d_size = None
-        else:
-            self.input_1d_size = list(input_1d_size)
-
-        self.last_activation = 'relu' if task == 'regression' else 'sigmoid'
-
-        self._check_input_size()
-        self._build_model()
-
-    def _check_input_size(self):
-        """
-        Check the input size.
-        """
-        if self.input_1d_size is None and self.input_3d_size is None:
-            raise ValueError("At least one input size must be provided")
-
-        if self.input_1d_size is not None:
-            assert len(self.input_1d_size) == 1, "Input 1D size must be 1D"
-
-        if self.input_3d_size is not None:
-            assert len(self.input_3d_size) == 4, \
-                "Input 3D size must be 4D (with channels)"
-
-            # Check the input 3D size vs nb_conv_blocks
-            nb_conv_blocks_max = self.options.nb_conv_blocks
-            if self.options.pool_size_spatial > 1:
-                spatial_size = min(self.input_3d_size[0], self.input_3d_size[1])
-                nb_conv_blocks_max = min(
-                    nb_conv_blocks_max, math.floor(
-                        math.log(spatial_size, self.options.pool_size_spatial)))
-            if self.options.pool_size_temporal > 1:
-                nb_conv_blocks_max = min(
-                    nb_conv_blocks_max, math.floor(
-                        math.log(self.input_3d_size[2],
-                                 self.options.pool_size_temporal)))
-            if self.options.nb_conv_blocks > nb_conv_blocks_max:
-                self.options.nb_conv_blocks = nb_conv_blocks_max
-                print(f"Warning: Number of convolution blocks was reduced "
-                      f"to {self.options.nb_conv_blocks}")
-
-    def _build_model(self):
+    def build_model(self, task='classification', options=None, input_3d_size=None, input_1d_size=None):
         """
         Build the model.
+
+        Parameters
+        ----------
+        task: str
+            The task. Options are: 'regression', 'classification'
+        options: ImpactCnnOptions
+            The options.
+        input_3d_size: list, None
+            The input 3D size.
+        input_1d_size: list, None
+            The input 1D size.
         """
+        self._setup(task=task, options=options,
+                    input_3d_size=input_3d_size,
+                    input_1d_size=input_1d_size)
+
         x = None
 
         if self.input_3d_size is not None:
@@ -102,14 +63,14 @@ class ModelCnn(models.Model):
                     pool_size = (self.options.pool_size_spatial,
                                  self.options.pool_size_spatial,
                                  self.options.pool_size_temporal)
-                    x = self.conv3d_block(
+                    x = self._conv3d_block(
                         x, i,
                         filters=nb_filters,
                         kernel_size=kernel_size,
                         pool_size=pool_size
                     )
                 else:
-                    x = self.conv2d_block(
+                    x = self._conv2d_block(
                         x, i,
                         filters=nb_filters,
                         kernel_size=self.options.kernel_size_spatial,
@@ -158,9 +119,72 @@ class ModelCnn(models.Model):
         else:
             raise ValueError("At least one input size must be provided")
 
-    def conv3d_block(self, x, i, filters, kernel_size=(3, 3, 3),
-                     initializer='he_normal', activation='default',
-                     pool_size=(1, 1, 3)):
+    def _setup(self, task='classification', options=None, input_3d_size=None, input_1d_size=None):
+        """
+        Setup the model.
+
+        Parameters
+        ----------
+        task: str
+            The task. Options are: 'regression', 'classification'
+        options: ImpactCnnOptions
+            The options.
+        input_3d_size: list, None
+            The input 3D size.
+        input_1d_size: list, None
+            The input 1D size.
+        """
+        self.task = task
+        self.options = options
+
+        if input_3d_size is None:
+            self.input_3d_size = None
+        else:
+            self.input_3d_size = list(input_3d_size)
+
+        if input_1d_size is None:
+            self.input_1d_size = None
+        else:
+            self.input_1d_size = list(input_1d_size)
+
+        self.last_activation = 'relu' if task == 'regression' else 'sigmoid'
+
+        self._check_input_size()
+
+    def _check_input_size(self):
+        """
+        Check the input size.
+        """
+        if self.input_1d_size is None and self.input_3d_size is None:
+            raise ValueError("At least one input size must be provided")
+
+        if self.input_1d_size is not None:
+            assert len(self.input_1d_size) == 1, "Input 1D size must be 1D"
+
+        if self.input_3d_size is not None:
+            assert len(self.input_3d_size) == 4, \
+                "Input 3D size must be 4D (with channels)"
+
+            # Check the input 3D size vs nb_conv_blocks
+            nb_conv_blocks_max = self.options.nb_conv_blocks
+            if self.options.pool_size_spatial > 1:
+                spatial_size = min(self.input_3d_size[0], self.input_3d_size[1])
+                nb_conv_blocks_max = min(
+                    nb_conv_blocks_max, math.floor(
+                        math.log(spatial_size, self.options.pool_size_spatial)))
+            if self.options.pool_size_temporal > 1:
+                nb_conv_blocks_max = min(
+                    nb_conv_blocks_max, math.floor(
+                        math.log(self.input_3d_size[2],
+                                 self.options.pool_size_temporal)))
+            if self.options.nb_conv_blocks > nb_conv_blocks_max:
+                self.options.nb_conv_blocks = nb_conv_blocks_max
+                print(f"Warning: Number of convolution blocks was reduced "
+                      f"to {self.options.nb_conv_blocks}")
+
+    def _conv3d_block(self, x, i, filters, kernel_size=(3, 3, 3),
+                      initializer='he_normal', activation='default',
+                      pool_size=(1, 1, 3)):
         """
         3D convolution block.
 
@@ -234,9 +258,9 @@ class ModelCnn(models.Model):
 
         return x
 
-    def conv2d_block(self, x, i, filters, kernel_size=3,
-                     initializer='he_normal', activation='default',
-                     pool_size=2):
+    def _conv2d_block(self, x, i, filters, kernel_size=3,
+                      initializer='he_normal', activation='default',
+                      pool_size=2):
         """
         2D convolution block.
 
