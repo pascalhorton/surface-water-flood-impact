@@ -4,6 +4,9 @@ Class to define the options for the Transformer-based impact function.
 import argparse
 import datetime
 import copy
+import ast
+import pandas as pd
+from typing import List
 
 
 class ImpactBasicOptions:
@@ -77,6 +80,63 @@ class ImpactBasicOptions:
             The copy of the object.
         """
         return copy.deepcopy(self)
+
+    def load_from_csv(self, options_csv):
+        """
+        Load the options from a CSV file.
+
+        Parameters
+        ----------
+        options_csv : str
+            The path to the CSV file.
+        """
+        df = pd.read_csv(options_csv)
+
+        # Parse the arguments to set the default values
+        self.parse_args()
+
+        # Set the attributes from the CSV file
+        for row in df.itertuples():
+            key = row[1]
+            val = row[2]
+
+            # Skip some keys
+            if key in ['parser', 'run_name', 'dataset']:
+                continue
+
+            # Check that the key is valid
+            if not hasattr(self, key):
+                raise ValueError(f"Unknown option: {key}")
+
+            # Convert the value to the correct type
+            attr_type = type(getattr(self, key))
+            if key == 'random_state':
+                if val in ['None', 'none', 'null', '']:
+                    val = None
+                else:
+                    val = int(val)
+            elif attr_type == bool:
+                val = val in ['True', 'true', '1', 'yes']
+            elif attr_type == int:
+                val = int(val)
+            elif attr_type == float:
+                val = float(val)
+            elif attr_type == str:
+                val = str(val)
+            elif attr_type == list:
+                val = self._parse_list_string(val)
+            elif attr_type == type(None):
+                if val in ['None', 'none', 'null', '']:
+                    val = None
+                else:
+                    raise ValueError(f"Invalid value for NoneType option: {val}")
+            elif attr_type == str:
+                val = str(val)
+            else:
+                raise ValueError(f"Unsupported option type: {attr_type}")
+
+            # Set the attribute
+            setattr(self, key, val)
     
     def _set_parser_basic_arguments(self):
         """
@@ -246,3 +306,21 @@ class ImpactBasicOptions:
         assert isinstance(self.use_all_static_attributes, bool), "Invalid use_all_static_attributes"
 
         return True
+
+    @staticmethod
+    def _parse_list_string(s: str) -> List[str]:
+        """
+        Parse a string like `['event', 'terrain', 'swf_map', 'flowacc', 'twi']`
+        into a Python list of strings. Raises ValueError on invalid input.
+        """
+        if not s:
+            return []
+        try:
+            val = ast.literal_eval(s)
+        except (SyntaxError, ValueError) as e:
+            raise ValueError(f"Invalid list string: {e}") from e
+
+        if not isinstance(val, list):
+            raise ValueError("String does not represent a list")
+
+        return [str(x) for x in val]

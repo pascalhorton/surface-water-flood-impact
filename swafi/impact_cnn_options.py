@@ -53,7 +53,7 @@ class ImpactCnnOptions(ImpactDlOptions):
     inner_activation_cnn: str
         The inner activation function for the CNN.
     """
-    def __init__(self):
+    def __init__(self, options_csv=None):
         super().__init__()
         self._set_parser_arguments()
 
@@ -79,6 +79,11 @@ class ImpactCnnOptions(ImpactDlOptions):
         self.pool_size_temporal = None
         self.nb_conv_blocks = None
         self.inner_activation_cnn = None
+
+        if options_csv is not None:
+            self.load_from_csv(options_csv)
+            if not self.is_ok():
+                raise ValueError("Options are not ok.")
 
     def copy(self):
         """
