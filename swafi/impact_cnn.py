@@ -51,6 +51,17 @@ class ImpactCnn(ImpactDl):
         """
         return copy.deepcopy(self)
 
+    def set_model(self, model):
+        """
+        Set the model.
+
+        Parameters
+        ----------
+        model: keras.Model
+            The model to set.
+        """
+        self.model = model
+
     def _create_data_generator_train(self):
         self.dg_train = ImpactCnnDataGenerator(
             event_props=self.events_train,
