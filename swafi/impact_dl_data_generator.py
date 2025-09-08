@@ -73,7 +73,7 @@ class ImpactDlDataGenerator(keras.utils.Sequence):
 
         self.X_static = x_static
 
-        self.n_samples = self.y.shape[0]
+        self.n_samples = self.X_static.shape[0]
         self.idxs = np.arange(self.n_samples)
 
     def reduce_negatives(self, factor):

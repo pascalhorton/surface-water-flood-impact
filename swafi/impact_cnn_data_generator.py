@@ -8,7 +8,7 @@ import pandas as pd
 
 
 class ImpactCnnDataGenerator(ImpactDlDataGenerator):
-    def __init__(self, event_props, x_static, x_precip, x_dem, y, batch_size=32,
+    def __init__(self, event_props, x_static, x_precip, x_dem, y=None, batch_size=32,
                  shuffle=True, precip_window_size=2, precip_resolution=1,
                  precip_time_step=12, precip_days_before=1, precip_days_after=1,
                  tmp_dir=None, transform_static='standardize', transform_precip='normalize',

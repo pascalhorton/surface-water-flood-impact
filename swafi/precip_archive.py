@@ -447,12 +447,14 @@ class PrecipitationArchive(Precipitation):
             try:
                 with open(mean_file, 'rb') as f:
                     mean = pickle.load(f)
+                    print(f"Precipitation mean loaded from pickle file {mean_file}.")
             except EOFError:
                 raise EOFError(f"Error: {mean_file} is empty or corrupted.")
 
             try:
                 with open(std_file, 'rb') as f:
                     std = pickle.load(f)
+                    print(f"Precipitation sd loaded from pickle file {std_file}.")
             except EOFError:
                 raise EOFError(f"Error: {std_file} is empty or corrupted.")
 
@@ -512,6 +514,7 @@ class PrecipitationArchive(Precipitation):
             try:
                 with open(tmp_filename, 'rb') as f:
                     quantiles = pickle.load(f)
+                    print(f"Precipitation quantile {quantile} loaded from pickle file {tmp_filename}.")
             except EOFError:
                 raise EOFError(f"Error: {tmp_filename} is empty or corrupted.")
 
