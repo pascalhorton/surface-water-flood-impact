@@ -9,16 +9,43 @@ import keras
 class ModelCnn(keras.models.Model):
     """
     CNN model factory.
+
+    Parameters
+    ----------
+    trainable: bool
+        Whether the model is trainable.
+    dtype: str|None
+        The data type.
+    task: str
+        The task. Options are: 'regression', 'classification' (default: 'classification').
+    options: ImpactCnnOptions|None
+        The options.
+    input_3d_size: list|None
+        The input 3D size (default: None).
+    input_1d_size: list|None
+        The input 1D size (default: None).
+    *args
+    **kwargs
+        Additional arguments to pass to keras.models.Model.
     """
 
-    def __init__(self, trainable=True, dtype=None, *args, **kwargs):
+    def __init__(self, trainable=True, dtype=None, task='classification', options=None, input_3d_size=None, input_1d_size=None, *args, **kwargs):
         super().__init__(trainable=trainable, dtype=dtype, *args, **kwargs)
         self.model = None
-        self.task = None
-        self.options = None
-        self.input_3d_size = None
-        self.input_1d_size = None
-        self.last_activation = None
+        self.task = task
+        self.options = options
+
+        if input_3d_size is None:
+            self.input_3d_size = None
+        else:
+            self.input_3d_size = list(input_3d_size)
+
+        if input_1d_size is None:
+            self.input_1d_size = None
+        else:
+            self.input_1d_size = list(input_1d_size)
+
+        self.last_activation = 'relu' if task == 'regression' else 'sigmoid'
 
     def get_config(self):
         """
@@ -31,6 +58,7 @@ class ModelCnn(keras.models.Model):
             "options": keras.saving.serialize_keras_object(self.options),
             "input_3d_size": self.input_3d_size,
             "input_1d_size": self.input_1d_size,
+            "build_config": self.get_build_config(),
         }
         return {**base_config, **config}
 
@@ -43,9 +71,12 @@ class ModelCnn(keras.models.Model):
         # Extract config values (keep backward compatibility)
         trainable = config.get("trainable", True)
         dtype = config.get("dtype", None)
-        options = config.get("options", None)
-        if options is not None:
-            options = keras.saving.deserialize_keras_object(options)
+
+        options_cfg = config.get("options", None)
+        options = None
+        if options_cfg is not None:
+            # restore options if it was serialized
+            options = keras.saving.deserialize_keras_object(options_cfg)
 
         # Recreate instance
         instance = cls(trainable=trainable, dtype=dtype)
@@ -53,6 +84,7 @@ class ModelCnn(keras.models.Model):
         instance.options = options
         instance.input_3d_size = config.get("input_3d_size", None)
         instance.input_1d_size = config.get("input_1d_size", None)
+        instance.last_activation = 'relu' if instance.task == 'regression' else 'sigmoid'
 
         return instance
 
@@ -69,27 +101,31 @@ class ModelCnn(keras.models.Model):
         Optional: complementary to get_build_config. Rebuilds wrapper + internal model.
         """
         input_shape = config.get("input_shape", None)
-        self.input_3d_size = input_shape[0] if input_shape and len(input_shape) > 0 else None
-        self.input_1d_size = input_shape[1] if input_shape and len(input_shape) > 1 else None
+        self.input_3d_size = input_shape[0][1:] if input_shape and len(input_shape) > 0 else None
+        self.input_1d_size = input_shape[1][1:] if input_shape and len(input_shape) > 1 else None
 
-    def build_model(self, task='classification', options=None, input_3d_size=None, input_1d_size=None):
+        # Try to restore the nested keras.Model from a stored build config
+        build_cfg = config.get("build_config", None)
+        if build_cfg is not None:
+            try:
+                self.model = keras.models.Model.from_config(build_cfg)
+            except Exception:
+                # if reconstruction fails, leave model None and fall back to build_model below
+                self.model = None
+
+    def build_model(self, options=None):
         """
         Build the model.
 
         Parameters
         ----------
-        task: str
-            The task. Options are: 'regression', 'classification'
         options: ImpactCnnOptions
             The options.
-        input_3d_size: list, None
-            The input 3D size.
-        input_1d_size: list, None
-            The input 1D size.
         """
-        self._setup(task=task, options=options,
-                    input_3d_size=input_3d_size,
-                    input_1d_size=input_1d_size)
+        if options is not None:
+            self.options = options
+
+        self._check_input_size()
 
         x = None
 
@@ -186,20 +222,7 @@ class ModelCnn(keras.models.Model):
         input_1d_size: list, None
             The input 1D size.
         """
-        self.task = task
-        self.options = options
 
-        if input_3d_size is None:
-            self.input_3d_size = None
-        else:
-            self.input_3d_size = list(input_3d_size)
-
-        if input_1d_size is None:
-            self.input_1d_size = None
-        else:
-            self.input_1d_size = list(input_1d_size)
-
-        self.last_activation = 'relu' if task == 'regression' else 'sigmoid'
 
         self._check_input_size()
 
@@ -216,6 +239,9 @@ class ModelCnn(keras.models.Model):
         if self.input_3d_size is not None:
             assert len(self.input_3d_size) == 4, \
                 "Input 3D size must be 4D (with channels)"
+
+            if self.options is None:
+                return
 
             # Check the input 3D size vs nb_conv_blocks
             nb_conv_blocks_max = self.options.nb_conv_blocks

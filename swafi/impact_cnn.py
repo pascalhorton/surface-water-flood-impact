@@ -231,13 +231,13 @@ class ImpactCnn(ImpactDl):
                              self.dg_train.get_third_dim_size(),
                              1] # 1 channel
 
-        self.model = ModelCnn()
-        self.model.build_model(
+        self.model = ModelCnn(
             task=self.target_type,
             options=self.options,
             input_3d_size=input_3d_size,
-            input_1d_size=input_1d_size,
+            input_1d_size=input_1d_size
         )
+        self.model.build_model()
 
     def set_precipitation(self, precipitation):
         """

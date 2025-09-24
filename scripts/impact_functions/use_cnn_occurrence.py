@@ -99,6 +99,8 @@ def main():
             'csi': CriticalSuccessIndex
         }
     )
+    if cnn_model.model == None:
+        cnn_model.build_model(options=options)
 
     # Extract precipitation events
     year_start = config.get('YEAR_START_TEST')
@@ -182,24 +184,18 @@ def main():
             if len(cell_events) == 0:
                 continue
 
-            features_cid = features[features['cid'] == cell_id]
-            if len(features_cid) == 0:
-                ds_pred['predict'][:, i_y, i_x] = np.nan
-                continue
-
             exposure_cid = contracts_number[contracts_number['cid'] == cell_id]
             if len(exposure_cid) == 0 or exposure_cid['nb_contracts'].values[0] == 0:
                 ds_pred['predict'][:, i_y, i_x] = np.nan
                 continue
 
-            # Predict for the events
-            cnn.set_events(cell_events)
-            cnn.set_features(features_cid)
-            cnn.set_exposure(exposure_cid)
+            # Predict
+            x_input, _ = dg.get_batch_for_cid(cell_id)
+            y_pred = cnn.model.predict(x_input, verbose=0)
 
-            cnn.df.dropna(subset=cnn.features, inplace=True)
-            x_input = cnn.df[cnn.features].to_numpy()
-            y_pred = cnn.model.predict(x_input)[:, 1]  # Probability of class 1
+            # Get rid of the single dimension
+            y_pred = y_pred.squeeze()
+
             assert len(y_pred) == len(cell_events)
 
             # Loop over events and store the target value at the correct date
