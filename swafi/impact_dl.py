@@ -119,7 +119,7 @@ class ImpactDl(Impact):
         self.model.compile(
             loss=loss_fn,
             optimizer=optimizer,
-            metrics=[self.csi]
+            metrics=[CriticalSuccessIndex()]
         )
 
         # Print the model summary
@@ -306,12 +306,13 @@ class ImpactDl(Impact):
             if self.class_weight is None:
                 loss_fn = 'binary_crossentropy'
             else:
-                # Set class weights as float32
-                class_weight = self.class_weight.copy()
-                for key in class_weight:
-                    class_weight[key] = float(class_weight[key])
-                loss_fn = self._weighted_binary_cross_entropy(
-                    weights=class_weight)
+                # Ensure class weights are floats
+                class_weight = {k: float(v) for k, v in self.class_weight.items()}
+                loss_fn = WeightedBinaryCrossEntropy(
+                    pos_weight=class_weight[1],
+                    neg_weight=class_weight[0],
+                    from_logits=False
+                )
         else:
             loss_fn = 'mse'
 
@@ -333,61 +334,10 @@ class ImpactDl(Impact):
         -------
         The loss function.
         """
+        pos = float(weights[1])
+        neg = float(weights[0])
 
-        def weighted_binary_cross_entropy(y_true, y_pred):
-            """
-            Weighted binary cross entropy.
-            From: https://stackoverflow.com/questions/46009619/keras-weighted-binary-crossentropy
-
-            Parameters
-            ----------
-            y_true: array-like
-                The true values.
-            y_pred: array-like
-                The predicted values.
-
-            Returns
-            -------
-            The loss.
-            """
-            tf_y_true = tf.cast(y_true, dtype=y_pred.dtype)
-            tf_y_pred = tf.cast(y_pred, dtype=y_pred.dtype)
-
-            weights_v = tf.where(tf.equal(tf_y_true, 1), weights[1], weights[0])
-            ce = keras.metrics.binary_crossentropy(
-                tf_y_true, tf_y_pred, from_logits=from_logits)
-            loss = tf.reduce_mean(tf.multiply(ce, weights_v))
-
-            return loss
-
-        return weighted_binary_cross_entropy
-
-    @staticmethod
-    def csi(y_true, y_pred):
-        """
-        Compute the critical success index (CSI) for use in tensorflow.
-
-        Parameters
-        ----------
-        y_true: array-like
-            The true values.
-        y_pred: array-like
-            The predicted values.
-
-        Returns
-        -------
-        The CSI score.
-        """
-        epsilon = 1e-7  # a small constant to avoid division by zero
-        y_true = tf.cast(y_true, dtype=y_pred.dtype)
-        y_pred = tf.cast(y_pred, dtype=y_pred.dtype)
-        y_pred = tf.round(y_pred)  # convert probabilities to binary predictions
-        tp = tf.reduce_sum(y_true * y_pred)
-        fp = tf.reduce_sum((1 - y_true) * y_pred)
-        fn = tf.reduce_sum(y_true * (1 - y_pred))
-        csi = tp / (tp + fp + fn + epsilon)
-
-        return csi
+        return WeightedBinaryCrossEntropy(pos_weight=pos, neg_weight=neg, from_logits=from_logits)
 
     def _define_optimizer(self, n_samples, lr_method='constant', lr=.001, init_lr=0.01):
         """
@@ -485,3 +435,89 @@ class CustomEarlyStopping(keras.callbacks.Callback):
                 print(f"\nEpoch {epoch + 1}: early stopping due to {self.monitor} falling below {self.min_value} for {self.patience} consecutive epochs.")
         else:
             self.wait = 0
+
+
+class WeightedBinaryCrossEntropy(keras.losses.Loss):
+    """
+    Serializable weighted binary cross-entropy loss.
+
+    Stores positive/negative weights so Keras can serialize/deserialize the loss.
+    """
+    def __init__(self, pos_weight=1.0, neg_weight=1.0, from_logits=False, name='weighted_binary_cross_entropy'):
+        super().__init__(name=name)
+        self.pos_weight = float(pos_weight)
+        self.neg_weight = float(neg_weight)
+        self.from_logits = bool(from_logits)
+
+    def call(self, y_true, y_pred):
+        y_true = tf.cast(y_true, dtype=y_pred.dtype)
+        y_pred = tf.cast(y_pred, dtype=y_pred.dtype)
+        weights_v = tf.where(tf.equal(y_true, 1), self.pos_weight, self.neg_weight)
+        ce = keras.metrics.binary_crossentropy(y_true, y_pred, from_logits=self.from_logits)
+        return tf.reduce_mean(tf.multiply(ce, weights_v))
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "pos_weight": self.pos_weight,
+            "neg_weight": self.neg_weight,
+            "from_logits": self.from_logits,
+        })
+        return config
+
+    @classmethod
+    def from_config(cls, config):
+        # Keras will pass the dict returned by get_config
+        return cls(pos_weight=config.get("pos_weight", 1.0),
+                   neg_weight=config.get("neg_weight", 1.0),
+                   from_logits=config.get("from_logits", False),
+                   name=config.get("name", "weighted_binary_cross_entropy"))
+
+
+class CriticalSuccessIndex(keras.metrics.Metric):
+    """
+    CSI (Critical Success Index) metric that accumulates TP/FP/FN across updates.
+    Serializable via get_config / from_config and safe for model.save/load.
+    """
+    def __init__(self, threshold=0.5, name='csi', dtype=tf.float32, **kwargs):
+        super().__init__(name=name, dtype=dtype, **kwargs)
+        self.threshold = float(threshold)
+        self.tp = self.add_weight(name='tp', initializer='zeros', dtype=dtype)
+        self.fp = self.add_weight(name='fp', initializer='zeros', dtype=dtype)
+        self.fn = self.add_weight(name='fn', initializer='zeros', dtype=dtype)
+        self.epsilon = tf.constant(1e-7, dtype=dtype)
+
+    def update_state(self, y_true, y_pred, sample_weight=None):
+        y_true = tf.cast(y_true, dtype=self.dtype)
+        y_pred = tf.cast(y_pred, dtype=self.dtype)
+        y_pred_bin = tf.cast(tf.greater_equal(y_pred, self.threshold), dtype=self.dtype)
+
+        tp = tf.reduce_sum(y_true * y_pred_bin)
+        fp = tf.reduce_sum((1 - y_true) * y_pred_bin)
+        fn = tf.reduce_sum(y_true * (1 - y_pred_bin))
+
+        if sample_weight is not None:
+            sw = tf.cast(sample_weight, dtype=self.dtype)
+            tp *= sw
+            fp *= sw
+            fn *= sw
+
+        self.tp.assign_add(tp)
+        self.fp.assign_add(fp)
+        self.fn.assign_add(fn)
+
+    def result(self):
+        denom = self.tp + self.fp + self.fn + self.epsilon
+        return self.tp / denom
+
+    def reset_states(self):
+        self.tp.assign(0.)
+        self.fp.assign(0.)
+        self.fn.assign(0.)
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "threshold": self.threshold,
+        })
+        return config

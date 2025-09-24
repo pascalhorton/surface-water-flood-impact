@@ -14,6 +14,7 @@ from swafi.config import Config
 from swafi.domain import Domain
 from swafi.impact_cnn import ImpactCnn
 from swafi.impact_cnn_options import ImpactCnnOptions
+from swafi.impact_dl import WeightedBinaryCrossEntropy, CriticalSuccessIndex
 from swafi.precip_combiprecip import CombiPrecip
 from swafi.damages_mobiliar import DamagesMobiliar
 from swafi.damages_gvz import DamagesGvz
@@ -22,6 +23,7 @@ from swafi.utils.verification import compute_confusion_matrix, print_classic_sco
 DO_ASSESS = True
 MODEL = R"C:\Users\phorton\Documents\SWF\outputs\_good one\model_cnn_1D_mobiliar_v1.keras"
 OPTIONS = R"C:\Users\phorton\Documents\SWF\outputs\_good one\model_cnn_1D_mobiliar_v1_options.csv"
+PRECIP_STATS_PATH = R"C:\Users\phorton\Documents\SWF\data\cpc_statistics_2005-2022.nc"
 
 config = Config()
 
@@ -90,7 +92,13 @@ def main():
         keras.utils.set_random_seed(options.random_state)
 
     # Load the keras model
-    cnn_model = keras.saving.load_model(MODEL, compile=False)
+    cnn_model = keras.models.load_model(
+        MODEL,
+        custom_objects={
+            'weighted_binary_cross_entropy': WeightedBinaryCrossEntropy,
+            'csi': CriticalSuccessIndex
+        }
+    )
 
     # Extract precipitation events
     year_start = config.get('YEAR_START_TEST')
@@ -143,8 +151,23 @@ def main():
     # Create the impact function
     cnn = ImpactCnn(options)
     cnn.set_model(cnn_model)
-    cnn.select_features(cnn.options.replace_simple_features)
-    features = cnn.get_all_features(cnn.options.simple_feature_classes)
+    cnn.set_precipitation(cpc)
+    features = None
+    if cnn.options.use_static_attributes or cnn.options.use_event_attributes:
+        cnn.select_features(cnn.options.replace_simple_features)
+        features = cnn.get_all_features(cnn.options.simple_feature_classes)
+
+    # Load precipitation statistics for standardization
+    precip_stats = xr.open_dataset(PRECIP_STATS_PATH)
+
+    # Prepare the dat (normalization)
+    dg = cnn.get_data_generator_inference(
+        events=events,
+        features=features,
+        exposure=contracts_number,
+        precip_stats=precip_stats
+    )
+    precip_stats.close()
 
     # Evaluate on all domain cells
     for i_x, x in enumerate(tqdm(xs, desc="Progress:", position=0)):

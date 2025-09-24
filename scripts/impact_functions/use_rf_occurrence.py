@@ -23,7 +23,7 @@ MODEL = R"C:\Users\phorton\Documents\SWF\outputs\model_rf_2025-08-29_160926.pkl"
 config = Config()
 
 
-def assess(result_path, ds_damages, ignore_removed=True, relax_days=True, prob_threshold=0.5):
+def assess(result_path, ds_damages, ignore_removed=True, relax_days=True, prob_threshold=0.65):
     ds_pred = xr.open_dataset(result_path)
     y_true, y_pred = prepare_full_domain_assessment(ds_pred, ds_damages, ignore_removed, relax_days, flatten=True)
     y_pred = (y_pred >= prob_threshold).astype(int)

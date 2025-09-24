@@ -141,6 +141,24 @@ class ImpactDlDataGenerator(keras.utils.Sequence):
 
         return self._generate_batch(idxs)
 
+    def get_batch_for_cid(self, cid):
+        """
+        Get a batch of data from the full data (i.e., without shuffling or negative
+        event removal) for a given cid.
+
+        Parameters
+        ----------
+        cid : int
+            The cell id.
+
+        Returns
+        -------
+        The batch of data.
+        """
+        idxs = np.where(self.event_props[:, 3] == cid)[0]
+
+        return self._generate_batch(idxs)
+
     def _standardize_static_inputs(self):
         if self.X_static is not None:
             self.X_static = (self.X_static - self.mean_static) / self.std_static

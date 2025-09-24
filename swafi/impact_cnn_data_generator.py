@@ -196,7 +196,9 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
 
     def _generate_batch(self, idxs):
         # Select the events
-        y = self.y[idxs]
+        y = None
+        if self.y is not None:
+            y = self.y[idxs]
 
         x_3d = None
         x_static = None

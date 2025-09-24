@@ -62,6 +62,74 @@ class ImpactCnn(ImpactDl):
         """
         self.model = model
 
+    def get_data_generator_inference(self, events, features, exposure, precip_stats):
+        """
+        Get the data generator for inference.
+
+        Parameters
+        ----------
+        events: pd.DataFrame
+            The events.
+        features: pd.DataFrame
+            The features.
+        exposure: pd.DataFrame
+            The exposure data.
+        precip_stats: xr.Dataset
+            The precipitation statistics.
+
+        Returns
+        -------
+        ImpactCnnDataGenerator
+            The data generator.
+        """
+
+        df = events.merge(exposure, on='cid', how='left')
+        df = df.merge(features, on='cid', how='left')
+        df.dropna(subset=self.features, inplace=True)
+
+        df.rename(columns={'i_max_date': 'date'}, inplace=True)
+        df['date'] = pd.to_datetime(df['date'])
+
+        x_static = df[self.features].to_numpy()
+
+        y_fields = ['date', 'x', 'y', 'cid']
+        event_props = df[y_fields].to_numpy()
+
+        if self.options.log_transform_precip:
+            mean_precip = precip_stats['mean_log'].values
+            std_precip = precip_stats['std_log'].values
+            q99_precip = precip_stats['q99_log'].values
+        else:
+            mean_precip = precip_stats['mean'].values
+            std_precip = precip_stats['std'].values
+            q99_precip = precip_stats['q99'].values
+
+        return ImpactCnnDataGenerator(
+            event_props=event_props,
+            x_static=x_static,
+            x_precip=self.precipitation_hf,
+            x_dem=self.dem,
+            batch_size=self.options.batch_size,
+            shuffle=False,
+            precip_window_size=self.options.precip_window_size,
+            precip_resolution=self.options.precip_resolution,
+            precip_time_step=self.options.precip_time_step,
+            precip_days_before=self.options.precip_days_before,
+            precip_days_after=self.options.precip_days_after,
+            tmp_dir=self.tmp_dir,
+            transform_static=self.options.transform_static,
+            transform_precip=self.options.transform_precip,
+            log_transform_precip=self.options.log_transform_precip,
+            mean_static=None,
+            std_static=None,
+            min_static=None,
+            max_static=None,
+            mean_precip=mean_precip,
+            std_precip=std_precip,
+            q99_precip=q99_precip,
+            debug=DEBUG
+        )
+
     def _create_data_generator_train(self):
         self.dg_train = ImpactCnnDataGenerator(
             event_props=self.events_train,

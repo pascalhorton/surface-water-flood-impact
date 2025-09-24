@@ -3,22 +3,74 @@ Class for the CNN model.
 """
 
 import math
-from keras import layers, models
+import keras
 
 
-class ModelCnn(models.Model):
+class ModelCnn(keras.models.Model):
     """
     CNN model factory.
     """
 
-    def __init__(self, *args, **kwargs):
-        super(ModelCnn, self).__init__(*args, **kwargs)
+    def __init__(self, trainable=True, dtype=None, *args, **kwargs):
+        super().__init__(trainable=trainable, dtype=dtype, *args, **kwargs)
         self.model = None
         self.task = None
         self.options = None
         self.input_3d_size = None
         self.input_1d_size = None
         self.last_activation = None
+
+    def get_config(self):
+        """
+        Return a serializable config for this wrapper.
+        Ensure `self.options` is serializable (implements get_config) or is primitive.
+        """
+        base_config = super().get_config()
+        config = {
+            "task": self.task,
+            "options": keras.saving.serialize_keras_object(self.options),
+            "input_3d_size": self.input_3d_size,
+            "input_1d_size": self.input_1d_size,
+        }
+        return {**base_config, **config}
+
+    @classmethod
+    def from_config(cls, config):
+        """
+        Recreate the wrapper and build the internal Keras model.
+        Keras will call this when deserializing the custom object.
+        """
+        # Extract config values (keep backward compatibility)
+        trainable = config.get("trainable", True)
+        dtype = config.get("dtype", None)
+        options = config.get("options", None)
+        if options is not None:
+            options = keras.saving.deserialize_keras_object(options)
+
+        # Recreate instance
+        instance = cls(trainable=trainable, dtype=dtype)
+        instance.task = config.get("task", "classification")
+        instance.options = options
+        instance.input_3d_size = config.get("input_3d_size", None)
+        instance.input_1d_size = config.get("input_1d_size", None)
+
+        return instance
+
+    def get_build_config(self):
+        """
+        Optional: return the internal built model config so Keras can persist it.
+        """
+        if self.model is None:
+            return None
+        return self.model.get_config()
+
+    def build_from_config(self, config):
+        """
+        Optional: complementary to get_build_config. Rebuilds wrapper + internal model.
+        """
+        input_shape = config.get("input_shape", None)
+        self.input_3d_size = input_shape[0] if input_shape and len(input_shape) > 0 else None
+        self.input_1d_size = input_shape[1] if input_shape and len(input_shape) > 1 else None
 
     def build_model(self, task='classification', options=None, input_3d_size=None, input_1d_size=None):
         """
@@ -42,11 +94,11 @@ class ModelCnn(models.Model):
         x = None
 
         if self.input_3d_size is not None:
-            input_3d = layers.Input(shape=self.input_3d_size, name='input_3d')
+            input_3d = keras.layers.Input(shape=self.input_3d_size, name='input_3d')
 
             if not self.options.use_3d_cnn:
                 # If 3D CNN is not used, remove the last dimension (channels)
-                x = layers.Reshape(
+                x = keras.layers.Reshape(
                     (self.input_3d_size[0], self.input_3d_size[1], self.input_3d_size[2]),
                     name='reshape_input_3d'
                 )(input_3d)
@@ -78,12 +130,12 @@ class ModelCnn(models.Model):
                     )
 
             # Flatten
-            x = layers.Flatten()(x)
+            x = keras.layers.Flatten()(x)
 
         if self.input_1d_size is not None:
-            input_1d = layers.Input(shape=self.input_1d_size, name='input_1d')
+            input_1d = keras.layers.Input(shape=self.input_1d_size, name='input_1d')
             if self.input_3d_size is not None:
-                x = layers.concatenate([x, input_1d])
+                x = keras.layers.concatenate([x, input_1d])
             else:
                 x = input_1d
 
@@ -95,27 +147,27 @@ class ModelCnn(models.Model):
                 nb_units = max(nb_units, 4)
             else:
                 nb_units = self.options.nb_dense_units
-            x = layers.Dense(nb_units, activation=self.options.inner_activation_dense,
+            x = keras.layers.Dense(nb_units, activation=self.options.inner_activation_dense,
                              name=f'dense_{i}')(x)
 
             if self.options.use_batchnorm_dense:
-                x = layers.BatchNormalization(name=f'batchnorm_dense_{i}')(x)
+                x = keras.layers.BatchNormalization(name=f'batchnorm_dense_{i}')(x)
 
             if self.options.dropout_rate_dense > 0:
-                x = layers.Dropout(rate=self.options.dropout_rate_dense,
+                x = keras.layers.Dropout(rate=self.options.dropout_rate_dense,
                                    name=f'dropout_dense_{i}')(x)
 
         # Last activation
-        output = layers.Dense(1, activation=self.last_activation,
+        output = keras.layers.Dense(1, activation=self.last_activation,
                               name=f'dense_last')(x)
 
         # Build model
         if self.input_3d_size is not None and self.input_1d_size is not None:
-            self.model = models.Model(inputs=[input_3d, input_1d], outputs=output)
+            self.model = keras.models.Model(inputs=[input_3d, input_1d], outputs=output)
         elif self.input_3d_size is None:
-            self.model = models.Model(inputs=input_1d, outputs=output)
+            self.model = keras.models.Model(inputs=input_1d, outputs=output)
         elif self.input_1d_size is None:
-            self.model = models.Model(inputs=input_3d, outputs=output)
+            self.model = keras.models.Model(inputs=input_3d, outputs=output)
         else:
             raise ValueError("At least one input size must be provided")
 
@@ -190,7 +242,7 @@ class ModelCnn(models.Model):
 
         Parameters
         ----------
-        x: layers.Layer
+        x: keras.layers.Layer
             The input layer.
         i: int
             The index of the block.
@@ -212,7 +264,7 @@ class ModelCnn(models.Model):
         if activation == 'default':
             activation = self.options.inner_activation_cnn
 
-        x = layers.Conv3D(
+        x = keras.layers.Conv3D(
             filters=filters,
             kernel_size=kernel_size,
             strides=(1, 1, 1),
@@ -221,7 +273,7 @@ class ModelCnn(models.Model):
             kernel_initializer=initializer,
             name=f'conv3d_{i}a',
         )(x)
-        x = layers.Conv3D(
+        x = keras.layers.Conv3D(
             filters=filters,
             kernel_size=kernel_size,
             strides=(1, 1, 1),
@@ -235,23 +287,23 @@ class ModelCnn(models.Model):
             # Batch normalization should be before any dropout
             # https://stackoverflow.com/questions/59634780/correct-order-for-
             # spatialdropout2d-batchnormalization-and-activation-function
-            x = layers.BatchNormalization(
+            x = keras.layers.BatchNormalization(
                 name=f'batchnorm_cnn_{i}'
             )(x)
 
-        x = layers.MaxPooling3D(
+        x = keras.layers.MaxPooling3D(
             pool_size=pool_size,
             name=f'maxpool3d_cnn_{i}',
         )(x)
 
         if self.options.dropout_rate_cnn > 0:
             if self.options.use_spatial_dropout and x.shape[1] > 1 and x.shape[2] > 1:
-                x = layers.SpatialDropout3D(
+                x = keras.layers.SpatialDropout3D(
                     rate=self.options.dropout_rate_cnn,
                     name=f'spatial_dropout_cnn_{i}',
                 )(x)
             else:
-                x = layers.Dropout(
+                x = keras.layers.Dropout(
                     rate=self.options.dropout_rate_cnn,
                     name=f'dropout_cnn_{i}',
                 )(x)
@@ -266,7 +318,7 @@ class ModelCnn(models.Model):
 
         Parameters
         ----------
-        x: layers.Layer
+        x: keras.layers.Layer
             The input layer.
         i: int
             The index of the block.
@@ -288,7 +340,7 @@ class ModelCnn(models.Model):
         if activation == 'default':
             activation = self.options.inner_activation_cnn
 
-        x = layers.Conv2D(
+        x = keras.layers.Conv2D(
             filters=filters,
             kernel_size=(kernel_size, kernel_size),
             strides=(1, 1),
@@ -297,7 +349,7 @@ class ModelCnn(models.Model):
             kernel_initializer=initializer,
             name=f'conv2d_{i}a',
         )(x)
-        x = layers.Conv2D(
+        x = keras.layers.Conv2D(
             filters=filters,
             kernel_size=(kernel_size, kernel_size),
             strides=(1, 1),
@@ -308,23 +360,23 @@ class ModelCnn(models.Model):
         )(x)
 
         if self.options.use_batchnorm_cnn:
-            x = layers.BatchNormalization(
+            x = keras.layers.BatchNormalization(
                 name=f'batchnorm_cnn_{i}'
             )(x)
 
-        x = layers.MaxPooling2D(
+        x = keras.layers.MaxPooling2D(
             pool_size=pool_size,
             name=f'maxpool2d_cnn_{i}',
         )(x)
 
         if self.options.dropout_rate_cnn > 0:
             if self.options.use_spatial_dropout and x.shape[1] > 1 and x.shape[2] > 1:
-                x = layers.SpatialDropout2D(
+                x = keras.layers.SpatialDropout2D(
                     rate=self.options.dropout_rate_cnn,
                     name=f'spatial_dropout_cnn_{i}',
                 )(x)
             else:
-                x = layers.Dropout(
+                x = keras.layers.Dropout(
                     rate=self.options.dropout_rate_cnn,
                     name=f'dropout_cnn_{i}',
                 )(x)

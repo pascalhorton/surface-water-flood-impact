@@ -28,7 +28,7 @@ class ModelTransformer(models.Model):
 
     def __init__(self, task, options, input_daily_prec_size, input_high_freq_prec_size,
                  input_attributes_size):
-        super(ModelTransformer, self).__init__()
+        super().__init__()
         self.model = None
         self.task = task
         self.options = options
