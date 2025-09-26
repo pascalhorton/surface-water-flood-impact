@@ -104,7 +104,7 @@ class ImpactCnn(ImpactDl):
             std_precip = precip_stats['std'].values
             q99_precip = precip_stats['q99'].values
 
-        return ImpactCnnDataGenerator(
+        dg = ImpactCnnDataGenerator(
             event_props=event_props,
             x_static=x_static,
             x_precip=self.precipitation_hf,
@@ -129,6 +129,14 @@ class ImpactCnn(ImpactDl):
             q99_precip=q99_precip,
             debug=DEBUG
         )
+
+        if (self.options.use_precip and self.precipitation_hf is not None and
+                self.options.precip_window_size / self.options.precip_resolution == 1):
+            print("Preloading all precipitation data.")
+            all_cids = df['cid'].unique()
+            self.precipitation_hf.preload_all_cid_data(all_cids)
+
+        return dg
 
     def _create_data_generator_train(self):
         self.dg_train = ImpactCnnDataGenerator(
