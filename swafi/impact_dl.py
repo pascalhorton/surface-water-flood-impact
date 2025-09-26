@@ -441,7 +441,8 @@ class WeightedBinaryCrossEntropy(keras.losses.Loss):
     """
     Serializable weighted binary cross-entropy loss.
 
-    Stores positive/negative weights so Keras can serialize/deserialize the loss.
+    Supports class (sample) weighting via distinct positive / negative weights.
+    Accepts labels shaped (batch,) or (batch,1) and predictions shaped (batch,), (batch,1).
     """
     def __init__(self, pos_weight=1.0, neg_weight=1.0, from_logits=False, name='weighted_binary_cross_entropy'):
         super().__init__(name=name)
@@ -449,12 +450,32 @@ class WeightedBinaryCrossEntropy(keras.losses.Loss):
         self.neg_weight = float(neg_weight)
         self.from_logits = bool(from_logits)
 
+    @staticmethod
+    def _normalize_binary_shapes(y_true, y_pred):
+        """Return y_true, y_pred squeezed to rank 1 if last dim is singleton.
+        Handles common shape combos: (batch,), (batch,1)."""
+        # Squeeze only if the last dim is 1
+        if y_true.shape.rank == 2 and y_true.shape[-1] == 1:
+            y_true = tf.squeeze(y_true, axis=-1)
+        if y_pred.shape.rank == 2 and y_pred.shape[-1] == 1:
+            y_pred = tf.squeeze(y_pred, axis=-1)
+        return y_true, y_pred
+
     def call(self, y_true, y_pred):
-        y_true = tf.cast(y_true, dtype=y_pred.dtype)
-        y_pred = tf.cast(y_pred, dtype=y_pred.dtype)
-        weights_v = tf.where(tf.equal(y_true, 1), self.pos_weight, self.neg_weight)
+        # Cast to a common dtype
+        y_pred = tf.cast(y_pred, tf.float32)
+        y_true = tf.cast(y_true, tf.float32)
+
+        # Normalize shapes to 1-D (batch,) where possible
+        y_true, y_pred = self._normalize_binary_shapes(y_true, y_pred)
+
+        # Compute element-wise binary cross-entropy (vector of shape (batch,))
         ce = keras.metrics.binary_crossentropy(y_true, y_pred, from_logits=self.from_logits)
-        return tf.reduce_mean(tf.multiply(ce, weights_v))
+
+        # Sample weight per example based on its class
+        weights_per_sample = y_true * self.pos_weight + (1.0 - y_true) * self.neg_weight
+        loss = ce * weights_per_sample
+        return tf.reduce_mean(loss)
 
     def get_config(self):
         config = super().get_config()
@@ -467,7 +488,6 @@ class WeightedBinaryCrossEntropy(keras.losses.Loss):
 
     @classmethod
     def from_config(cls, config):
-        # Keras will pass the dict returned by get_config
         return cls(pos_weight=config.get("pos_weight", 1.0),
                    neg_weight=config.get("neg_weight", 1.0),
                    from_logits=config.get("from_logits", False),
@@ -476,8 +496,8 @@ class WeightedBinaryCrossEntropy(keras.losses.Loss):
 
 class CriticalSuccessIndex(keras.metrics.Metric):
     """
-    CSI (Critical Success Index) metric that accumulates TP/FP/FN across updates.
-    Serializable via get_config / from_config and safe for model.save/load.
+    CSI (Critical Success Index) metric accumulating TP/FP/FN.
+    Accepts predictions/labels shaped (batch,) or (batch,1).
     """
     def __init__(self, threshold=0.5, name='csi', dtype=tf.float32, **kwargs):
         super().__init__(name=name, dtype=dtype, **kwargs)
@@ -487,17 +507,26 @@ class CriticalSuccessIndex(keras.metrics.Metric):
         self.fn = self.add_weight(name='fn', initializer='zeros', dtype=dtype)
         self.epsilon = tf.constant(1e-7, dtype=dtype)
 
-    def update_state(self, y_true, y_pred, sample_weight=None):
-        y_true = tf.cast(y_true, dtype=self.dtype)
-        y_pred = tf.cast(y_pred, dtype=self.dtype)
-        y_pred_bin = tf.cast(tf.greater_equal(y_pred, self.threshold), dtype=self.dtype)
+    @staticmethod
+    def _normalize_binary_shapes(y_true, y_pred):
+        if y_true.shape.rank == 2 and y_true.shape[-1] == 1:
+            y_true = tf.squeeze(y_true, axis=-1)
+        if y_pred.shape.rank == 2 and y_pred.shape[-1] == 1:
+            y_pred = tf.squeeze(y_pred, axis=-1)
+        return y_true, y_pred
 
+    def update_state(self, y_true, y_pred, sample_weight=None):
+        y_pred = tf.cast(y_pred, self.dtype)
+        y_true = tf.cast(y_true, self.dtype)
+        y_true, y_pred = self._normalize_binary_shapes(y_true, y_pred)
+
+        y_pred_bin = tf.cast(tf.greater_equal(y_pred, self.threshold), self.dtype)
         tp = tf.reduce_sum(y_true * y_pred_bin)
         fp = tf.reduce_sum((1 - y_true) * y_pred_bin)
         fn = tf.reduce_sum(y_true * (1 - y_pred_bin))
 
         if sample_weight is not None:
-            sw = tf.cast(sample_weight, dtype=self.dtype)
+            sw = tf.cast(sample_weight, self.dtype)
             tp *= sw
             fp *= sw
             fn *= sw
