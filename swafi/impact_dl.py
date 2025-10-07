@@ -486,14 +486,13 @@ class WeightedBinaryCrossEntropy(keras.losses.Loss):
 class CriticalSuccessIndex(keras.metrics.Metric):
     """
     CSI (Critical Success Index) metric accumulating TP/FP/FN.
-    Accepts predictions/labels shaped (batch,) or (batch,1).
     """
     def __init__(self, threshold=0.5, name='csi', dtype=tf.float32, **kwargs):
         super().__init__(name=name, dtype=dtype, **kwargs)
         self.threshold = float(threshold)
-        self.tp = self.add_weight(name='tp', initializer='zeros', dtype=dtype)
-        self.fp = self.add_weight(name='fp', initializer='zeros', dtype=dtype)
-        self.fn = self.add_weight(name='fn', initializer='zeros', dtype=dtype)
+        self.tp = self.add_variable(shape=(), name='tp', initializer='zeros', dtype=dtype)
+        self.fp = self.add_variable(shape=(), name='fp', initializer='zeros', dtype=dtype)
+        self.fn = self.add_variable(shape=(), name='fn', initializer='zeros', dtype=dtype)
         self.epsilon = tf.constant(1e-7, dtype=dtype)
 
     @staticmethod
