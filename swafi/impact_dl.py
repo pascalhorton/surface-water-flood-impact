@@ -119,7 +119,8 @@ class ImpactDl(Impact):
         self.model.compile(
             loss=loss_fn,
             optimizer=optimizer,
-            metrics=[CriticalSuccessIndex()]
+            metrics=[CriticalSuccessIndex()],
+            run_eagerly=DEBUG  # Set to True for debugging purposes
         )
 
         # Print the model summary
@@ -303,16 +304,13 @@ class ImpactDl(Impact):
         The loss function.
         """
         if self.target_type == 'occurrence':
-            if self.class_weight is None:
-                loss_fn = 'binary_crossentropy'
-            else:
-                # Ensure class weights are floats
-                class_weight = {k: float(v) for k, v in self.class_weight.items()}
-                loss_fn = WeightedBinaryCrossEntropy(
-                    pos_weight=class_weight[1],
-                    neg_weight=class_weight[0],
-                    from_logits=False
-                )
+            # Ensure class weights are floats
+            class_weight = {k: float(v) for k, v in self.class_weight.items()}
+            loss_fn = WeightedBinaryCrossEntropy(
+                pos_weight=class_weight[1],
+                neg_weight=class_weight[0],
+                from_logits=False
+            )
         else:
             loss_fn = 'mse'
 
@@ -422,39 +420,49 @@ class WeightedBinaryCrossEntropy(keras.losses.Loss):
 
     Supports class (sample) weighting via distinct positive / negative weights.
     Accepts labels shaped (batch,) or (batch,1) and predictions shaped (batch,), (batch,1).
+
+    Parameters
+    ----------
+    pos_weight : float
+        Multiplicative weight applied to positive (y=1) examples.
+    neg_weight : float
+        Multiplicative weight applied to negative (y=0) examples.
+    from_logits : bool
+        If True, y_pred is treated as logits; otherwise probabilities.
+    normalize : bool
+        If True, loss is sum(weight * BCE) / sum(weights) (keeps magnitude
+        comparable to unweighted BCE). If False, it's mean(weight * BCE), which
+        scales with average weight and can inflate reported loss.
     """
-    def __init__(self, pos_weight=1.0, neg_weight=1.0, from_logits=False, name='weighted_binary_cross_entropy'):
+    def __init__(self, pos_weight=1.0, neg_weight=1.0, from_logits=False,
+                 normalize=False, name='weighted_binary_cross_entropy'):
         super().__init__(name=name)
         self.pos_weight = float(pos_weight)
         self.neg_weight = float(neg_weight)
         self.from_logits = bool(from_logits)
+        self.normalize = bool(normalize)
 
     @staticmethod
-    def _normalize_binary_shapes(y_true, y_pred):
-        """Return y_true, y_pred squeezed to rank 1 if last dim is singleton.
-        Handles common shape combos: (batch,), (batch,1)."""
-        # Squeeze only if the last dim is 1
-        if y_true.shape.rank == 2 and y_true.shape[-1] == 1:
-            y_true = tf.squeeze(y_true, axis=-1)
-        if y_pred.shape.rank == 2 and y_pred.shape[-1] == 1:
-            y_pred = tf.squeeze(y_pred, axis=-1)
+    def _expand_shapes(y_true, y_pred):
+        if y_true.shape.rank == 1:
+            y_true = tf.expand_dims(y_true, axis=-1)
+        if y_pred.shape.rank == 1:
+            y_pred = tf.expand_dims(y_pred, axis=-1)
         return y_true, y_pred
 
     def call(self, y_true, y_pred):
-        # Cast to a common dtype
-        y_pred = tf.cast(y_pred, tf.float32)
-        y_true = tf.cast(y_true, tf.float32)
+        y_true, y_pred = self._expand_shapes(y_true, y_pred)
 
-        # Normalize shapes to 1-D (batch,) where possible
-        y_true, y_pred = self._normalize_binary_shapes(y_true, y_pred)
-
-        # Compute element-wise binary cross-entropy (vector of shape (batch,))
         ce = keras.metrics.binary_crossentropy(y_true, y_pred, from_logits=self.from_logits)
 
-        # Sample weight per example based on its class
-        weights_per_sample = y_true * self.pos_weight + (1.0 - y_true) * self.neg_weight
-        loss = ce * weights_per_sample
-        return tf.reduce_mean(loss)
+        weights = y_true * self.pos_weight + (1.0 - y_true) * self.neg_weight
+        weighted = ce * weights
+        if self.normalize:
+            loss = tf.reduce_sum(weighted) / (tf.reduce_sum(weights) + 1e-7)
+        else:
+            loss = tf.reduce_mean(weighted)
+
+        return loss
 
     def get_config(self):
         config = super().get_config()
@@ -462,6 +470,7 @@ class WeightedBinaryCrossEntropy(keras.losses.Loss):
             "pos_weight": self.pos_weight,
             "neg_weight": self.neg_weight,
             "from_logits": self.from_logits,
+            "normalize": self.normalize
         })
         return config
 
@@ -470,6 +479,7 @@ class WeightedBinaryCrossEntropy(keras.losses.Loss):
         return cls(pos_weight=config.get("pos_weight", 1.0),
                    neg_weight=config.get("neg_weight", 1.0),
                    from_logits=config.get("from_logits", False),
+                   normalize=config.get("normalize", True),
                    name=config.get("name", "weighted_binary_cross_entropy"))
 
 
