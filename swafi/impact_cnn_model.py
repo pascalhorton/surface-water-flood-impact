@@ -90,7 +90,7 @@ class ModelCnn(keras.models.Model):
 
     def get_build_config(self):
         """
-        Optional: return the internal built model config so Keras can persist it.
+        Return the internal built model config so Keras can persist it.
         """
         if self.model is None:
             return None
@@ -98,13 +98,13 @@ class ModelCnn(keras.models.Model):
 
     def build_from_config(self, config):
         """
-        Optional: complementary to get_build_config. Rebuilds wrapper + internal model.
+        Complementary to get_build_config. Rebuilds wrapper + internal model.
         """
         input_shape = config.get("input_shape", None)
         self.input_3d_size = input_shape[0][1:] if input_shape and len(input_shape) > 0 else None
         self.input_1d_size = input_shape[1][1:] if input_shape and len(input_shape) > 1 else None
 
-        # Try to restore the nested keras.Model from a stored build config
+        # Try to restore the nested keras model from a stored build config
         build_cfg = config.get("build_config", None)
         if build_cfg is not None:
             try:

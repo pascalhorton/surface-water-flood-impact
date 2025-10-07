@@ -318,27 +318,6 @@ class ImpactDl(Impact):
 
         return loss_fn
 
-    @staticmethod
-    def _weighted_binary_cross_entropy(weights, from_logits=False):
-        """
-        Weighted binary cross entropy.
-
-        Parameters
-        ----------
-        weights: dict
-            The weights.
-        from_logits: bool
-            Whether the input is logit or not.
-
-        Returns
-        -------
-        The loss function.
-        """
-        pos = float(weights[1])
-        neg = float(weights[0])
-
-        return WeightedBinaryCrossEntropy(pos_weight=pos, neg_weight=neg, from_logits=from_logits)
-
     def _define_optimizer(self, n_samples, lr_method='constant', lr=.001, init_lr=0.01):
         """
         Define the optimizer.
