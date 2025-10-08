@@ -21,9 +21,9 @@ from swafi.damages_gvz import DamagesGvz
 from swafi.utils.verification import compute_confusion_matrix, print_classic_scores, prepare_full_domain_assessment
 
 DO_ASSESS = True
-MODEL = R"C:\Users\phorton\Documents\SWF\outputs\_good one\model_cnn_1D_mobiliar_v1.keras"
-OPTIONS = R"C:\Users\phorton\Documents\SWF\outputs\_good one\model_cnn_1D_mobiliar_v1_options.csv"
+MODEL = R"C:\Users\phorton\Documents\SWF\outputs\model_cnn_test_xx.keras"
 PRECIP_STATS_PATH = R"C:\Users\phorton\Documents\SWF\data\cpc_statistics_2005-2022.nc"
+DATASET = 'mobiliar'  # 'mobiliar' or 'gvz'
 
 config = Config()
 
@@ -79,7 +79,11 @@ def get_damages_xr(dataset):
 
 
 def main():
-    options = ImpactCnnOptions(OPTIONS)
+    # Load the keras model
+    cnn_model = keras.models.load_model(MODEL)
+
+    options = cnn_model.options
+    options.dataset = DATASET
     options.print_options()
     assert options.is_ok()
 
@@ -91,16 +95,8 @@ def main():
         tf.random.set_seed(options.random_state)
         keras.utils.set_random_seed(options.random_state)
 
-    # Load the keras model
-    cnn_model = keras.models.load_model(
-        MODEL,
-        custom_objects={
-            'weighted_binary_cross_entropy': WeightedBinaryCrossEntropy,
-            'csi': CriticalSuccessIndex
-        }
-    )
     if cnn_model.model == None:
-        cnn_model.build_model(options=options)
+        cnn_model.build_model()
 
     # Extract precipitation events
     year_start = config.get('YEAR_START_TEST')
@@ -123,7 +119,7 @@ def main():
     cpc = CombiPrecip(year_start, year_end)
     cpc.set_data_path(config.get('DIR_PRECIP'))
 
-    output_path = Path(config.get('OUTPUT_DIR')) / f'pred_cnn_{year_start}-{year_end}.nc'
+    output_path = Path(config.get('OUTPUT_DIR')) / f'pred_cnn_{options.run_name}_{year_start}-{year_end}.nc'
 
     if output_path.exists():
         if DO_ASSESS:
@@ -162,7 +158,7 @@ def main():
     # Load precipitation statistics for standardization
     precip_stats = xr.open_dataset(PRECIP_STATS_PATH)
 
-    # Prepare the dat (normalization)
+    # Prepare the data (normalization)
     dg = cnn.get_data_generator_inference(
         events=events,
         features=features,
