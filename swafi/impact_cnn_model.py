@@ -6,6 +6,7 @@ import math
 import keras
 
 
+@keras.saving.register_keras_serializable(package="swafi")
 class ModelCnn(keras.models.Model):
     """
     CNN model factory.
@@ -53,13 +54,21 @@ class ModelCnn(keras.models.Model):
         Ensure `self.options` is serializable (implements get_config) or is primitive.
         """
         base_config = super().get_config()
+        try:
+            options_cfg = (keras.saving.serialize_keras_object(self.options)
+                           if self.options is not None else None)
+        except Exception:
+            # Fallback: attempt to use a shallow attribute snapshot
+            options_cfg = getattr(self.options, 'get_config', lambda: None)()
+
         config = {
             "task": self.task,
-            "options": keras.saving.serialize_keras_object(self.options),
+            "options": options_cfg,
             "input_3d_size": self.input_3d_size,
             "input_1d_size": self.input_1d_size,
             "build_config": self.get_build_config(),
         }
+
         return {**base_config, **config}
 
     @classmethod
@@ -75,8 +84,10 @@ class ModelCnn(keras.models.Model):
         options_cfg = config.get("options", None)
         options = None
         if options_cfg is not None:
-            # restore options if it was serialized
-            options = keras.saving.deserialize_keras_object(options_cfg)
+            try:
+                options = keras.saving.deserialize_keras_object(options_cfg)
+            except Exception:
+                options = None
 
         # Recreate instance
         instance = cls(trainable=trainable, dtype=dtype)
@@ -85,6 +96,14 @@ class ModelCnn(keras.models.Model):
         instance.input_3d_size = config.get("input_3d_size", None)
         instance.input_1d_size = config.get("input_1d_size", None)
         instance.last_activation = 'relu' if instance.task == 'regression' else 'sigmoid'
+
+        # Attempt to rebuild internal functional model from stored config
+        build_cfg = config.get("build_config", None)
+        if build_cfg is not None:
+            try:
+                instance.model = keras.models.Model.from_config(build_cfg)
+            except Exception:
+                instance.model = None  # Will need manual rebuild if used
 
         return instance
 

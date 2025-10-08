@@ -6,8 +6,10 @@ from .impact_dl_options import ImpactDlOptions
 import copy
 import math
 import argparse
+import keras
 
 
+@keras.saving.register_keras_serializable(package="swafi")
 class ImpactCnnOptions(ImpactDlOptions):
     """
     The CNN Deep Learning Impact class options.
@@ -94,7 +96,41 @@ class ImpactCnnOptions(ImpactDlOptions):
             The copy of the object.
         """
         return copy.deepcopy(self)
-    
+
+    def get_config(self):
+        """
+        Keras serialization hook.
+        Return a JSON-serializable config dict of all public option attributes.
+        We exclude the argparse parser object and any private ("_" prefixed) attributes.
+        """
+        skip_keys = {"parser"}
+        cfg = {}
+        for k, v in self.__dict__.items():
+            if k.startswith('_') or k in skip_keys:
+                continue
+            # Only keep simple JSON-serializable types (None, bool, int, float, str, list, dict)
+            if isinstance(v, (type(None), bool, int, float, str, list, tuple, dict)):
+                # Convert tuple -> list for JSON friendliness
+                cfg[k] = list(v) if isinstance(v, tuple) else v
+            else:
+                # Fallback to string repr for any unexpected type
+                cfg[k] = repr(v)
+        return cfg
+
+    @classmethod
+    def from_config(cls, config):
+        """
+        Keras deserialization hook
+        """
+        obj = cls()
+        for k, v in config.items():
+            # Only set attributes that exist (forward compatibility if attributes removed)
+            try:
+                setattr(obj, k, v)
+            except Exception:
+                pass
+        return obj
+
     def _set_parser_arguments(self):
         """
         Set the parser arguments.
@@ -389,6 +425,8 @@ class ImpactCnnOptions(ImpactDlOptions):
                 max_val = min(max_val, math.floor(math.log(temporal_size, self.pool_size_temporal)))
             self.nb_conv_blocks = trial.suggest_int(
                 'nb_conv_blocks', 0, max_val)
+            if self.nb_conv_blocks == 0:  # Edge case: force 1 block minimum when using 3D CNN
+                self.nb_conv_blocks = 1
         if 'inner_activation_cnn' in hp_to_optimize:
             self.inner_activation_cnn = trial.suggest_categorical(
                 'inner_activation_cnn',
