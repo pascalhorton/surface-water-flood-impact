@@ -84,8 +84,9 @@ class ImpactCnn(ImpactDl):
         """
 
         df = events.merge(exposure, on='cid', how='left')
-        df = df.merge(features, on='cid', how='left')
-        df.dropna(subset=self.features, inplace=True)
+        if features is not None:
+            df = df.merge(features, on='cid', how='left')
+            df.dropna(subset=self.features, inplace=True)
 
         df.rename(columns={'i_max_date': 'date'}, inplace=True)
         df['date'] = pd.to_datetime(df['date'])
