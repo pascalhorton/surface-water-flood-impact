@@ -489,6 +489,32 @@ class Damages:
 
         return xr_ds
 
+    def from_nc_file(self, filepath):
+        """
+        Load the exposure and claims data from a netCDF4 file.
+
+        Parameters
+        ----------
+        filepath: str
+            The path to the netCDF4 file.
+
+        Returns
+        -------
+        xr.Dataset
+            The xarray dataset containing the exposure and claims data.
+        """
+        if nc4 is None:
+            raise ImportError("netCDF4 is not installed. Cannot read netCDF files.")
+
+        xr_ds = xr.open_dataset(filepath)
+        self.year_start = xr_ds.attrs.get('year_start', self.year_start)
+        self.year_end = xr_ds.attrs.get('year_end', self.year_end)
+        self.selected_exposure_categories = xr_ds.attrs.get('exposure_categories', [])
+        self.selected_claim_categories = xr_ds.attrs.get('claim_categories', [])
+        self.name = xr_ds.attrs.get('dataset_name', self.name)
+
+        return xr_ds
+
     def _create_exposure_claims_df(self):
         self.exposure = pd.DataFrame(
             columns=['year', 'mask_index', 'selection'] + self.exposure_categories)
