@@ -21,7 +21,7 @@ from swafi.damages_gvz import DamagesGvz
 from swafi.utils.verification import compute_confusion_matrix, print_classic_scores, prepare_full_domain_assessment
 
 DO_ASSESS = True
-MODEL = R"C:\Users\phorton\Documents\SWF\outputs\model_cnn_test_xx.keras"
+MODEL = R"C:\Users\phorton\Documents\SWF\outputs\model_cnn_test_30.keras"
 PRECIP_STATS_PATH = R"C:\Users\phorton\Documents\SWF\data\cpc_statistics_2005-2022.nc"
 DATASET = 'mobiliar'  # 'mobiliar' or 'gvz'
 
@@ -30,10 +30,6 @@ config = Config()
 
 def assess(result_path, ds_damages, ignore_removed=False, relax_days=False, prob_threshold=0.5):
     ds_pred = xr.open_dataset(result_path)
-
-    # Remove dates after 2024-10-15
-    ds_pred = ds_pred.sel(time=slice(None, '2024-10-15'))
-    ds_damages = ds_damages.sel(time=slice(None, '2024-10-15'))
 
     y_true, y_pred = prepare_full_domain_assessment(ds_pred, ds_damages, ignore_removed, relax_days, flatten=True)
     y_pred = (y_pred >= prob_threshold).astype(int)
