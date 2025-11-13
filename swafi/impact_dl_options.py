@@ -193,7 +193,7 @@ class ImpactDlOptions(ImpactBasicOptions):
                 'nb_dense_layers', 1, 10)
         if 'nb_dense_units' in hp_to_optimize:
             self.nb_dense_units = trial.suggest_categorical(
-                'nb_dense_units', [32, 64, 128, 256, 512, 1024])
+                'nb_dense_units', [32, 64, 128, 256, 512, 1024, 2048])
         if 'nb_dense_units_decreasing' in hp_to_optimize:
             self.nb_dense_units_decreasing = trial.suggest_categorical(
                 'nb_dense_units_decreasing', [True, False])
