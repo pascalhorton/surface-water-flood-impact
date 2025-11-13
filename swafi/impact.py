@@ -292,25 +292,30 @@ class Impact:
             self.df = self.df[(self.df['nb_claims'] == 0) |
                               (self.df['nb_claims'] >= self.options.min_nb_claims)]
 
-        # Set the reference date for the precipitation extraction
+        # Set the reference date for the precipitation extraction. We force the time to 18:00 to
+        # avoid overfitting on the time of the day.
         if ref_date == 'middle':
             df.rename(columns={'date_claim': 'date'}, inplace=True)
             # Set a time to the claim date (18:00 by default)
             df['date'] = pd.to_datetime(df['date'], errors='coerce') + pd.Timedelta(hours=18)
             # Fill NaN values with the mean of the event start and end date
-            df['date'] = df['date'].fillna(df[['e_start', 'e_end']].mean(axis=1))
+            fill_datetime = (pd.to_datetime(df['e_start']) + pd.to_datetime(df['e_end'])) / 2
+            fill_datetime = fill_datetime.dt.floor('D') + pd.Timedelta(hours=18)
+            df['date'] = df['date'].fillna(fill_datetime)
         elif ref_date == 'end':
             df.rename(columns={'date_claim': 'date'}, inplace=True)
             # Set a time to the claim date (18:00 by default)
             df['date'] = pd.to_datetime(df['date'], errors='coerce') + pd.Timedelta(hours=18)
             # Fill NaN values with the event end date
-            df['date'] = df['date'].fillna(df['e_end'])
+            fill_datetime = pd.to_datetime(df['e_end']).dt.floor('D') + pd.Timedelta(hours=18)
+            df['date'] = df['date'].fillna(fill_datetime)
         elif ref_date == 'i_max':
             df.rename(columns={'date_claim': 'date'}, inplace=True)
             # Set a time to the claim date (18:00 by default)
             df['date'] = pd.to_datetime(df['date'], errors='coerce') + pd.Timedelta(hours=18)
             # Fill NaN values with the date of the maximum precipitation intensity
-            df['date'] = df['date'].fillna(df['i_max_date'])
+            fill_datetime = pd.to_datetime(df['i_max_date']).dt.floor('D') + pd.Timedelta(hours=18)
+            df['date'] = df['date'].fillna(fill_datetime)
         elif ref_date == 'i_max_only':
             df.rename(columns={'i_max_date': 'date'}, inplace=True)
             df['date'] = pd.to_datetime(df['date'])
