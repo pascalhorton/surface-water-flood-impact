@@ -33,6 +33,7 @@ setup(
         'dask',
         'netcdf4',
         'rioxarray',
+        'bottleneck'
     ],
     classifiers=[
         "Programming Language :: Python",
