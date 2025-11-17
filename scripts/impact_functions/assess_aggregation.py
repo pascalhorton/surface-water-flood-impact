@@ -11,10 +11,13 @@ from swafi.damages_mobiliar import DamagesMobiliar
 from swafi.damages_gvz import DamagesGvz
 from swafi.utils.verification import compute_confusion_matrix, print_classic_scores, prepare_full_domain_assessment
 
+AGGREGATION_ZIP = R"C:\Data\Data\GIS\Administration\CH_zip_codes\AMTOVZ_ZIP.shp"
+AGGREGATION_CATCH = R"C:\Data\Projects\2024 SWF\Data\GIS\Catchments\ezgg_40km2.shp"
+
 DO_ASSESS = True
 DATASET = 'mobiliar'  # 'mobiliar' or 'gvz'
 PREDICTION_FILE = R"C:\Data\Projects\2024 SWF\Analyses\08 Independent predictions\pred_rf_2023-2024.nc"
-AGGREGATION = R"C:\Data\Data\GIS\Administration\CH_zip_codes\AMTOVZ_ZIP.shp"
+AGGREGATION = AGGREGATION_CATCH
 DAMAGES_FILE = R"C:\Data\Projects\2024 SWF\Analyses\08 Independent predictions\damages_mobiliar_2023_2024.nc"
 
 config = Config()
