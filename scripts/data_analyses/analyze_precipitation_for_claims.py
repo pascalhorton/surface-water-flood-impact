@@ -17,7 +17,7 @@ DATASET = 'mobiliar'  # 'mobiliar' or 'gvz'
 PRECIP_DAYS_BEFORE = 0.5
 PRECIP_DAYS_AFTER = 0.5
 THRESHOLD_24H = None # 10  # Threshold for accumulated precipitation in mm over 24h
-THRESHOLD_Q = 0.98 # 0.99  # Threshold for precipitation intensity quantile (0.0-1.0)
+THRESHOLD_Q = 0.98 # 0.98  # Threshold for precipitation intensity quantile (0.0-1.0)
 
 if DATASET == 'mobiliar':
     EXPOSURE_CATEGORIES = ['external']
@@ -75,6 +75,7 @@ def generate_csv():
     claims['precip_06h_max'] = None
     claims['precip_12h_max'] = None
     claims['precip_24h_max'] = None
+    claims['precip_tot'] = None
     if THRESHOLD_Q is not None:
         claims[f'precip_thresh_q{THRESHOLD_Q}'] = THRESHOLD_Q
 
@@ -132,6 +133,9 @@ def generate_csv():
             claims.loc[idx, 'precip_12h_max'] = precip_ts_12h.max()
             precip_ts_24h = np.convolve(precip_ts, np.ones(24), mode='valid')
             claims.loc[idx, 'precip_24h_max'] = precip_ts_24h.max()
+
+            # Compute total precipitation in the window
+            claims.loc[idx, 'precip_tot'] = precip_ts.sum()
 
     # Save the claims dataframe
     filename = f'claims_precip_{DATASET}.csv'
@@ -275,6 +279,16 @@ def generate_plots():
     claims_pos['precip_24h_max'].hist(bins=50)
     plt.title('Max 24-hrly precipitation total (>0)')
     plt.xlabel('Precipitation total over 24h [mm]')
+    plt.grid(axis='x')
+    plt.tight_layout()
+    plt.savefig(config.output_dir / filename)
+    plt.close()
+
+    # Plot a histogram of the total precipitation (all)
+    filename = f'hist_precip_tot_{DATASET}_all.png'
+    claims['precip_tot'].hist(bins=50)
+    plt.title('Total precipitation in window (all)')
+    plt.xlabel('Total precipitation [mm]')
     plt.grid(axis='x')
     plt.tight_layout()
     plt.savefig(config.output_dir / filename)

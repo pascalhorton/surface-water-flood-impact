@@ -15,6 +15,7 @@ from swafi.precip_combiprecip import CombiPrecip
 # Configuration for the script
 n_cpus = multiprocessing.cpu_count()
 n_parts = int(n_cpus * 0.9)  # Number of parts to split the data into for parallel processing
+method = 'new'  # Definition of events extraction method ('classic' for Bernet et al 2019 or 'new' for new method)
 
 
 def process_part(i, part, config):
@@ -31,10 +32,10 @@ def process_part(i, part, config):
     # Apply the 3x3km smoothing
     cpc.apply_smoothing(filter_size=3)
 
-    # Apply get_events() function to all grid cells in part
+    # Apply extract_events() function to all grid cells in part
     list_of_events = []
     for _, row in part.iterrows():
-        list_of_events.append(cpc.extract_events(row))
+        list_of_events.append(cpc.extract_events(row, method))
 
     # Store and save data as a .parquet file
     events = pd.concat(list_of_events, axis=0).reset_index(drop=True)
@@ -71,6 +72,6 @@ if __name__ == "__main__":
         part_events = pd.read_parquet(f"event_parts/part_{i}.parquet")
         all_events.append(part_events)
     all_events_df = pd.concat(all_events, ignore_index=True)
-    all_events_df.to_parquet("events_cpc_model_domain_3x3_2005_2024.parquet")
+    all_events_df.to_parquet(f"events_cpc_model_domain_3x3_2005_2024_{method}.parquet")
 
     print("All parts merged into a single DataFrame.")
