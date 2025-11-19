@@ -71,7 +71,7 @@ class Precipitation:
             size=(0, filter_size, filter_size)
         )
 
-    def extract_events(self, coords_row=None, method='new', api_days_nb=30, api_reg=0.8):
+    def extract_events(self, coords_row=None, method='simple', api_days_nb=30, api_reg=0.8):
         # Select timeseries and convert it into a DataFrame
         if coords_row is not None:
             return self._extract_events(coords_row, method, api_days_nb, api_reg)
@@ -85,7 +85,7 @@ class Precipitation:
 
         return pd.concat(list_of_events, axis=0).reset_index(drop=True)
 
-    def _extract_events(self, coords_row, method='new', api_days_nb=30, api_reg=0.8):
+    def _extract_events(self, coords_row, method='simple', api_days_nb=30, api_reg=0.8):
         time_series = self.data.sel(
             x=coords_row.x,
             y=coords_row.y
@@ -149,7 +149,7 @@ class Precipitation:
                              "api_q"]
             events = pd.concat([events, ranks], axis=1)
 
-        elif method == 'new':  # New simple method based on the precipitation intensity
+        elif method == 'simple':  # New simple method based on the precipitation intensity
 
             # q98 threshold on precipitation intensity
             threshold = time_series['precip'].quantile(0.98)

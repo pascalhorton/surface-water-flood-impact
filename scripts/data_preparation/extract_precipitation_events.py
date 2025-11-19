@@ -15,7 +15,7 @@ from swafi.precip_combiprecip import CombiPrecip
 # Configuration for the script
 n_cpus = multiprocessing.cpu_count()
 n_parts = int(n_cpus * 0.9)  # Number of parts to split the data into for parallel processing
-method = 'new'  # Definition of events extraction method ('classic' for Bernet et al 2019 or 'new' for new method)
+method = 'simple'  # Definition of events extraction method ('classic' for Bernet et al 2019 or 'simple' for the new simple approach)
 
 
 def process_part(i, part, config):
