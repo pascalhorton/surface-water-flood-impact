@@ -167,15 +167,13 @@ class Precipitation:
             ]).drop_duplicates().sort_values().to_frame(name='e_date').reset_index(drop=True)
 
             # Get the date and time of the maximum precipitation intensity
-            i_max_date = events.apply(
-                lambda g: g.loc[g.precip.idxmax(), 'time'],
-                include_groups=False
-            )
-
-            events = pd.concat([
-                events,
-                i_max_date.rename("i_max_date")
-            ], axis=1)
+            for idx, row in events.iterrows():
+                day_series = time_series[
+                    (time_series['time'] >= row['e_date'] + pd.Timedelta(hours=-12)) &
+                    (time_series['time'] <= row['e_date'] + pd.Timedelta(hours=36))
+                ]
+                i_max_date = day_series.loc[day_series['precip'].idxmax(), 'time']
+                events.at[idx, 'i_max_date'] = i_max_date
 
             # Aggregate time series at daily time step
             daily_series = time_series.set_index('time').resample('D').agg({
