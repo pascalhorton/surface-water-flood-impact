@@ -326,7 +326,7 @@ class Damages:
             self._print_matches_stats(stats)
 
         elif method == 'simple':
-            stats = dict(none=0, single=0, two=0)
+            stats = dict(none=0, single=0, two=0, three=0)
 
             for i_claim in tqdm(range(len(self.claims)), desc=f"Matching claim/events"):
                 claim = self.claims.iloc[i_claim]
@@ -338,35 +338,13 @@ class Damages:
                 if pot_events is None:
                     continue
 
-                if len(pot_events) == 1:
-                    self.claims.at[i_claim, 'eid'] = pot_events.iloc[0].eid
-                    continue
-
-                if len(pot_events) > 2:
-                    raise ValueError("More than 2 potential events found for simple method.")
-
-                # If the 2 potential events have the same i_max_date, cut at midnight
-                if pot_events.i_max_date.nunique() == 1:
-                    midn_dt = claim['date_claim'].replace(hour=0, minute=0, second=0)
-                    time_diff = pot_events.iloc[0].i_max_date - midn_dt
-                    if time_diff < timedelta(hours=24):
-                        # First event is more relevant
-                        best_eid = pot_events.iloc[0].eid
-                        self.claims.at[i_claim, 'eid'] = best_eid
-                    else:
-                        # Second event is more relevant
-                        best_eid = pot_events.iloc[1].eid
-                        self.claims.at[i_claim, 'eid'] = best_eid
-                else:
-                    # Select the event with the highest i_max
-                    best_idx = pot_events.i_max.idxmax()
-                    best_eid = pot_events.loc[best_idx].eid
-                    self.claims.at[i_claim, 'eid'] = best_eid
+                best_match = self._get_best_candidate_simple(pot_events, claim)
+                self.claims.at[i_claim, 'eid'] = best_match.eid
 
                 # Remove the events that have been matched
                 if len(pot_events) > 1:
                     ev_to_remove = pot_events.eid.tolist()
-                    ev_to_remove.remove(best_eid)
+                    ev_to_remove.remove(best_match.eid)
                     events_to_remove.extend(ev_to_remove)
 
             # Check again that the events to remove were not selected in the claims
@@ -680,6 +658,32 @@ class Damages:
             best_matches = best_matches.head(1)
 
         return best_matches
+
+    def _get_best_candidate_simple(self, pot_events, claim):
+        if len(pot_events) == 1:
+            return pot_events.iloc[0]
+
+        elif len(pot_events) == 2:
+            if pot_events.i_max_date.nunique() == 1:
+                # If the 2 potential events have the same i_max_date, keep the claim date
+                best_event = pot_events[pot_events.e_date == claim.date_claim.floor('D')]
+                return best_event.iloc[0]
+
+            else:
+                # Select the event with the highest i_max
+                best_idx = pot_events.i_max.idxmax()
+                return pot_events.loc[best_idx]
+            
+        else:  # More than 2 potential events
+            # Select the event(s) with the highest i_max
+            best_idx = pot_events.i_max.idxmax()
+            best_events = pot_events[pot_events.i_max == pot_events.loc[best_idx].i_max]
+            if len(best_events) == 1:
+                return best_events.iloc[0]
+
+            # If multiple events have the same i_max, keep the claim date
+            best_event = pot_events[pot_events.e_date == claim.date_claim.floor('D')]
+            return best_event.iloc[0]
 
     def _record_best_event(self, best_matches, i_claim):
         self.claims.at[i_claim, 'eid'] = best_matches.iloc[0].eid
