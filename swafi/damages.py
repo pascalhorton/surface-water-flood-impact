@@ -247,7 +247,7 @@ class Damages:
         """
         self.exposure['selection'] = self.exposure[categories].sum(axis=1)
 
-    def link_with_events(self, events, criteria=None, window_days=None,
+    def link_with_events(self, events, method='simple', criteria=None, window_days=None,
                          filename=None):
         """
         Link the damages with the events.
@@ -256,6 +256,8 @@ class Damages:
         ----------
         events: Events instance
             An object containing the events properties.
+        method: str
+            The method to use for the events extraction. Can be 'simple' or 'classic'.
         criteria: list (optional)
             A list of the criteria to consider for the matching.
             Default to ['i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt']
@@ -699,7 +701,7 @@ class Damages:
                 pot_events.at[i, 'prior'] = 1
 
     @staticmethod
-    def _get_potential_events(claim, events, window_days):
+    def _get_potential_classic_events(claim, events, window_days):
         """
         Get all potential events based on the CID and the date.
         """
@@ -733,6 +735,29 @@ class Damages:
                 'min_window'] = window
 
         return potential_events
+
+    @staticmethod
+    def _get_potential_simple_events(claim, events):
+        """
+        Get all potential events based on the CID and the date.
+        """
+        cid = claim['cid']
+        date_claim = claim['date_claim']
+
+        # Define the starting and ending dates of the temporal window
+        date_window_end, date_window_start = Damages._get_window_dates(
+            date_claim, 3)
+
+        # Select all events in the longest temporal window
+        potential_events = events.events[
+            (events.events['cid'] == cid) &
+            (events.events['e_date'] <= date_window_end) &
+            (events.events['e_date'] >= date_window_start)]
+
+        if len(potential_events) == 0:
+            return None
+
+        return potential_events.copy()
 
     @staticmethod
     def _get_window_dates(date_claim, window):

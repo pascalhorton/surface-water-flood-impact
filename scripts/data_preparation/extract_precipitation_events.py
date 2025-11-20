@@ -15,8 +15,12 @@ from swafi.precip_combiprecip import CombiPrecip
 # Configuration for the script
 n_cpus = multiprocessing.cpu_count()
 n_parts = int(n_cpus * 0.9)  # Number of parts to split the data into for parallel processing
-method = 'simple'  # Definition of events extraction method ('classic' for Bernet et al 2019 or 'simple' for the new simple approach)
 
+# Definition of events extraction method ('classic' for Bernet et al. 2019 or 'simple'
+# for the new simple approach). Use 'classic' for the threshold-based method, random
+# forests, logistic regression, ANN, and 'simple' for the deep learning approaches
+# relying on the precipitation data, such as CNNs and Transformers.
+method = 'simple'
 
 def process_part(i, part, config):
     # Load precipitation files

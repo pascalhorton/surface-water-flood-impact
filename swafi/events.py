@@ -75,9 +75,19 @@ class Events:
         damages: Damages instance
             The damages object containing the contracts and claims data.
         """
+        date_field = ''
+        if 'e_start' in self.events.columns:
+            date_field = 'e_start'
+        elif 'e_date' in self.events.columns:
+            date_field = 'e_date'
+        elif 'date' in self.events.columns:
+            date_field = 'date'
+        else:
+            raise ValueError("No date field found in damages claims.")
+
         self.events = self.events[
-            (self.events['e_start'].dt.year >= damages.year_start) &
-            (self.events['e_start'].dt.year <= damages.year_end)
+            (self.events[date_field].dt.year >= damages.year_start) &
+            (self.events[date_field].dt.year <= damages.year_end)
             ]
 
         print(f"Number of events with potential contracts in "
