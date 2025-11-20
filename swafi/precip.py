@@ -91,6 +91,9 @@ class Precipitation:
             y=coords_row.y
         ).to_dataframe().reset_index()
 
+        # Transform the precipitation data to percentiles
+        time_series['precip_q'] = time_series['precip'].rank(pct=True)
+
         if method == 'classic':  # Bernet et al. (2019) method
 
             # Calculate the Antecedent Precipitation Index (API) using a convolution
@@ -173,6 +176,8 @@ class Precipitation:
                     (time_series['time'] <= row['e_date'] + pd.Timedelta(hours=36))
                 ]
                 i_max_date = day_series.loc[day_series['precip'].idxmax(), 'time']
+                events.at[idx, 'i_max'] = day_series['precip'].max()
+                events.at[idx, 'i_max_q'] = day_series['precip_q'].max()
                 events.at[idx, 'i_max_date'] = i_max_date
 
             # Aggregate time series at daily time step
