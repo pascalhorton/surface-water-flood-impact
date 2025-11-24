@@ -164,14 +164,19 @@ class Events:
         events = events[events['cid'].isin(cids)]
 
         # Compute the middle-date of the events
-        events['mid_date'] = events['e_start'] + (events['e_end'] - events['e_start']) / 2
+        if 'e_date' in events.columns:
+            events['mid_date'] = events['e_date']
+            n_days = 1
+        else:
+            events['mid_date'] = events['e_start'] + (events['e_end'] - events['e_start']) / 2
+            n_days = 2
 
         events_to_remove = []
         for i_claim in tqdm(range(len(removed_claims)), desc=f"Checking events"):
             claim = removed_claims.iloc[i_claim]
             mask = (events['cid'] == claim['cid']) & \
-                   (events['mid_date'] >= claim['date_claim'] - pd.Timedelta(days=2)) & \
-                   (events['mid_date'] <= claim['date_claim'] + pd.Timedelta(days=2))
+                   (events['mid_date'] >= claim['date_claim'] - pd.Timedelta(days=n_days)) & \
+                   (events['mid_date'] <= claim['date_claim'] + pd.Timedelta(days=n_days))
             events_to_remove.extend(events.loc[mask, 'eid'].tolist())
 
         # Filter out the events that are associated with damages
@@ -271,7 +276,10 @@ class Events:
         contracts_number.rename(columns={'selection': 'nb_contracts'}, inplace=True)
 
         # Merge the target values with the events
-        self.events['year'] = pd.to_datetime(self.events['e_start']).dt.year
+        if 'e_start' in self.events.columns:
+            self.events['year'] = pd.to_datetime(self.events['e_start']).dt.year
+        else:
+            self.events['year'] = pd.to_datetime(self.events['e_date']).dt.year
         self.events = pd.merge(self.events, contracts_number,
                                how="left", on=['cid', 'year'])
 

@@ -326,7 +326,7 @@ class Damages:
             self._print_matches_stats(stats)
 
         elif method == 'simple':
-            stats = dict(none=0, single=0, two=0, three=0)
+            stats = dict(none=0, single=0, two=0, three=0, multiple=0)
 
             for i_claim in tqdm(range(len(self.claims)), desc=f"Matching claim/events"):
                 claim = self.claims.iloc[i_claim]
@@ -667,6 +667,11 @@ class Damages:
             if pot_events.i_max_date.nunique() == 1:
                 # If the 2 potential events have the same i_max_date, keep the claim date
                 best_event = pot_events[pot_events.e_date == claim.date_claim.floor('D')]
+                if best_event.empty:
+                    # Return the closest event to the claim date
+                    pot_events['date_diff'] = (pot_events.e_date - claim.date_claim).abs()
+                    best_event = pot_events.loc[pot_events.date_diff.idxmin()]
+                    return best_event
                 return best_event.iloc[0]
 
             else:
@@ -683,6 +688,11 @@ class Damages:
 
             # If multiple events have the same i_max, keep the claim date
             best_event = pot_events[pot_events.e_date == claim.date_claim.floor('D')]
+            if best_event.empty:
+                # Return the closest event to the claim date
+                pot_events['date_diff'] = (pot_events.e_date - claim.date_claim).abs()
+                best_event = pot_events.loc[pot_events.date_diff.idxmin()]
+                return best_event
             return best_event.iloc[0]
 
     def _record_best_event(self, best_matches, i_claim):
@@ -733,8 +743,9 @@ class Damages:
         print(f"- {stats['two']} claims had 2 candidate events")
         print(f"- {stats['three']} claims had 3 candidate events")
         print(f"- {stats['multiple']} claims had more candidate event")
-        print(f"- {stats['conflicts']} claims had conflicts")
-        print(f"- {stats['unresolved']} matching were unresolved (first event taken)")
+        if 'conflicts' in stats:
+            print(f"- {stats['conflicts']} claims had conflicts")
+            print(f"- {stats['unresolved']} matching were unresolved (first event taken)")
 
     @staticmethod
     def _compute_temporal_overlap(date_claim, pot_events, window):
