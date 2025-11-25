@@ -316,21 +316,46 @@ class Events:
             return
         pickles_dir = config.get('PICKLES_DIR')
         file_path = Path(f'{pickles_dir}/{filename}')
+
+        # Try to load the full Events object first
         if file_path.is_file():
-            with open(file_path, 'rb') as f:
-                values = pickle.load(f)
-                self.events = values.events
+            try:
+                with open(file_path, 'rb') as f:
+                    values = pickle.load(f)
+                    self.events = values.events
+                return
+            except Exception:
+                # If full-object unpickling fails, fall back to events-only file
+                pass
+
+        # Fallback: try to load the events-only gzipped pickle
+        events_only_path = Path(f'{pickles_dir}/{Path(filename).stem}_events.pkl.gz')
+        if events_only_path.is_file():
+            self.events = pd.read_pickle(events_only_path, compression='gzip')
 
     def _dump_object(self, filename='events.pickle'):
         """
-        Saves the object content to a pickle file.
+        Saves the object content to a pickle file. If pickling the whole object fails
+        (commonly on Windows for very large objects), fall back to saving only the
+        events DataFrame compressed with gzip.
         """
         if not self.use_dump:
             return
         pickles_dir = config.get('PICKLES_DIR')
         file_path = Path(f'{pickles_dir}/{filename}')
-        with open(file_path, 'wb') as f:
-            pickle.dump(self, f)
+
+        try:
+            # Attempt to pickle the whole Events instance
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            data_bytes = pickle.dumps(self, protocol=pickle.HIGHEST_PROTOCOL)
+            file_path.write_bytes(data_bytes)
+        except (OSError, OverflowError, pickle.PicklingError, MemoryError) as e:
+            # Fallback: save only the events DataFrame compressed
+            events_only_path = Path(f'{pickles_dir}/{Path(filename).stem}_events.pkl.gz')
+            events_only_path.parent.mkdir(parents=True, exist_ok=True)
+            if self.events is None:
+                raise
+            self.events.to_pickle(events_only_path, compression='gzip')
 
     def _add_event_id(self):
         """
@@ -351,15 +376,31 @@ def load_events_from_pickle(filename='events.pickle'):
     """
     pickles_dir = config.get('PICKLES_DIR')
     file_path = Path(f'{pickles_dir}/{filename}')
-    if not file_path.is_file():
-        raise Exception(f"File {file_path} does not exist.")
 
     events = Events(use_dump=False)
-    with open(file_path, 'rb') as f:
-        values = pickle.load(f)
-        events.events = values.events
 
-        # Check that there is no event without contract
-        assert not (events.events['nb_contracts'] == 0).any()
+    # Try to load the full object first
+    if file_path.is_file():
+        try:
+            with open(file_path, 'rb') as f:
+                values = pickle.load(f)
+                events.events = values.events
+        except Exception:
+            # Fallback to events-only gzipped pickle
+            events_only_path = Path(f'{pickles_dir}/{Path(filename).stem}_events.pkl.gz')
+            if not events_only_path.is_file():
+                raise Exception(f"File {file_path} or {events_only_path} does not exist or could not be unpickled.")
+            events.events = pd.read_pickle(events_only_path, compression='gzip')
+    else:
+        events_only_path = Path(f'{pickles_dir}/{Path(filename).stem}_events.pkl.gz')
+        if not events_only_path.is_file():
+            raise Exception(f"File {file_path} or {events_only_path} does not exist.")
+        events.events = pd.read_pickle(events_only_path, compression='gzip')
+
+    # Check that there is no event without contract
+    if 'nb_contracts' not in events.events.columns:
+        raise AssertionError("Loaded events do not contain 'nb_contracts' column.")
+    if events.events['nb_contracts'].eq(0).any():
+        raise AssertionError("There are events without contracts (nb_contracts == 0).")
 
     return events
