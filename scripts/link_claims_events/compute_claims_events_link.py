@@ -19,6 +19,8 @@ from pathlib import Path
 
 CONFIG = Config()
 
+DATASET = 'gvz'  # 'mobiliar' or 'gvz'
+
 # Events extraction method ('classic' for Bernet et al 2019 or 'simple' for the new
 # simple approach). Must be the same as the one used for the events extraction
 METHOD = 'simple'
@@ -30,12 +32,13 @@ WINDOW_DAYS = [5, 3, 1]
 
 # Common options
 PICKLES_DIR = CONFIG.get('PICKLES_DIR')
-EVENTS_PATH = CONFIG.get('EVENTS_PATH')
+if METHOD == 'simple':
+    EVENTS_PATH = CONFIG.get('EVENTS_PATH_SIMPLE')
+else:
+    EVENTS_PATH = CONFIG.get('EVENTS_PATH_CLASSIC')
 TARGET_TYPE = 'occurrence'  # 'occurrence' or 'damage_ratio'
 LABEL_RESULTING_FILE = 'default_' + TARGET_TYPE + '_' + METHOD
 SAVE_AS_CSV = True
-
-DATASET = 'gvz'  # 'mobiliar' or 'gvz'
 
 if DATASET == 'mobiliar':
     EXPOSURE_CATEGORIES = ['external']
@@ -74,7 +77,7 @@ def main():
 
     # Assign the target value to the events
     events = Events()
-    events.load_events_and_select_those_with_contracts(EVENTS_PATH, damages, DATASET)
+    events.load_events_and_select_those_with_contracts(EVENTS_PATH, damages, f"{DATASET}_{METHOD}")
     events.set_target_values_from_damages(damages)
     events.set_contracts_number(damages)
     if events_to_remove is not None:
@@ -146,7 +149,7 @@ def get_damages_linked_to_events():
     removed_claims = damages.select_categories_type(EXPOSURE_CATEGORIES, CLAIM_CATEGORIES)
 
     events = Events()
-    events.load_events_and_select_those_with_contracts(EVENTS_PATH, damages, DATASET)
+    events.load_events_and_select_those_with_contracts(EVENTS_PATH, damages, f"{DATASET}_{METHOD}")
 
     events_to_remove = damages.link_with_events(
         events,

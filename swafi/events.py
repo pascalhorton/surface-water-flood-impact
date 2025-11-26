@@ -198,9 +198,16 @@ class Events:
         end_date: str
             The end date of the period to remove.
         """
+        if 'e_end' in self.events.columns:
+            date_field = 'e_end'
+        elif 'e_date' in self.events.columns:
+            date_field = 'e_date'
+        else:
+            raise ValueError("No date field found in events.")
+
         self.events = self.events[
-            (self.events['e_end'] < start_date) |
-            (self.events['e_end'] > end_date)
+            (self.events[date_field] < start_date) |
+            (self.events[date_field] > end_date)
             ]
 
     def remove_events(self, events_to_remove):
