@@ -199,6 +199,10 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
         y = None
         if self.y is not None:
             y = self.y[idxs]
+            # Ensure labels are shaped (batch, 1) for Keras metrics compatibility
+            y = np.asarray(y)
+            if y.ndim == 1:
+                y = np.expand_dims(y, axis=-1)
 
         x_3d = None
         x_static = None

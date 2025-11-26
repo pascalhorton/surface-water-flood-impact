@@ -119,7 +119,7 @@ class ImpactDl(Impact):
         self.model.compile(
             loss=loss_fn,
             optimizer=optimizer,
-            metrics=[CriticalSuccessIndex()],
+            metrics=[CriticalSuccessIndex(), F1Score()],
             run_eagerly=DEBUG  # Set to True for debugging purposes
         )
 
@@ -208,7 +208,8 @@ class ImpactDl(Impact):
         all_obs = []
         for i in range(n_batches):
             x, y = dg.get_ordered_batch_from_full_dataset(i)
-            all_obs.append(y)
+            # Ensure observations are 1D arrays to avoid broadcasting issues
+            all_obs.append(np.asarray(y).squeeze())
             y_pred_batch = self.model.predict(x, verbose=0)
 
             # Get rid of the single dimension
@@ -274,7 +275,8 @@ class ImpactDl(Impact):
         all_obs = []
         for i in range(n_batches):
             x, y = dg.get_ordered_batch_from_full_dataset(i)
-            all_obs.append(y)
+            # Ensure observations are 1D arrays to avoid broadcasting issues
+            all_obs.append(np.asarray(y).squeeze())
             y_pred_batch = self.model.predict(x, verbose=0)
 
             # Get rid of the single dimension
@@ -490,35 +492,41 @@ class CriticalSuccessIndex(keras.metrics.Metric):
     def __init__(self, threshold=0.5, name='csi', dtype=tf.float32, **kwargs):
         super().__init__(name=name, dtype=dtype, **kwargs)
         self.threshold = float(threshold)
-        self.tp = self.add_variable(shape=(), name='tp', initializer='zeros', dtype=dtype)
-        self.fp = self.add_variable(shape=(), name='fp', initializer='zeros', dtype=dtype)
-        self.fn = self.add_variable(shape=(), name='fn', initializer='zeros', dtype=dtype)
+        self.tp = self.add_weight(name='tp', shape=(), initializer='zeros', dtype=dtype)
+        self.fp = self.add_weight(name='fp', shape=(), initializer='zeros', dtype=dtype)
+        self.fn = self.add_weight(name='fn', shape=(), initializer='zeros', dtype=dtype)
         self.epsilon = tf.constant(1e-7, dtype=dtype)
 
-    @staticmethod
-    def _normalize_binary_shapes(y_true, y_pred):
-        if y_true.shape.rank == 2 and y_true.shape[-1] == 1:
-            y_true = tf.squeeze(y_true, axis=-1)
-        if y_pred.shape.rank == 2 and y_pred.shape[-1] == 1:
-            y_pred = tf.squeeze(y_pred, axis=-1)
-        return y_true, y_pred
-
     def update_state(self, y_true, y_pred, sample_weight=None):
+        # Ensure tensors and dynamic-safe squeezing of last dim when it's 1
         y_pred = tf.cast(y_pred, self.dtype)
         y_true = tf.cast(y_true, self.dtype)
-        y_true, y_pred = self._normalize_binary_shapes(y_true, y_pred)
+
+        def _maybe_squeeze(a):
+            a = tf.convert_to_tensor(a)
+            rank = tf.rank(a)
+            last_dim = tf.shape(a)[-1]
+            return tf.cond(tf.logical_and(tf.equal(rank, 2), tf.equal(last_dim, 1)),
+                           lambda: tf.squeeze(a, axis=-1),
+                           lambda: a)
+
+        y_true = _maybe_squeeze(y_true)
+        y_pred = _maybe_squeeze(y_pred)
 
         y_pred_bin = tf.cast(tf.greater_equal(y_pred, self.threshold), self.dtype)
-        tp = tf.reduce_sum(y_true * y_pred_bin)
-        fp = tf.reduce_sum((1 - y_true) * y_pred_bin)
-        fn = tf.reduce_sum(y_true * (1 - y_pred_bin))
 
         if sample_weight is not None:
             sw = tf.cast(sample_weight, self.dtype)
-            tp *= sw
-            fp *= sw
-            fn *= sw
+            # Ensure sample_weight is broadcastable to batch shape
+            tp = tf.reduce_sum(y_true * y_pred_bin * sw)
+            fp = tf.reduce_sum((1 - y_true) * y_pred_bin * sw)
+            fn = tf.reduce_sum(y_true * (1 - y_pred_bin) * sw)
+        else:
+            tp = tf.reduce_sum(y_true * y_pred_bin)
+            fp = tf.reduce_sum((1 - y_true) * y_pred_bin)
+            fn = tf.reduce_sum(y_true * (1 - y_pred_bin))
 
+        # Update state variables
         self.tp.assign_add(tp)
         self.fp.assign_add(fp)
         self.fn.assign_add(fn)
@@ -526,6 +534,69 @@ class CriticalSuccessIndex(keras.metrics.Metric):
     def result(self):
         denom = self.tp + self.fp + self.fn + self.epsilon
         return self.tp / denom
+
+    def reset_states(self):
+        self.tp.assign(0.)
+        self.fp.assign(0.)
+        self.fn.assign(0.)
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "threshold": self.threshold,
+        })
+        return config
+
+
+class F1Score(keras.metrics.Metric):
+    """
+    F1 Score metric accumulating TP/FP/FN.
+    """
+    def __init__(self, threshold=0.5, name='f1_score', dtype=tf.float32, **kwargs):
+        super().__init__(name=name, dtype=dtype, **kwargs)
+        self.threshold = float(threshold)
+        self.tp = self.add_weight(name='tp', shape=(), initializer='zeros', dtype=dtype)
+        self.fp = self.add_weight(name='fp', shape=(), initializer='zeros', dtype=dtype)
+        self.fn = self.add_weight(name='fn', shape=(), initializer='zeros', dtype=dtype)
+        self.epsilon = tf.constant(1e-7, dtype=dtype)
+
+    def update_state(self, y_true, y_pred, sample_weight=None):
+        # Dynamic-safe squeezing like in CSI
+        y_pred = tf.cast(y_pred, self.dtype)
+        y_true = tf.cast(y_true, self.dtype)
+
+        def _maybe_squeeze(a):
+            a = tf.convert_to_tensor(a)
+            rank = tf.rank(a)
+            last_dim = tf.shape(a)[-1]
+            return tf.cond(tf.logical_and(tf.equal(rank, 2), tf.equal(last_dim, 1)),
+                           lambda: tf.squeeze(a, axis=-1),
+                           lambda: a)
+
+        y_true = _maybe_squeeze(y_true)
+        y_pred = _maybe_squeeze(y_pred)
+
+        y_pred_bin = tf.cast(tf.greater_equal(y_pred, self.threshold), self.dtype)
+
+        if sample_weight is not None:
+            sw = tf.cast(sample_weight, self.dtype)
+            tp = tf.reduce_sum(y_true * y_pred_bin * sw)
+            fp = tf.reduce_sum((1 - y_true) * y_pred_bin * sw)
+            fn = tf.reduce_sum(y_true * (1 - y_pred_bin) * sw)
+        else:
+            tp = tf.reduce_sum(y_true * y_pred_bin)
+            fp = tf.reduce_sum((1 - y_true) * y_pred_bin)
+            fn = tf.reduce_sum(y_true * (1 - y_pred_bin))
+
+        self.tp.assign_add(tp)
+        self.fp.assign_add(fp)
+        self.fn.assign_add(fn)
+
+    def result(self):
+        precision = self.tp / (self.tp + self.fp + self.epsilon)
+        recall = self.tp / (self.tp + self.fn + self.epsilon)
+        f1_score = 2 * (precision * recall) / (precision + recall + self.epsilon)
+        return f1_score
 
     def reset_states(self):
         self.tp.assign(0.)
