@@ -245,9 +245,13 @@ class ImpactDlDataGenerator(keras.utils.Sequence):
             if y.ndim == 1:
                 y = np.expand_dims(y, axis=-1)
 
+        # 3D inputs (None in base class, child classes override)
+        x_3d = None
+
         # Static inputs
         x_static = None
         if self.X_static is not None:
             x_static = self.X_static[idxs, :]
 
-        return x_static, y
+        # Return format: ((x_3d, x_static), y)
+        return (x_3d, x_static), y

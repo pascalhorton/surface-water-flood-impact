@@ -178,7 +178,7 @@ class ImpactDl(Impact):
         self._create_data_generator_test()  # Implement this method in the child class
 
         # Determine a good decision threshold from validation data if it's a classifier
-        if self.target_type == 'occurrence' and self.options.loss_function == 'bce' and should_optimize_threshold and self.dg_val is not None:
+        if self.target_type == 'occurrence' and self.options.loss_function == 'bce' and self.dg_val is not None:
             thr, metric_name, metric_value = self._find_optimal_threshold(self.dg_val, metric='f1')
             if thr is not None:
                 self.decision_threshold = float(thr)
