@@ -100,11 +100,13 @@ class ImpactDl(Impact):
         self._define_model()
 
         # Early stopping callbacks
-        early_stopping_loss = keras.callbacks.EarlyStopping(
-            monitor='val_loss', patience=40, restore_best_weights=True)
-        early_stopping_csi = CustomEarlyStopping(
+        early_stopping_csi = keras.callbacks.EarlyStopping(
+            monitor='val_csi', patience=40, verbose=1,
+            restore_best_weights=True, mode='max')
+        # Fallback: stop if CSI drops to near-zero and stays there
+        early_stopping_no_skill = CustomEarlyStopping(
             monitor='val_csi', patience=30, min_value=0.00001)
-        callbacks = [early_stopping_loss, early_stopping_csi]
+        callbacks = [early_stopping_csi, early_stopping_no_skill]
 
         # Define the optimizer
         optimizer = self._define_optimizer(
