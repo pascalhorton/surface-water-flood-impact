@@ -178,7 +178,7 @@ class ImpactDl(Impact):
         self._create_data_generator_test()  # Implement this method in the child class
 
         # Determine a good decision threshold from validation data if it's a classifier
-        if self.target_type == 'occurrence' and self.optimize_decision_threshold and self.dg_val is not None:
+        if self.target_type == 'occurrence' and self.options.loss_function == 'bce' and should_optimize_threshold and self.dg_val is not None:
             thr, metric_name, metric_value = self._find_optimal_threshold(self.dg_val, metric='f1')
             if thr is not None:
                 self.decision_threshold = float(thr)
@@ -329,11 +329,34 @@ class ImpactDl(Impact):
         if self.target_type == 'occurrence':
             # Ensure class weights are floats
             class_weight = {k: float(v) for k, v in self.class_weight.items()}
-            loss_fn = WeightedBinaryCrossEntropy(
-                pos_weight=class_weight[1],
-                neg_weight=class_weight[0],
-                from_logits=False
-            )
+
+            # Get loss type from options if available
+            loss_type = getattr(self.options, 'loss_function', 'bce')
+
+            if loss_type == 'soft_f1':
+                # Use Soft F1 Loss - directly optimizes F1 score
+                # class_weight[1] handles positive class importance
+                loss_fn = SoftF1Loss(
+                    beta=1.0,
+                    class_weight=class_weight[1],
+                    from_logits=False
+                )
+                print(f"Using Soft F1 Loss (class_weight={class_weight[1]:.2f})")
+            elif loss_type == 'soft_csi':
+                # Use Soft CSI Loss - directly optimizes CSI
+                loss_fn = SoftCSILoss(
+                    class_weight=class_weight[1],
+                    from_logits=False
+                )
+                print(f"Using Soft CSI Loss (class_weight={class_weight[1]:.2f})")
+            else:  # 'bce' or default
+                # Use weighted binary cross-entropy (original)
+                loss_fn = WeightedBinaryCrossEntropy(
+                    pos_weight=class_weight[1],
+                    neg_weight=class_weight[0],
+                    from_logits=False
+                )
+                print(f"Using Weighted BCE (pos_weight={class_weight[1]:.2f}, neg_weight={class_weight[0]:.2f})")
         else:
             loss_fn = 'mse'
 
@@ -572,6 +595,161 @@ class WeightedBinaryCrossEntropy(keras.losses.Loss):
                    from_logits=config.get("from_logits", False),
                    normalize=config.get("normalize", True),
                    name=config.get("name", "weighted_binary_cross_entropy"))
+
+
+class SoftF1Loss(keras.losses.Loss):
+    """
+    Differentiable soft F1 loss (equivalent to soft CSI with beta=1).
+
+    Directly optimizes F1/CSI by computing soft TP/FP/FN from probabilities
+    instead of hard predictions. Uses y_pred as soft predictions (no thresholding).
+
+    Loss = 1 - F1_score where F1 = 2*TP / (2*TP + FP + FN)
+    CSI = TP / (TP + FP + FN) is similar but slightly different weighting.
+
+    Parameters
+    ----------
+    beta : float
+        Beta parameter for F-beta score. Use beta=1 for F1 (default).
+        Use beta → ∞ to approximate CSI behavior.
+    class_weight : float
+        Weight multiplier for positive class to handle imbalance.
+        Effectively scales TP and FN by this factor.
+    smooth : float
+        Smoothing epsilon to avoid division by zero.
+    from_logits : bool
+        If True, apply sigmoid to y_pred first.
+    """
+    def __init__(self, beta=1.0, class_weight=1.0, smooth=1e-7,
+                 from_logits=False, name='soft_f1_loss'):
+        super().__init__(name=name)
+        self.beta = float(beta)
+        self.beta_squared = self.beta ** 2
+        self.class_weight = float(class_weight)
+        self.smooth = float(smooth)
+        self.from_logits = bool(from_logits)
+
+    def call(self, y_true, y_pred):
+        # Ensure correct shapes
+        y_true = tf.cast(y_true, tf.float32)
+        y_pred = tf.cast(y_pred, tf.float32)
+
+        if y_true.shape.rank == 1:
+            y_true = tf.expand_dims(y_true, axis=-1)
+        if y_pred.shape.rank == 1:
+            y_pred = tf.expand_dims(y_pred, axis=-1)
+
+        # Apply sigmoid if needed
+        if self.from_logits:
+            y_pred = tf.nn.sigmoid(y_pred)
+
+        # Soft confusion matrix components (using probabilities directly)
+        # TP: when both true and predicted are high
+        tp = tf.reduce_sum(y_true * y_pred * self.class_weight)
+
+        # FP: when true is low but predicted is high
+        fp = tf.reduce_sum((1.0 - y_true) * y_pred)
+
+        # FN: when true is high but predicted is low
+        fn = tf.reduce_sum(y_true * (1.0 - y_pred) * self.class_weight)
+
+        # Soft F-beta score
+        numerator = (1.0 + self.beta_squared) * tp + self.smooth
+        denominator = (1.0 + self.beta_squared) * tp + self.beta_squared * fn + fp + self.smooth
+
+        soft_f_beta = numerator / denominator
+
+        # Return loss (1 - F-beta to minimize)
+        return 1.0 - soft_f_beta
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "beta": self.beta,
+            "class_weight": self.class_weight,
+            "smooth": self.smooth,
+            "from_logits": self.from_logits,
+        })
+        return config
+
+    @classmethod
+    def from_config(cls, config):
+        return cls(
+            beta=config.get("beta", 1.0),
+            class_weight=config.get("class_weight", 1.0),
+            smooth=config.get("smooth", 1e-7),
+            from_logits=config.get("from_logits", False),
+            name=config.get("name", "soft_f1_loss")
+        )
+
+
+class SoftCSILoss(keras.losses.Loss):
+    """
+    Differentiable soft CSI (Critical Success Index) loss.
+
+    CSI = TP / (TP + FP + FN)
+
+    This is mathematically similar to F1 but weights TP/FP/FN differently.
+    CSI tends to be more sensitive to false alarms than F1.
+
+    Parameters
+    ----------
+    class_weight : float
+        Weight multiplier for positive class to handle imbalance.
+    smooth : float
+        Smoothing epsilon to avoid division by zero.
+    from_logits : bool
+        If True, apply sigmoid to y_pred first.
+    """
+    def __init__(self, class_weight=1.0, smooth=1e-7,
+                 from_logits=False, name='soft_csi_loss'):
+        super().__init__(name=name)
+        self.class_weight = float(class_weight)
+        self.smooth = float(smooth)
+        self.from_logits = bool(from_logits)
+
+    def call(self, y_true, y_pred):
+        # Ensure correct shapes
+        y_true = tf.cast(y_true, tf.float32)
+        y_pred = tf.cast(y_pred, tf.float32)
+
+        if y_true.shape.rank == 1:
+            y_true = tf.expand_dims(y_true, axis=-1)
+        if y_pred.shape.rank == 1:
+            y_pred = tf.expand_dims(y_pred, axis=-1)
+
+        # Apply sigmoid if needed
+        if self.from_logits:
+            y_pred = tf.nn.sigmoid(y_pred)
+
+        # Soft confusion matrix components
+        tp = tf.reduce_sum(y_true * y_pred * self.class_weight)
+        fp = tf.reduce_sum((1.0 - y_true) * y_pred)
+        fn = tf.reduce_sum(y_true * (1.0 - y_pred) * self.class_weight)
+
+        # Soft CSI score
+        soft_csi = (tp + self.smooth) / (tp + fp + fn + self.smooth)
+
+        # Return loss (1 - CSI to minimize)
+        return 1.0 - soft_csi
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "class_weight": self.class_weight,
+            "smooth": self.smooth,
+            "from_logits": self.from_logits,
+        })
+        return config
+
+    @classmethod
+    def from_config(cls, config):
+        return cls(
+            class_weight=config.get("class_weight", 1.0),
+            smooth=config.get("smooth", 1e-7),
+            from_logits=config.get("from_logits", False),
+            name=config.get("name", "soft_csi_loss")
+        )
 
 
 class CriticalSuccessIndex(keras.metrics.Metric):
