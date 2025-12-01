@@ -37,9 +37,11 @@ class ImpactDl(Impact):
         The events object.
     reload_trained_models: bool
         Whether to reload the previously trained models or not.
+    optimize_decision_threshold: bool
+        Whether to optimize the decision threshold from validation data or not.
     """
 
-    def __init__(self, options, events=None, reload_trained_models=False):
+    def __init__(self, options, events=None, reload_trained_models=False, optimize_decision_threshold=False):
         super().__init__(options, events)
         self.reload_trained_models = reload_trained_models
         self._set_random_state()
@@ -57,6 +59,10 @@ class ImpactDl(Impact):
 
         # Options that will be set later
         self.factor_neg_reduction = 1
+
+        # Decision threshold for classification; tuned from validation by default
+        self.optimize_decision_threshold = optimize_decision_threshold
+        self.decision_threshold = 0.5
 
     def save_model(self, dir_output, base_name):
         """
@@ -171,6 +177,16 @@ class ImpactDl(Impact):
         print("Creating test data generator.")
         self._create_data_generator_test()  # Implement this method in the child class
 
+        # Determine a good decision threshold from validation data if it's a classifier
+        if self.target_type == 'occurrence' and self.optimize_decision_threshold and self.dg_val is not None:
+            thr, metric_name, metric_value = self._find_optimal_threshold(self.dg_val, metric='f1')
+            if thr is not None:
+                self.decision_threshold = float(thr)
+                print(f"Selected decision threshold from validation ({metric_name}): {self.decision_threshold:.4f} (score={metric_value:.4f})")
+            else:
+                print("Could not determine an optimal threshold from validation; using default 0.5")
+                self.decision_threshold = 0.5
+
         print("Assessing the model on all periods.")
         df_res = pd.DataFrame(columns=['split'])
         df_res = self._assess_model_dg(self.dg_train, 'train', df_res)
@@ -231,7 +247,9 @@ class ImpactDl(Impact):
 
         # Compute the scores
         if self.target_type == 'occurrence':
-            y_pred_class = (y_pred > 0.5).astype(int)
+            thr = self.decision_threshold
+            print(f"Using decision threshold: {thr:.4f}")
+            y_pred_class = (y_pred >= thr).astype(int)
             tp, tn, fp, fn = compute_confusion_matrix(y_obs, y_pred_class)
             print_classic_scores(tp, tn, fp, fn)
             store_classic_scores(tp, tn, fp, fn, df_tmp)
@@ -292,7 +310,8 @@ class ImpactDl(Impact):
         y_obs = np.concatenate(all_obs, axis=0)
 
         # Compute the score
-        y_pred_class = (y_pred > 0.5).astype(int)
+        thr = self.decision_threshold
+        y_pred_class = (y_pred >= thr).astype(int)
         tp, tn, fp, fn = compute_confusion_matrix(y_obs, y_pred_class)
         epsilon = 1e-7  # a small constant to avoid division by zero
         f1 = 2 * tp / (2 * tp + fp + fn + epsilon)
@@ -393,6 +412,74 @@ class ImpactDl(Impact):
                     f'{now.strftime("%Y-%m-%d_%H-%M-%S")}.png')
         if show_plots:
             plt.show()
+
+    def _find_optimal_threshold(self, dg, metric='f1', thresholds=None):
+        """
+        Compute predicted probabilities on the full dataset of the given generator
+        and select the threshold that maximizes the chosen metric on that set.
+
+        Parameters
+        ----------
+        dg: DataGenerator
+            The data generator to evaluate (usually validation).
+        metric: str
+            'f1' or 'csi' to choose which metric to maximize.
+        thresholds: array-like or None
+            Optional set of thresholds to evaluate. If None, uses np.linspace(0,1,201).
+
+        Returns
+        -------
+        (best_thr, metric_name, best_score)
+            best_thr is None if it couldn't be determined (e.g., no positives).
+        """
+        if self.model is None:
+            return None, metric, np.nan
+        if getattr(self, 'target_type', 'occurrence') != 'occurrence':
+            return None, metric, np.nan
+
+        # Predict on full dataset
+        batch_size_orig = dg.batch_size
+        dg.batch_size = 1024
+        n_batches = dg.get_number_of_batches_for_full_dataset()
+        all_pred, all_obs = [], []
+        for i in range(n_batches):
+            x, y = dg.get_ordered_batch_from_full_dataset(i)
+            all_obs.append(np.asarray(y).squeeze())
+            y_pred_batch = self.model.predict(x, verbose=0).squeeze()
+            all_pred.append(y_pred_batch)
+        dg.batch_size = batch_size_orig
+
+        y_pred = np.concatenate(all_pred, axis=0)
+        y_obs = np.concatenate(all_obs, axis=0).astype(int)
+
+        # Edge cases
+        n_pos = int(np.sum(y_obs))
+        n_neg = int(len(y_obs) - n_pos)
+        if n_pos == 0 or n_neg == 0:
+            return None, metric, np.nan
+
+        if thresholds is None:
+            thresholds = np.linspace(0.0, 1.0, 201)
+
+        best_thr = None
+        best_score = -np.inf
+        eps = 1e-7
+        # Initialize metric_name based on requested metric
+        metric_name = 'CSI' if metric.lower() == 'csi' else 'F1'
+        for thr in thresholds:
+            y_cls = (y_pred >= thr).astype(int)
+            tp = int(np.sum((y_obs == 1) & (y_cls == 1)))
+            fp = int(np.sum((y_obs == 0) & (y_cls == 1)))
+            fn = int(np.sum((y_obs == 1) & (y_cls == 0)))
+            if metric.lower() == 'csi':
+                score = tp / (tp + fp + fn + eps)
+            else:  # F1 by default
+                score = 2 * tp / (2 * tp + fp + fn + eps)
+            if score > best_score:
+                best_score = score
+                best_thr = thr
+
+        return best_thr, metric_name, float(best_score)
 
 
 # Define a custom early stopping callback to stop when the CSI is almost 0
