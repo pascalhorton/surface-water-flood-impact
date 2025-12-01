@@ -578,8 +578,8 @@ class CriticalSuccessIndex(keras.metrics.Metric):
     """
     CSI (Critical Success Index) metric accumulating TP/FP/FN.
     """
-    def __init__(self, threshold=0.5, name='csi', dtype=tf.float32, **kwargs):
-        super().__init__(name=name, dtype=dtype, **kwargs)
+    def __init__(self, threshold=0.5, name='csi', dtype=tf.float32):
+        super().__init__(name=name)
         self.threshold = float(threshold)
         self.tp = self.add_weight(name='tp', shape=(), initializer='zeros', dtype=dtype)
         self.fp = self.add_weight(name='fp', shape=(), initializer='zeros', dtype=dtype)
@@ -641,8 +641,8 @@ class F1Score(keras.metrics.Metric):
     """
     F1 Score metric accumulating TP/FP/FN.
     """
-    def __init__(self, threshold=0.5, name='f1_score', dtype=tf.float32, **kwargs):
-        super().__init__(name=name, dtype=dtype, **kwargs)
+    def __init__(self, threshold=0.5, name='f1_score', dtype=tf.float32):
+        super().__init__(name=name)
         self.threshold = float(threshold)
         self.tp = self.add_weight(name='tp', shape=(), initializer='zeros', dtype=dtype)
         self.fp = self.add_weight(name='fp', shape=(), initializer='zeros', dtype=dtype)
