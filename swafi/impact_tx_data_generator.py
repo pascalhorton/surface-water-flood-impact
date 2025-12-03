@@ -205,6 +205,10 @@ class ImpactTxDataGenerator(ImpactDlDataGenerator):
     def _generate_batch(self, idxs):
         # Select the events
         y = self.y[idxs]
+        # Ensure labels are shaped (batch, 1) for Keras metrics compatibility
+        y = np.asarray(y)
+        if y.ndim == 1:
+            y = np.expand_dims(y, axis=-1)
 
         x_precip_hf = None
         x_precip_daily = None

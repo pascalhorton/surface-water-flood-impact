@@ -19,16 +19,26 @@ from pathlib import Path
 
 CONFIG = Config()
 
+DATASET = 'gvz'  # 'mobiliar' or 'gvz'
+
+# Events extraction method ('classic' for Bernet et al 2019 or 'simple' for the new
+# simple approach). Must be the same as the one used for the events extraction
+METHOD = 'simple'
+
+# Only for the classic approach
 CRITERIA = ['prior', 'i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt']
 LABEL_DAMAGE_LINK = 'default'
 WINDOW_DAYS = [5, 3, 1]
-PICKLES_DIR = CONFIG.get('PICKLES_DIR')
-EVENTS_PATH = CONFIG.get('EVENTS_PATH')
-TARGET_TYPE = 'occurrence'  # 'occurrence' or 'damage_ratio'
-LABEL_RESULTING_FILE = 'default_' + TARGET_TYPE
-SAVE_AS_CSV = True
 
-DATASET = 'mobiliar'  # 'mobiliar' or 'gvz'
+# Common options
+PICKLES_DIR = CONFIG.get('PICKLES_DIR')
+if METHOD == 'simple':
+    EVENTS_PATH = CONFIG.get('EVENTS_PATH_SIMPLE')
+else:
+    EVENTS_PATH = CONFIG.get('EVENTS_PATH_CLASSIC')
+TARGET_TYPE = 'occurrence'  # 'occurrence' or 'damage_ratio'
+LABEL_RESULTING_FILE = 'default_' + TARGET_TYPE + '_' + METHOD
+SAVE_AS_CSV = True
 
 if DATASET == 'mobiliar':
     EXPOSURE_CATEGORIES = ['external']
@@ -67,13 +77,14 @@ def main():
 
     # Assign the target value to the events
     events = Events()
-    events.load_events_and_select_those_with_contracts(EVENTS_PATH, damages, DATASET)
+    events.load_events_and_select_those_with_contracts(EVENTS_PATH, damages, f"{DATASET}_{METHOD}")
     events.set_target_values_from_damages(damages)
     events.set_contracts_number(damages)
     if events_to_remove is not None:
         events.remove_events(events_to_remove)
     else:
-        print("Warning: no events to remove because the damages where loaded from pickle files.")
+        print("Warning: no events to remove because the "
+              "damages where loaded from pickle files.")
     events.remove_events_without_contracts()
 
     nb_events = len(events.events)
@@ -92,36 +103,61 @@ def get_damages_linked_to_events():
     year_start = CONFIG.get('YEAR_START')
     year_end = CONFIG.get('YEAR_END')
     label = LABEL_DAMAGE_LINK.replace(" ", "_")
+    label = label + '_' + METHOD
     filename = f'damages_{DATASET}_linked_{label}.pickle'
     file_path = Path(PICKLES_DIR + '/' + filename)
 
     if file_path.exists():
         print(f"Link for {CRITERIA} already computed.")
         if DATASET == 'mobiliar':
-            damages = DamagesMobiliar(pickle_file=filename, year_start=year_start, year_end=year_end)
+            damages = DamagesMobiliar(
+                pickle_file=filename,
+                year_start=year_start,
+                year_end=year_end
+            )
         elif DATASET == 'gvz':
-            damages = DamagesGvz(pickle_file=filename, year_start=year_start, year_end=year_end)
+            damages = DamagesGvz(
+                pickle_file=filename,
+                year_start=year_start,
+                year_end=year_end
+            )
         else:
             raise ValueError(f"Unknown damage dataset: {DATASET}")
         return damages, None
 
-    print(f"Computing link for {CRITERIA}")
+    print(f"Linking claims and events using method '{METHOD}'...")
+    if METHOD == 'classic':
+        print(f"Computing link for {CRITERIA} with window days {WINDOW_DAYS}...")
+
     if DATASET == 'mobiliar':
-        damages = DamagesMobiliar(dir_exposure=CONFIG.get('DIR_EXPOSURE'), dir_claims=CONFIG.get('DIR_CLAIMS'),
-                                  year_start=year_start, year_end=year_end)
+        damages = DamagesMobiliar(
+            dir_exposure=CONFIG.get('DIR_EXPOSURE'),
+            dir_claims=CONFIG.get('DIR_CLAIMS'),
+            year_start=year_start,
+            year_end=year_end
+        )
     elif DATASET == 'gvz':
-        damages = DamagesGvz(dir_exposure=CONFIG.get('DIR_EXPOSURE'), dir_claims=CONFIG.get('DIR_CLAIMS'),
-                             year_start=year_start, year_end=year_end)
+        damages = DamagesGvz(
+            dir_exposure=CONFIG.get('DIR_EXPOSURE'),
+            dir_claims=CONFIG.get('DIR_CLAIMS'),
+            year_start=year_start,
+            year_end=year_end
+        )
     else:
         raise ValueError(f"Unknown damage dataset: {DATASET}")
 
     removed_claims = damages.select_categories_type(EXPOSURE_CATEGORIES, CLAIM_CATEGORIES)
 
     events = Events()
-    events.load_events_and_select_those_with_contracts(EVENTS_PATH, damages, DATASET)
+    events.load_events_and_select_those_with_contracts(EVENTS_PATH, damages, f"{DATASET}_{METHOD}")
 
     events_to_remove = damages.link_with_events(
-        events, criteria=CRITERIA, filename=filename, window_days=WINDOW_DAYS)
+        events,
+        method=METHOD,
+        criteria=CRITERIA,
+        filename=filename,
+        window_days=WINDOW_DAYS
+    )
 
     events_removed_claims = events.get_events_for_removed_claims(removed_claims, damages)
     events_to_remove.extend(events_removed_claims)

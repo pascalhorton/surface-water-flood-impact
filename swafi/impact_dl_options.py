@@ -72,6 +72,7 @@ class ImpactDlOptions(ImpactBasicOptions):
         self.batch_size = None
         self.epochs = None
         self.learning_rate = None
+        self.loss_function = None
 
         # Model options for the dense layers
         self.dropout_rate_dense = None
@@ -113,6 +114,10 @@ class ImpactDlOptions(ImpactBasicOptions):
             '--learning-rate', type=float, default=0.001,
             help='The learning rate')
         self.parser.add_argument(
+            '--loss-function', type=str, default='bce',
+            choices=['bce', 'soft_f1', 'soft_csi'],
+            help='Loss function: bce (weighted binary cross-entropy), soft_f1 (soft F1 loss), soft_csi (soft CSI loss)')
+        self.parser.add_argument(
             '--dropout-rate-dense', type=float, default=0.4,
             help='The dropout rate for the dense layers')
         self.parser.add_argument(
@@ -146,6 +151,7 @@ class ImpactDlOptions(ImpactBasicOptions):
         self.batch_size = args.batch_size
         self.epochs = args.epochs
         self.learning_rate = args.learning_rate
+        self.loss_function = args.loss_function
         self.dropout_rate_dense = args.dropout_rate_dense
         self.use_batchnorm_dense = args.use_batchnorm_dense
         self.nb_dense_layers = args.nb_dense_layers

@@ -26,6 +26,10 @@ PARAMETERS = [  # [label, [criteria], [window_days]]
 
 DATASET = 'mobiliar'
 
+# Events extraction method ('classic' for Bernet et al 2019 or 'simple' for the new
+# simple approach). Must be the same as the one used for the events extraction
+METHOD = 'simple'
+
 if DATASET == 'mobiliar':
     EXPOSURE_CATEGORIES = ['external']
     CLAIM_CATEGORIES = ['external', 'pluvial']
@@ -66,7 +70,7 @@ def main():
 
     events = Events()
     events.load_events_and_select_those_with_contracts(
-        config.get('EVENTS_PATH'), damages, DATASET)
+        config.get('EVENTS_PATH'), damages, f"{DATASET}_{METHOD}")
     del damages
 
     precip = None
@@ -195,7 +199,7 @@ def compute_link_and_save_to_pickle():
 
         events = Events()
         events.load_events_and_select_those_with_contracts(
-            config.get('EVENTS_PATH'), damages, DATASET)
+            config.get('EVENTS_PATH'), damages, f"{DATASET}_{METHOD}")
 
         damages.link_with_events(events, criteria=criteria, filename=filename,
                                  window_days=window_days)

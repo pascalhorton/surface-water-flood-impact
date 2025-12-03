@@ -247,7 +247,7 @@ class Damages:
         """
         self.exposure['selection'] = self.exposure[categories].sum(axis=1)
 
-    def link_with_events(self, events, criteria=None, window_days=None,
+    def link_with_events(self, events, method='simple', criteria=None, window_days=None,
                          filename=None):
         """
         Link the damages with the events.
@@ -256,6 +256,8 @@ class Damages:
         ----------
         events: Events instance
             An object containing the events properties.
+        method: str
+            The method to use for the events extraction. Can be 'simple' or 'classic'.
         criteria: list (optional)
             A list of the criteria to consider for the matching.
             Default to ['i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt']
@@ -278,49 +280,84 @@ class Damages:
         -------
         The list of events to remove from the events dataframe
         """
-        if window_days is None:
-            window_days = [5, 3, 1]
-        if criteria is None:
-            criteria = ['i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt']
-        if filename is None:
-            filename = f'damages_{self.name}_matched.pickle'
-
-        self._add_event_matching_fields(events, window_days, criteria)
-        stats = dict(none=0, single=0, two=0, three=0, multiple=0,
-                     conflicts=0, unresolved=0)
-
         events_to_remove = []
 
-        for i_claim in tqdm(range(len(self.claims)), desc=f"Matching claims / events"):
-            claim = self.claims.iloc[i_claim]
+        if method == 'classic':
+            if window_days is None:
+                window_days = [5, 3, 1]
+            if criteria is None:
+                criteria = ['i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt']
+            if filename is None:
+                filename = f'damages_{self.name}_matched.pickle'
 
-            # Get potential events
-            pot_events = self._get_potential_events(claim, events, window_days)
-            self._record_stat_candidates(stats, pot_events)
+            self._add_event_matching_fields(events, window_days, criteria)
+            stats = dict(none=0, single=0, two=0, three=0, multiple=0,
+                         conflicts=0, unresolved=0)
 
-            if pot_events is None:
-                continue
+            for i_claim in tqdm(range(len(self.claims)), desc=f"Matching claim/events"):
+                claim = self.claims.iloc[i_claim]
 
-            # Assign points for all windows and criteria
-            self._compute_match_score(claim, criteria, pot_events, window_days)
+                # Get potential events
+                pot_events = self._get_potential_classic_events(claim, events, window_days)
+                self._record_stat_candidates(stats, pot_events)
 
-            # Getting the best event matches
-            best_matches = self._get_best_candidate(pot_events, window_days, stats)
-            self._record_best_event(best_matches, i_claim)
+                if pot_events is None:
+                    continue
 
-            # Remove the events that have been matched
-            if len(pot_events) > 1:
-                ev_to_remove = pot_events.eid.tolist()
-                best_eid = best_matches.eid.tolist()[0]
-                ev_to_remove.remove(best_eid)
-                events_to_remove.extend(ev_to_remove)
+                # Assign points for all windows and criteria
+                self._compute_match_score(claim, criteria, pot_events, window_days)
 
-        # Check again that the events to remove were not selected in the claims
-        events_to_remove = [ev for ev in events_to_remove if
-                            ev not in self.claims.eid.tolist()]
-        print(f"Events to remove due to claim/event link: {len(events_to_remove)}")
+                # Getting the best event matches
+                best_matches = self._get_best_candidate(pot_events, window_days, stats)
+                self._record_best_event(best_matches, i_claim)
 
-        self._print_matches_stats(stats)
+                # Remove the events that have been matched
+                if len(pot_events) > 1:
+                    ev_to_remove = pot_events.eid.tolist()
+                    best_eid = best_matches.eid.tolist()[0]
+                    ev_to_remove.remove(best_eid)
+                    events_to_remove.extend(ev_to_remove)
+
+            # Check again that the events to remove were not selected in the claims
+            events_to_remove = [ev for ev in events_to_remove if
+                                ev not in self.claims.eid.tolist()]
+            print(f"Events to remove due to claim/event link: {len(events_to_remove)}")
+
+            self._print_matches_stats(stats)
+
+        elif method == 'simple':
+            stats = dict(none=0, single=0, two=0, three=0, multiple=0)
+
+            for i_claim in tqdm(range(len(self.claims)), desc=f"Matching claim/events"):
+                claim = self.claims.iloc[i_claim]
+
+                # Get potential events
+                pot_events = self._get_potential_simple_events(claim, events)
+                self._record_stat_candidates(stats, pot_events)
+
+                if pot_events is None:
+                    continue
+
+                best_match = self._get_best_candidate_simple(pot_events, claim)
+                self.claims.at[i_claim, 'eid'] = best_match.eid
+
+                # Remove the events that have been matched
+                if len(pot_events) > 1:
+                    ev_to_remove = pot_events.eid.tolist()
+                    ev_to_remove.remove(best_match.eid)
+                    events_to_remove.extend(ev_to_remove)
+
+            # Check again that the events to remove were not selected in the claims
+            events_to_remove = [ev for ev in events_to_remove if
+                                ev not in self.claims.eid.tolist()]
+            print(f"Events to remove due to claim/event link: {len(events_to_remove)}")
+
+            self._print_matches_stats(stats)
+
+
+        else:
+            raise ValueError(f"Unknown method: {method}")
+
         self._remove_claims_with_no_event()
         self._dump_object(filename)
 
@@ -622,6 +659,42 @@ class Damages:
 
         return best_matches
 
+    def _get_best_candidate_simple(self, pot_events, claim):
+        if len(pot_events) == 1:
+            return pot_events.iloc[0]
+
+        elif len(pot_events) == 2:
+            if pot_events.i_max_date.nunique() == 1:
+                # If the 2 potential events have the same i_max_date, keep the claim date
+                best_event = pot_events[pot_events.e_date == claim.date_claim.floor('D')]
+                if best_event.empty:
+                    # Return the closest event to the claim date
+                    pot_events['date_diff'] = (pot_events.e_date - claim.date_claim).abs()
+                    best_event = pot_events.loc[pot_events.date_diff.idxmin()]
+                    return best_event
+                return best_event.iloc[0]
+
+            else:
+                # Select the event with the highest i_max
+                best_idx = pot_events.i_max.idxmax()
+                return pot_events.loc[best_idx]
+            
+        else:  # More than 2 potential events
+            # Select the event(s) with the highest i_max
+            best_idx = pot_events.i_max.idxmax()
+            best_events = pot_events[pot_events.i_max == pot_events.loc[best_idx].i_max]
+            if len(best_events) == 1:
+                return best_events.iloc[0]
+
+            # If multiple events have the same i_max, keep the claim date
+            best_event = pot_events[pot_events.e_date == claim.date_claim.floor('D')]
+            if best_event.empty:
+                # Return the closest event to the claim date
+                pot_events['date_diff'] = (pot_events.e_date - claim.date_claim).abs()
+                best_event = pot_events.loc[pot_events.date_diff.idxmin()]
+                return best_event
+            return best_event.iloc[0]
+
     def _record_best_event(self, best_matches, i_claim):
         self.claims.at[i_claim, 'eid'] = best_matches.iloc[0].eid
         self.claims.at[i_claim, 'e_search_window'] = best_matches.iloc[0].min_window
@@ -670,8 +743,9 @@ class Damages:
         print(f"- {stats['two']} claims had 2 candidate events")
         print(f"- {stats['three']} claims had 3 candidate events")
         print(f"- {stats['multiple']} claims had more candidate event")
-        print(f"- {stats['conflicts']} claims had conflicts")
-        print(f"- {stats['unresolved']} matching were unresolved (first event taken)")
+        if 'conflicts' in stats:
+            print(f"- {stats['conflicts']} claims had conflicts")
+            print(f"- {stats['unresolved']} matching were unresolved (first event taken)")
 
     @staticmethod
     def _compute_temporal_overlap(date_claim, pot_events, window):
@@ -699,7 +773,7 @@ class Damages:
                 pot_events.at[i, 'prior'] = 1
 
     @staticmethod
-    def _get_potential_events(claim, events, window_days):
+    def _get_potential_classic_events(claim, events, window_days):
         """
         Get all potential events based on the CID and the date.
         """
@@ -733,6 +807,29 @@ class Damages:
                 'min_window'] = window
 
         return potential_events
+
+    @staticmethod
+    def _get_potential_simple_events(claim, events):
+        """
+        Get all potential events based on the CID and the date.
+        """
+        cid = claim['cid']
+        date_claim = claim['date_claim']
+
+        # Define the starting and ending dates of the temporal window
+        date_window_start = date_claim - timedelta(hours=12)
+        date_window_end = date_claim + timedelta(hours=36)
+
+        # Select all events in the longest temporal window
+        potential_events = events.events[
+            (events.events['cid'] == cid) &
+            (events.events['i_max_date'] <= date_window_end) &
+            (events.events['i_max_date'] >= date_window_start)]
+
+        if len(potential_events) == 0:
+            return None
+
+        return potential_events.copy()
 
     @staticmethod
     def _get_window_dates(date_claim, window):

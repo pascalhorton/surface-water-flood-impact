@@ -52,7 +52,8 @@ class Impact:
         self.random_state = options.random_state
 
         # Initialize the data properties
-        self._define_potential_features()
+        events_columns = events.events.columns if events is not None else []
+        self._define_potential_features(events_columns)
 
     def select_features(self, features):
         """
@@ -292,40 +293,45 @@ class Impact:
             self.df = self.df[(self.df['nb_claims'] == 0) |
                               (self.df['nb_claims'] >= self.options.min_nb_claims)]
 
-        # Set the reference date for the precipitation extraction. We force the time to 18:00 to
-        # avoid overfitting on the time of the day.
-        if ref_date == 'middle':
-            df.rename(columns={'date_claim': 'date'}, inplace=True)
-            # Set a time to the claim date (18:00 by default)
-            df['date'] = pd.to_datetime(df['date'], errors='coerce') + pd.Timedelta(hours=18)
-            # Fill NaN values with the mean of the event start and end date
-            fill_datetime = (pd.to_datetime(df['e_start']) + pd.to_datetime(df['e_end'])) / 2
-            fill_datetime = fill_datetime.dt.floor('D') + pd.Timedelta(hours=18)
-            df['date'] = df['date'].fillna(fill_datetime)
-        elif ref_date == 'end':
-            df.rename(columns={'date_claim': 'date'}, inplace=True)
-            # Set a time to the claim date (18:00 by default)
-            df['date'] = pd.to_datetime(df['date'], errors='coerce') + pd.Timedelta(hours=18)
-            # Fill NaN values with the event end date
-            fill_datetime = pd.to_datetime(df['e_end']).dt.floor('D') + pd.Timedelta(hours=18)
-            df['date'] = df['date'].fillna(fill_datetime)
-        elif ref_date == 'i_max':
-            df.rename(columns={'date_claim': 'date'}, inplace=True)
-            # Set a time to the claim date (18:00 by default)
-            df['date'] = pd.to_datetime(df['date'], errors='coerce') + pd.Timedelta(hours=18)
-            # Fill NaN values with the date of the maximum precipitation intensity
-            fill_datetime = pd.to_datetime(df['i_max_date']).dt.floor('D') + pd.Timedelta(hours=18)
-            df['date'] = df['date'].fillna(fill_datetime)
-        elif ref_date == 'i_max_only':
-            df.rename(columns={'i_max_date': 'date'}, inplace=True)
-            df['date'] = pd.to_datetime(df['date'])
+        if 'e_date' in df.columns:
+            # Simple event definition
+            df.rename(columns={'e_date': 'date'}, inplace=True)
         else:
-            raise ValueError(f"Unknown reference date: {ref_date}. "
-                             f"Options are: 'middle', 'i_max'")
 
-        # Transform the dates to a date without time
-        df['e_start'] = pd.to_datetime(df['e_start']).dt.date
-        df['e_end'] = pd.to_datetime(df['e_end']).dt.date
+            # Set the reference date for the precipitation extraction. We force the time to 18:00 to
+            # avoid overfitting on the time of the day.
+            if ref_date == 'middle':
+                df.rename(columns={'date_claim': 'date'}, inplace=True)
+                # Set a time to the claim date (18:00 by default)
+                df['date'] = pd.to_datetime(df['date'], errors='coerce') + pd.Timedelta(hours=18)
+                # Fill NaN values with the mean of the event start and end date
+                fill_datetime = (pd.to_datetime(df['e_start']) + pd.to_datetime(df['e_end'])) / 2
+                fill_datetime = fill_datetime.dt.floor('D') + pd.Timedelta(hours=18)
+                df['date'] = df['date'].fillna(fill_datetime)
+            elif ref_date == 'end':
+                df.rename(columns={'date_claim': 'date'}, inplace=True)
+                # Set a time to the claim date (18:00 by default)
+                df['date'] = pd.to_datetime(df['date'], errors='coerce') + pd.Timedelta(hours=18)
+                # Fill NaN values with the event end date
+                fill_datetime = pd.to_datetime(df['e_end']).dt.floor('D') + pd.Timedelta(hours=18)
+                df['date'] = df['date'].fillna(fill_datetime)
+            elif ref_date == 'i_max':
+                df.rename(columns={'date_claim': 'date'}, inplace=True)
+                # Set a time to the claim date (18:00 by default)
+                df['date'] = pd.to_datetime(df['date'], errors='coerce') + pd.Timedelta(hours=18)
+                # Fill NaN values with the date of the maximum precipitation intensity
+                fill_datetime = pd.to_datetime(df['i_max_date']).dt.floor('D') + pd.Timedelta(hours=18)
+                df['date'] = df['date'].fillna(fill_datetime)
+            elif ref_date == 'i_max_only':
+                df.rename(columns={'i_max_date': 'date'}, inplace=True)
+                df['date'] = pd.to_datetime(df['date'])
+            else:
+                raise ValueError(f"Unknown reference date: {ref_date}. "
+                                 f"Options are: 'middle', 'i_max'")
+
+            # Transform the dates to a date without time
+            df['e_start'] = pd.to_datetime(df['e_start']).dt.date
+            df['e_end'] = pd.to_datetime(df['e_end']).dt.date
 
         # Remove lines with NaN values
         len_before = len(df)
@@ -629,13 +635,16 @@ class Impact:
         tmp_filename = self.tmp_dir / df_hashed_name
         return tmp_filename
 
-    def _define_potential_features(self):
+    def _define_potential_features(self, events_columns):
         self.tabular_features = {}
 
         if self.options.use_event_attributes:
-            self.tabular_features['event'] = [
-                'i_max_q', 'p_sum_q', 'duration', 'i_mean_q',
-                'api_q', 'nb_contracts']
+            if 'e_date' in events_columns:
+                self.tabular_features['event'] = ['api', 'nb_contracts']
+            else:
+                self.tabular_features['event'] = [
+                    'i_max_q', 'p_sum_q', 'duration', 'i_mean_q',
+                    'api_q', 'nb_contracts']
 
         if self.options.use_static_attributes:
             if not self.options.use_all_static_attributes:
