@@ -333,22 +333,26 @@ class ImpactDl(Impact):
             # Get loss type from options if available
             loss_type = getattr(self.options, 'loss_function', 'bce')
 
-            if loss_type == 'soft_f1':
-                # Use Soft F1 Loss - directly optimizes F1 score
-                # class_weight[1] handles positive class importance
-                loss_fn = SoftF1Loss(
-                    beta=1.0,
-                    class_weight=class_weight[1],
+            if loss_type == 'focal_loss':
+                # Use Focal Loss (better for imbalanced data than direct F1 optimization)
+                # Convert pos_weight to alpha for focal loss
+                pos_weight = class_weight[1]
+                alpha = pos_weight / (1.0 + pos_weight)
+
+                loss_fn = FocalLoss(
+                    gamma=2.0,  # Focus on hard examples
+                    alpha=alpha,  # Balance positive/negative
                     from_logits=False
                 )
-                print(f"Using Soft F1 Loss (class_weight={class_weight[1]:.2f})")
-            elif loss_type == 'soft_csi':
-                # Use Soft CSI Loss - directly optimizes CSI
-                loss_fn = SoftCSILoss(
-                    class_weight=class_weight[1],
+                print(f"Using Focal Loss (alpha={alpha:.3f}, gamma=2.0)")
+            elif loss_type == 'dice_loss':
+                # Use Dice Loss (stable approximation of CSI/F1)
+                loss_fn = DiceLoss(
+                    smooth=1.0,  # Higher smoothing for stability with imbalance
+                    squared=False,
                     from_logits=False
                 )
-                print(f"Using Soft CSI Loss (class_weight={class_weight[1]:.2f})")
+                print(f"Using Dice Loss (smooth=1.0)")
             else:  # 'bce' or default
                 # Use weighted binary cross-entropy (original)
                 loss_fn = WeightedBinaryCrossEntropy(
@@ -597,37 +601,49 @@ class WeightedBinaryCrossEntropy(keras.losses.Loss):
                    name=config.get("name", "weighted_binary_cross_entropy"))
 
 
-class SoftF1Loss(keras.losses.Loss):
+class FocalLoss(keras.losses.Loss):
     """
-    Differentiable soft F1 loss (equivalent to soft CSI with beta=1).
+    Focal Loss for addressing class imbalance in binary classification.
 
-    Directly optimizes F1/CSI by computing soft TP/FP/FN from probabilities
-    instead of hard predictions. Uses y_pred as soft predictions (no thresholding).
+    From: Lin et al. (2017) "Focal Loss for Dense Object Detection"
+    https://arxiv.org/abs/1708.02002
 
-    Loss = 1 - F1_score where F1 = 2*TP / (2*TP + FP + FN)
-    CSI = TP / (TP + FP + FN) is similar but slightly different weighting.
+    Focal loss applies a modulating term to the cross entropy loss in order to
+    focus learning on hard misclassified examples. It is particularly effective
+    for addressing class imbalance by down-weighting the loss assigned to
+    well-classified examples.
+
+    Loss = -alpha_t * (1 - p_t)^gamma * log(p_t)
+
+    where p_t is the model's estimated probability for the correct class.
 
     Parameters
     ----------
-    beta : float
-        Beta parameter for F-beta score. Use beta=1 for F1 (default).
-        Use beta → ∞ to approximate CSI behavior.
-    class_weight : float
-        Weight multiplier for positive class to handle imbalance.
-        Effectively scales TP and FN by this factor.
-    smooth : float
-        Smoothing epsilon to avoid division by zero.
+    gamma : float
+        Focusing parameter (default 2.0). Higher values increase focus on hard examples.
+        gamma=0 reduces to standard cross-entropy.
+    alpha : float or None
+        Weight for positive class (0-1). If None, computed from pos_weight.
+    pos_weight : float
+        Alternative to alpha: multiplicative weight for positive class.
     from_logits : bool
         If True, apply sigmoid to y_pred first.
     """
-    def __init__(self, beta=1.0, class_weight=1.0, smooth=1e-7,
-                 from_logits=False, name='soft_f1_loss'):
+    def __init__(self, gamma=2.0, alpha=None, pos_weight=None,
+                 from_logits=False, name='focal_loss'):
         super().__init__(name=name)
-        self.beta = float(beta)
-        self.beta_squared = self.beta ** 2
-        self.class_weight = float(class_weight)
-        self.smooth = float(smooth)
+        self.gamma = float(gamma)
         self.from_logits = bool(from_logits)
+
+        # Handle alpha vs pos_weight
+        if alpha is not None:
+            self.alpha = float(alpha)
+        elif pos_weight is not None:
+            # Convert pos_weight to alpha (0-1 scale)
+            pw = float(pos_weight)
+            self.alpha = pw / (1.0 + pw)
+        else:
+            self.alpha = 0.5  # Balanced
 
     def call(self, y_true, y_pred):
         # Ensure correct shapes
@@ -643,31 +659,32 @@ class SoftF1Loss(keras.losses.Loss):
         if self.from_logits:
             y_pred = tf.nn.sigmoid(y_pred)
 
-        # Soft confusion matrix components (using probabilities directly)
-        # TP: when both true and predicted are high
-        tp = tf.reduce_sum(y_true * y_pred * self.class_weight)
+        # Clip predictions to avoid log(0)
+        epsilon = keras.backend.epsilon()
+        y_pred = tf.clip_by_value(y_pred, epsilon, 1.0 - epsilon)
 
-        # FP: when true is low but predicted is high
-        fp = tf.reduce_sum((1.0 - y_true) * y_pred)
+        # Focal loss formulation
+        # For positive samples: -alpha * (1-p)^gamma * log(p)
+        # For negative samples: -(1-alpha) * p^gamma * log(1-p)
+        pt = tf.where(tf.equal(y_true, 1), y_pred, 1.0 - y_pred)
+        focal_weight = tf.pow(1.0 - pt, self.gamma)
 
-        # FN: when true is high but predicted is low
-        fn = tf.reduce_sum(y_true * (1.0 - y_pred) * self.class_weight)
+        # Binary cross-entropy
+        bce = -y_true * tf.math.log(y_pred) - (1.0 - y_true) * tf.math.log(1.0 - y_pred)
 
-        # Soft F-beta score
-        numerator = (1.0 + self.beta_squared) * tp + self.smooth
-        denominator = (1.0 + self.beta_squared) * tp + self.beta_squared * fn + fp + self.smooth
+        # Apply focal weight and class balance
+        alpha_t = tf.where(tf.equal(y_true, 1), self.alpha, 1.0 - self.alpha)
+        focal_loss = alpha_t * focal_weight * bce
 
-        soft_f_beta = numerator / denominator
+        # Return mean loss per sample
+        return tf.reduce_mean(focal_loss)
 
-        # Return loss (1 - F-beta to minimize)
-        return 1.0 - soft_f_beta
 
     def get_config(self):
         config = super().get_config()
         config.update({
-            "beta": self.beta,
-            "class_weight": self.class_weight,
-            "smooth": self.smooth,
+            "gamma": self.gamma,
+            "alpha": self.alpha,
             "from_logits": self.from_logits,
         })
         return config
@@ -675,37 +692,47 @@ class SoftF1Loss(keras.losses.Loss):
     @classmethod
     def from_config(cls, config):
         return cls(
-            beta=config.get("beta", 1.0),
-            class_weight=config.get("class_weight", 1.0),
-            smooth=config.get("smooth", 1e-7),
+            gamma=config.get("gamma", 2.0),
+            alpha=config.get("alpha", 0.5),
             from_logits=config.get("from_logits", False),
-            name=config.get("name", "soft_f1_loss")
+            name=config.get("name", "focal_loss")
         )
 
 
-class SoftCSILoss(keras.losses.Loss):
+class DiceLoss(keras.losses.Loss):
     """
-    Differentiable soft CSI (Critical Success Index) loss.
+    Dice Loss for binary classification with severe class imbalance.
 
-    CSI = TP / (TP + FP + FN)
+    From: Milletari et al. (2016) "V-Net: Fully Convolutional Neural Networks
+    for Volumetric Medical Image Segmentation"
+    https://arxiv.org/abs/1606.04797
 
-    This is mathematically similar to F1 but weights TP/FP/FN differently.
-    CSI tends to be more sensitive to false alarms than F1.
+    The Dice coefficient (also known as F1 score or Sørensen–Dice coefficient)
+    measures overlap between predicted and ground truth:
+
+    Dice = 2*|X ∩ Y| / (|X| + |Y|)
+         = 2*TP / (2*TP + FP + FN)
+
+    Loss = 1 - Dice
+
+    This formulation is more stable than direct CSI/F1 optimization for
+    imbalanced data, especially when combined with smoothing.
 
     Parameters
     ----------
-    class_weight : float
-        Weight multiplier for positive class to handle imbalance.
     smooth : float
-        Smoothing epsilon to avoid division by zero.
+        Smoothing factor to avoid division by zero and stabilize gradients.
+        Larger values (e.g., 1.0) provide more stability with severe imbalance.
+    squared : bool
+        If True, use squared denominator (more stable gradients).
     from_logits : bool
         If True, apply sigmoid to y_pred first.
     """
-    def __init__(self, class_weight=1.0, smooth=1e-7,
-                 from_logits=False, name='soft_csi_loss'):
+    def __init__(self, smooth=1.0, squared=False,
+                 from_logits=False, name='dice_loss'):
         super().__init__(name=name)
-        self.class_weight = float(class_weight)
         self.smooth = float(smooth)
+        self.squared = bool(squared)
         self.from_logits = bool(from_logits)
 
     def call(self, y_true, y_pred):
@@ -722,22 +749,32 @@ class SoftCSILoss(keras.losses.Loss):
         if self.from_logits:
             y_pred = tf.nn.sigmoid(y_pred)
 
-        # Soft confusion matrix components
-        tp = tf.reduce_sum(y_true * y_pred * self.class_weight)
-        fp = tf.reduce_sum((1.0 - y_true) * y_pred)
-        fn = tf.reduce_sum(y_true * (1.0 - y_pred) * self.class_weight)
+        # Flatten for batch-level computation
+        y_true_f = tf.reshape(y_true, [-1])
+        y_pred_f = tf.reshape(y_pred, [-1])
 
-        # Soft CSI score
-        soft_csi = (tp + self.smooth) / (tp + fp + fn + self.smooth)
+        # Compute intersection and cardinalities
+        intersection = tf.reduce_sum(y_true_f * y_pred_f)
 
-        # Return loss (1 - CSI to minimize)
-        return 1.0 - soft_csi
+        if self.squared:
+            # Squared terms for more stable gradients
+            cardinality_true = tf.reduce_sum(y_true_f * y_true_f)
+            cardinality_pred = tf.reduce_sum(y_pred_f * y_pred_f)
+        else:
+            cardinality_true = tf.reduce_sum(y_true_f)
+            cardinality_pred = tf.reduce_sum(y_pred_f)
+
+        # Dice coefficient
+        dice = (2.0 * intersection + self.smooth) / (cardinality_true + cardinality_pred + self.smooth)
+
+        # Return loss (1 - Dice)
+        return 1.0 - dice
 
     def get_config(self):
         config = super().get_config()
         config.update({
-            "class_weight": self.class_weight,
             "smooth": self.smooth,
+            "squared": self.squared,
             "from_logits": self.from_logits,
         })
         return config
@@ -745,10 +782,10 @@ class SoftCSILoss(keras.losses.Loss):
     @classmethod
     def from_config(cls, config):
         return cls(
-            class_weight=config.get("class_weight", 1.0),
-            smooth=config.get("smooth", 1e-7),
+            smooth=config.get("smooth", 1.0),
+            squared=config.get("squared", False),
             from_logits=config.get("from_logits", False),
-            name=config.get("name", "soft_csi_loss")
+            name=config.get("name", "dice_loss")
         )
 
 

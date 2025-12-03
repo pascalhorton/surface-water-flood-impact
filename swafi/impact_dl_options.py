@@ -115,8 +115,8 @@ class ImpactDlOptions(ImpactBasicOptions):
             help='The learning rate')
         self.parser.add_argument(
             '--loss-function', type=str, default='bce',
-            choices=['bce', 'soft_f1', 'soft_csi'],
-            help='Loss function: bce (weighted binary cross-entropy), soft_f1 (soft F1 loss), soft_csi (soft CSI loss)')
+            choices=['bce', 'focal_loss', 'dice_loss'],
+            help='Loss function: bce (weighted binary cross-entropy), focal_loss (Focal Loss), dice_loss (Dice Loss)')
         self.parser.add_argument(
             '--dropout-rate-dense', type=float, default=0.4,
             help='The dropout rate for the dense layers')
