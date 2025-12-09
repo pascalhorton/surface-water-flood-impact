@@ -146,9 +146,9 @@ class ImpactDlOptions(ImpactBasicOptions):
             default='focal',
             choices=['wbce', 'focal', 'bfce', 'bce_dice', 'bce_jaccard'],
             help='Loss function: '
-                 'wbce (weighted binary cross-entropy), '
+                 'wbce (Weighted Binary Cross-Entropy), '
                  'focal (Focal Loss), '
-                 'bfce (Binary Focal cross-entropy), '
+                 'bfce (Binary Focal Cross-Entropy), '
                  'bce_dice (Binary Cross-Entropy + Dice Loss), '
                  'bce_jaccard (Binary Cross-Entropy + Jaccard Loss)'
         )

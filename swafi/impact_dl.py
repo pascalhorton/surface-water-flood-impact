@@ -332,7 +332,7 @@ class ImpactDl(Impact):
             print("Class weights:", class_weight)
 
             # Get loss type from options if available
-            loss_type = getattr(self.options, 'loss_function', 'wbce')
+            loss_type = getattr(self.options, 'loss_function', 'focal')
 
             if loss_type == 'wbce':  # weighted binary cross-entropy
                 loss_fn = WeightedBinaryCrossEntropy(
