@@ -329,12 +329,20 @@ class ImpactDl(Impact):
         if self.target_type == 'occurrence':
             # Ensure class weights are floats
             class_weight = {k: float(v) for k, v in self.class_weight.items()}
+            print("Class weights:", class_weight)
 
             # Get loss type from options if available
-            loss_type = getattr(self.options, 'loss_function', 'bce')
+            loss_type = getattr(self.options, 'loss_function', 'wbce')
 
-            if loss_type == 'focal_loss':
-                # Use Focal Loss (better for imbalanced data than direct F1 optimization)
+            if loss_type == 'wbce':  # weighted binary cross-entropy
+                loss_fn = WeightedBinaryCrossEntropy(
+                    pos_weight=class_weight[1],
+                    neg_weight=class_weight[0],
+                    from_logits=False
+                )
+                print(f"Using Weighted BCE (pos_weight={class_weight[1]:.2f}, neg_weight={class_weight[0]:.2f})")
+
+            elif loss_type == 'focal':  # focal loss
                 # Convert pos_weight to alpha for focal loss
                 pos_weight = class_weight[1]
                 alpha = pos_weight / (1.0 + pos_weight)
@@ -345,22 +353,31 @@ class ImpactDl(Impact):
                     from_logits=False
                 )
                 print(f"Using Focal Loss (alpha={alpha:.3f}, gamma=2.0)")
-            elif loss_type == 'dice_loss':
-                # Use Dice Loss (stable approximation of CSI/F1)
-                loss_fn = DiceLoss(
-                    smooth=1.0,  # Higher smoothing for stability with imbalance
-                    squared=False,
-                    from_logits=False
+
+            elif loss_type == 'bfce':  # binary focal cross-entropy
+                # Convert pos_weight to alpha for focal loss
+                pos_weight = class_weight[1]
+                alpha = pos_weight / (1.0 + pos_weight)
+
+                # Use BinaryFocalCrossentropy
+                loss_fn = keras.losses.BinaryFocalCrossentropy(
+                    apply_class_balancing=True,
+                    alpha=alpha,
+                    gamma=2.0,
                 )
-                print(f"Using Dice Loss (smooth=1.0)")
-            else:  # 'bce' or default
-                # Use weighted binary cross-entropy (original)
-                loss_fn = WeightedBinaryCrossEntropy(
-                    pos_weight=class_weight[1],
-                    neg_weight=class_weight[0],
-                    from_logits=False
-                )
-                print(f"Using Weighted BCE (pos_weight={class_weight[1]:.2f}, neg_weight={class_weight[0]:.2f})")
+                print(f"Using BinaryFocalCrossentropy Loss (alpha={alpha:.3f}, gamma=2.0)")
+
+            elif loss_type == 'bce_dice':  # BCE + Dice loss
+                loss_fn = BCEDiceLoss()
+                print(f"Using BCE + Dice Loss")
+
+            elif loss_type == 'bce_jaccard':  # BCE + Jaccard loss
+                loss_fn = BCEJaccardLoss()
+                print(f"Using BCE + Jaccard Loss")
+
+            else:
+                raise ValueError(f"Loss function '{loss_type}' not recognized for occurrence models.")
+
         else:
             loss_fn = 'mse'
 
@@ -532,6 +549,7 @@ class CustomEarlyStopping(keras.callbacks.Callback):
             self.wait = 0
 
 
+@tf.keras.utils.register_keras_serializable()
 class WeightedBinaryCrossEntropy(keras.losses.Loss):
     """
     Serializable weighted binary cross-entropy loss.
@@ -601,6 +619,7 @@ class WeightedBinaryCrossEntropy(keras.losses.Loss):
                    name=config.get("name", "weighted_binary_cross_entropy"))
 
 
+@tf.keras.utils.register_keras_serializable()
 class FocalLoss(keras.losses.Loss):
     """
     Focal Loss for addressing class imbalance in binary classification.
@@ -679,7 +698,6 @@ class FocalLoss(keras.losses.Loss):
         # Return mean loss per sample
         return tf.reduce_mean(focal_loss)
 
-
     def get_config(self):
         config = super().get_config()
         config.update({
@@ -699,96 +717,86 @@ class FocalLoss(keras.losses.Loss):
         )
 
 
-class DiceLoss(keras.losses.Loss):
-    """
-    Dice Loss for binary classification with severe class imbalance.
-
-    From: Milletari et al. (2016) "V-Net: Fully Convolutional Neural Networks
-    for Volumetric Medical Image Segmentation"
-    https://arxiv.org/abs/1606.04797
-
-    The Dice coefficient (also known as F1 score or Sørensen–Dice coefficient)
-    measures overlap between predicted and ground truth:
-
-    Dice = 2*|X ∩ Y| / (|X| + |Y|)
-         = 2*TP / (2*TP + FP + FN)
-
-    Loss = 1 - Dice
-
-    This formulation is more stable than direct CSI/F1 optimization for
-    imbalanced data, especially when combined with smoothing.
-
-    Parameters
-    ----------
-    smooth : float
-        Smoothing factor to avoid division by zero and stabilize gradients.
-        Larger values (e.g., 1.0) provide more stability with severe imbalance.
-    squared : bool
-        If True, use squared denominator (more stable gradients).
-    from_logits : bool
-        If True, apply sigmoid to y_pred first.
-    """
-    def __init__(self, smooth=1.0, squared=False,
-                 from_logits=False, name='dice_loss'):
+@tf.keras.utils.register_keras_serializable()
+class BCEDiceLoss(keras.losses.Loss):
+    def __init__(self, alpha=0.5, eps=1e-7, name="bce_dice_loss"):
         super().__init__(name=name)
-        self.smooth = float(smooth)
-        self.squared = bool(squared)
-        self.from_logits = bool(from_logits)
+        self.alpha = alpha
+        self.eps = eps
+        self.bce = keras.losses.BinaryCrossentropy(from_logits=False)
 
     def call(self, y_true, y_pred):
-        # Ensure correct shapes
-        y_true = tf.cast(y_true, tf.float32)
-        y_pred = tf.cast(y_pred, tf.float32)
+        bce = self.bce(y_true, y_pred)
 
-        if y_true.shape.rank == 1:
-            y_true = tf.expand_dims(y_true, axis=-1)
-        if y_pred.shape.rank == 1:
-            y_pred = tf.expand_dims(y_pred, axis=-1)
+        # Dice part
+        probs = tf.nn.sigmoid(y_pred)
+        y_true_f = tf.reshape(tf.cast(y_true, tf.float32), [-1])
+        probs_f = tf.reshape(probs, [-1])
 
-        # Apply sigmoid if needed
-        if self.from_logits:
-            y_pred = tf.nn.sigmoid(y_pred)
+        intersection = tf.reduce_sum(probs_f * y_true_f)
+        union = tf.reduce_sum(probs_f) + tf.reduce_sum(y_true_f)
 
-        # Flatten for batch-level computation
-        y_true_f = tf.reshape(y_true, [-1])
-        y_pred_f = tf.reshape(y_pred, [-1])
+        dice = (2.0 * intersection + self.eps) / (union + self.eps)
 
-        # Compute intersection and cardinalities
-        intersection = tf.reduce_sum(y_true_f * y_pred_f)
-
-        if self.squared:
-            # Squared terms for more stable gradients
-            cardinality_true = tf.reduce_sum(y_true_f * y_true_f)
-            cardinality_pred = tf.reduce_sum(y_pred_f * y_pred_f)
-        else:
-            cardinality_true = tf.reduce_sum(y_true_f)
-            cardinality_pred = tf.reduce_sum(y_pred_f)
-
-        # Dice coefficient
-        dice = (2.0 * intersection + self.smooth) / (cardinality_true + cardinality_pred + self.smooth)
-
-        # Return loss (1 - Dice)
-        return 1.0 - dice
+        return self.alpha * bce + (1.0 - self.alpha) * (1.0 - dice)
 
     def get_config(self):
         config = super().get_config()
         config.update({
-            "smooth": self.smooth,
-            "squared": self.squared,
-            "from_logits": self.from_logits,
+            "alpha": self.alpha,
+            "eps": self.eps
         })
         return config
 
     @classmethod
     def from_config(cls, config):
         return cls(
-            smooth=config.get("smooth", 1.0),
-            squared=config.get("squared", False),
-            from_logits=config.get("from_logits", False),
-            name=config.get("name", "dice_loss")
+            alpha=config.get("alpha", 0.5),
+            eps=config.get("eps", 1e-7),
+            name=config.get("name", "bce_dice_loss")
         )
 
 
+@tf.keras.utils.register_keras_serializable()
+class BCEJaccardLoss(keras.losses.Loss):
+    def __init__(self, alpha=0.5, eps=1e-7, name="bce_jaccard_loss"):
+        super().__init__(name=name)
+        self.alpha = alpha
+        self.eps = eps
+        self.bce = tf.keras.losses.BinaryCrossentropy(from_logits=False)
+
+    def call(self, y_true, y_pred):
+        bce = self.bce(y_true, y_pred)
+
+        probs = tf.nn.sigmoid(y_pred)
+        y_true_f = tf.reshape(tf.cast(y_true, tf.float32), [-1])
+        probs_f = tf.reshape(probs, [-1])
+
+        intersection = tf.reduce_sum(probs_f * y_true_f)
+        union = tf.reduce_sum(probs_f) + tf.reduce_sum(y_true_f) - intersection
+
+        jaccard = (intersection + self.eps) / (union + self.eps)
+
+        return self.alpha * bce + (1.0 - self.alpha) * (1.0 - jaccard)
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "alpha": self.alpha,
+            "eps": self.eps
+        })
+        return config
+
+    @classmethod
+    def from_config(cls, config):
+        return cls(
+            alpha=config.get("alpha", 0.5),
+            eps=config.get("eps", 1e-7),
+            name=config.get("name", "bce_jaccard_loss")
+        )
+
+
+@tf.keras.utils.register_keras_serializable()
 class CriticalSuccessIndex(keras.metrics.Metric):
     """
     CSI (Critical Success Index) metric accumulating TP/FP/FN.
@@ -852,6 +860,7 @@ class CriticalSuccessIndex(keras.metrics.Metric):
         return config
 
 
+@tf.keras.utils.register_keras_serializable()
 class F1Score(keras.metrics.Metric):
     """
     F1 Score metric accumulating TP/FP/FN.

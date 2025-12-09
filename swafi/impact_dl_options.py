@@ -87,54 +87,107 @@ class ImpactDlOptions(ImpactBasicOptions):
         Set the parser arguments.
         """
         self.parser.add_argument(
-            '--factor-neg-reduction', type=int, default=10,
-            help='The factor to reduce the number of negatives only for training')
+            '--factor-neg-reduction',
+            type=int,
+            default=10,
+            help='The factor to reduce the number of negatives only for training'
+        )
         self.parser.add_argument(
-            '--weight-denominator', type=int, default=10,
-            help='The weight denominator to reduce the negative class weights')
+            '--weight-denominator',
+            type=int,
+            default=10,
+            help='The weight denominator to reduce the negative class weights'
+        )
         self.parser.add_argument(
-            '--use-precip', action=argparse.BooleanOptionalAction, default=True,
-            help='Use precipitation data')
+            '--use-precip',
+            action=argparse.BooleanOptionalAction,
+            default=True,
+            help='Use precipitation data'
+        )
         self.parser.add_argument(
-            '--log-transform-precip', action=argparse.BooleanOptionalAction,
-            default=True, help='Log-transform the precipitation')
+            '--log-transform-precip',
+            action=argparse.BooleanOptionalAction,
+            default=True,
+            help='Log-transform the precipitation'
+        )
         self.parser.add_argument(
-            '--transform-precip', type=str, default='normalize',
-            help='The transformation to apply to the precipitation data')
+            '--transform-precip',
+            type=str,
+            default='normalize',
+            help='The transformation to apply to the precipitation data'
+        )
         self.parser.add_argument(
-            '--transform-static', type=str, default='standardize',
-            help='The transformation to apply to the static data')
+            '--transform-static',
+            type=str,
+            default='standardize',
+            help='The transformation to apply to the static data'
+        )
         self.parser.add_argument(
-            '--batch-size', type=int, default=64,
-            help='The batch size')
+            '--batch-size',
+            type=int,
+            default=64,
+            help='The batch size'
+        )
         self.parser.add_argument(
-            '--epochs', type=int, default=300,
-            help='The number of epochs')
+            '--epochs',
+            type=int,
+            default=300,
+            help='The number of epochs'
+        )
         self.parser.add_argument(
-            '--learning-rate', type=float, default=0.001,
-            help='The learning rate')
+            '--learning-rate',
+            type=float,
+            default=0.001,
+            help='The learning rate'
+        )
         self.parser.add_argument(
-            '--loss-function', type=str, default='bce',
-            choices=['bce', 'focal_loss', 'dice_loss'],
-            help='Loss function: bce (weighted binary cross-entropy), focal_loss (Focal Loss), dice_loss (Dice Loss)')
+            '--loss-function',
+            type=str,
+            default='focal',
+            choices=['wbce', 'focal', 'bfce', 'bce_dice', 'bce_jaccard'],
+            help='Loss function: '
+                 'wbce (weighted binary cross-entropy), '
+                 'focal (Focal Loss), '
+                 'bfce (Binary Focal cross-entropy), '
+                 'bce_dice (Binary Cross-Entropy + Dice Loss), '
+                 'bce_jaccard (Binary Cross-Entropy + Jaccard Loss)'
+        )
         self.parser.add_argument(
-            '--dropout-rate-dense', type=float, default=0.4,
-            help='The dropout rate for the dense layers')
+            '--dropout-rate-dense',
+            type=float,
+            default=0.4,
+            help='The dropout rate for the dense layers'
+        )
         self.parser.add_argument(
-            '--use-batchnorm-dense', action=argparse.BooleanOptionalAction,
-            default=True, help='Use batch normalization for the dense layers')
+            '--use-batchnorm-dense',
+            action=argparse.BooleanOptionalAction,
+            default=True,
+            help='Use batch normalization for the dense layers'
+        )
         self.parser.add_argument(
-            '--nb-dense-layers', type=int, default=4,
-            help='The number of dense layers')
+            '--nb-dense-layers',
+            type=int,
+            default=4,
+            help='The number of dense layers'
+        )
         self.parser.add_argument(
-            '--nb-dense-units', type=int, default=1024,
-            help='The number of dense units')
+            '--nb-dense-units',
+            type=int,
+            default=1024,
+            help='The number of dense units'
+        )
         self.parser.add_argument(
-            '--nb-dense-units-decreasing', action=argparse.BooleanOptionalAction,
-            default=True, help='The number of dense units should decrease')
+            '--nb-dense-units-decreasing',
+            action=argparse.BooleanOptionalAction,
+            default=True,
+            help='The number of dense units should decrease'
+        )
         self.parser.add_argument(
-            '--inner-activation-dense', type=str, default='leaky_relu',
-            help='The inner activation function for the dense layers')
+            '--inner-activation-dense',
+            type=str,
+            default='leaky_relu',
+            help='The inner activation function for the dense layers'
+        )
 
     def _parse_dl_args(self, args):
         """
