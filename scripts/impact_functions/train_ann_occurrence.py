@@ -16,7 +16,7 @@ from swafi.events import load_events_from_pickle
 from swafi.utils.optuna import get_or_create_optuna_study
 
 SAVE_MODEL = True
-SHOW_PLOTS = True
+SHOW_PLOTS = False
 
 config = Config()
 
