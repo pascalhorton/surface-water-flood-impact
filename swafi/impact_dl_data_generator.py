@@ -227,31 +227,5 @@ class ImpactDlDataGenerator(keras.utils.Sequence):
         if self.shuffle:
             np.random.shuffle(self.idxs)
 
-    def __getitem__(self, i):
-        """Generate one batch of data for index i (static-only in the base class)."""
-        idxs = self.idxs[i * self.batch_size:(i + 1) * self.batch_size]
-
-        return self._generate_batch(idxs)
-
-    def _generate_batch(self, idxs):
-        """Minimal implementation: handles static inputs when no 3D inputs are provided.
-        Returns ((x_3d, x_static), y) for compatibility with downstream code/tests.
-        """
-        # Labels
-        y = None
-        if self.y is not None:
-            y = self.y[idxs]
-            y = np.asarray(y)
-            if y.ndim == 1:
-                y = np.expand_dims(y, axis=-1)
-
-        # 3D inputs (None in base class, child classes override)
-        x_3d = None
-
-        # Static inputs
-        x_static = None
-        if self.X_static is not None:
-            x_static = self.X_static[idxs, :]
-
-        # Return format: ((x_3d, x_static), y)
-        return (x_3d, x_static), y
+    def __getitem__(self, index):
+        raise NotImplementedError("This method should be implemented in subclasses.")
