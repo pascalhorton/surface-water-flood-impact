@@ -128,7 +128,7 @@ class ImpactDl(Impact):
         self.model.compile(
             loss=loss_fn,
             optimizer=optimizer,
-            metrics=[CriticalSuccessIndex(), F1Score()],
+            metrics=[CriticalSuccessIndex(), F1Score(), 'AUC'],
             run_eagerly=DEBUG  # Set to True for debugging purposes
         )
 
@@ -436,27 +436,19 @@ class ImpactDl(Impact):
         if prefix is not None:
             prefix = f"{prefix}_"
 
-        plt.figure(figsize=(10, 5))
-        plt.plot(hist.history['loss'], label='train')
-        plt.plot(hist.history['val_loss'], label='valid')
-        plt.legend()
-        plt.title('Loss')
-        plt.tight_layout()
-        plt.savefig(f'{dir_plots}/{prefix}loss_'
-                    f'{now.strftime("%Y-%m-%d_%H-%M-%S")}.png')
-        if show_plots:
-            plt.show()
+        metrics = ['loss', 'csi', 'f1_score', 'AUC']
 
-        plt.figure(figsize=(10, 5))
-        plt.plot(hist.history['csi'], label='train')
-        plt.plot(hist.history['val_csi'], label='valid')
-        plt.legend()
-        plt.title('CSI')
-        plt.tight_layout()
-        plt.savefig(f'{dir_plots}/{prefix}csi_'
-                    f'{now.strftime("%Y-%m-%d_%H-%M-%S")}.png')
-        if show_plots:
-            plt.show()
+        for metric in metrics:
+            plt.figure(figsize=(10, 5))
+            plt.plot(hist.history[metric], label='train')
+            plt.plot(hist.history[f'val_{metric}'], label='valid')
+            plt.legend()
+            plt.title(metric)
+            plt.tight_layout()
+            plt.savefig(f'{dir_plots}/{prefix}{metric}_'
+                        f'{now.strftime("%Y-%m-%d_%H-%M-%S")}.png')
+            if show_plots:
+                plt.show()
 
     def _find_optimal_threshold(self, dg, metric='f1', thresholds=None):
         """
