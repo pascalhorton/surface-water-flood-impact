@@ -64,7 +64,7 @@ class ImpactDl(Impact):
         self.optimize_decision_threshold = optimize_decision_threshold
         self.decision_threshold = 0.5
 
-    def save_model(self, dir_output, base_name):
+    def save_model(self, dir_output, base_name='model'):
         """
         Save the model.
 
@@ -73,7 +73,8 @@ class ImpactDl(Impact):
         dir_output: str
             The directory where to save the model.
         base_name: str
-            The base name to use for the file.
+            The base name to use for the file. The run name will be appended.
+            Default is 'model'.
         """
         if self.model is None:
             raise ValueError("Model not defined")

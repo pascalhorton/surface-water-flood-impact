@@ -262,7 +262,7 @@ class Impact:
         self.df = self.df[(self.df['nb_claims'] == 0) |
                           (self.df['nb_claims'] >= threshold)]
 
-    def split_sample(self, valid_test_size=0.3, test_size=0.5, ref_date='i_max', stratify_by='day'):
+    def split_sample(self, valid_test_size=0.3, test_size=0.5, ref_date='i_max_only', stratify=False, stratify_by='month'):
         """
         Split the sample into training, validation and test sets. The split is
         stratified on the target, i.e. the proportion of events with and without
@@ -280,8 +280,10 @@ class Impact:
             Options are:
             - 'middle': missing dates are filled with the mean of the event start and end date.
             - 'end': missing dates are filled with the event end date.
-            - 'i_max' (default): missing dates are filled with the date of the maximum precipitation intensity.
-            - 'i_max_only': only the date of the maximum precipitation intensity is used, claim dates are discarded.
+            - 'i_max': missing dates are filled with the date of the maximum precipitation intensity.
+            - 'i_max_only' (default): only the date of the maximum precipitation intensity is used, claim dates are discarded.
+        stratify: bool
+            Whether to stratify the split on the target (default: False)
         stratify_by: str
             The temporal unit to use for stratification. Options are: 'day' (default) or
             'month'. If 'day', the stratification is done based on days with any damages.
@@ -339,69 +341,89 @@ class Impact:
         len_after = len(df)
         print(f"Number of NaN values removed: {len_before - len_after}")
 
-        if stratify_by == 'day':
-            # Add a column to flag any claim (1 if there is a damage, 0 otherwise)
-            df['damage_class'] = (df['target'] > 0).astype(int)
+        if stratify:
+            if stratify_by == 'day':
+                # Add a column to flag any claim (1 if there is a damage, 0 otherwise)
+                df['damage_class'] = (df['target'] > 0).astype(int)
 
-            # Group all events by date and damage class to split by date without mixing.
-            date_label_df = df.groupby('date')['damage_class'].max().reset_index()
+                # Group all events by date and damage class to split by date without mixing.
+                date_label_df = df.groupby('date')['damage_class'].max().reset_index()
 
-            # Split by dates while stratifying on `damage_class`
-            train_dates, temp_dates = train_test_split(
-                date_label_df['date'],
-                test_size=valid_test_size,
-                stratify=date_label_df['damage_class'],
-                random_state=self.random_state,
-                shuffle=True
-            )
-            val_dates, test_dates = train_test_split(
-                temp_dates,
-                test_size=test_size,
-                stratify=date_label_df.loc[
-                    date_label_df['date'].isin(temp_dates), 'damage_class'],
-                random_state=self.random_state,
-                shuffle=True
-            )
+                # Split by dates while stratifying on `damage_class`
+                train_dates, temp_dates = train_test_split(
+                    date_label_df['date'],
+                    test_size=valid_test_size,
+                    stratify=date_label_df['damage_class'],
+                    random_state=self.random_state,
+                    shuffle=True
+                )
+                val_dates, test_dates = train_test_split(
+                    temp_dates,
+                    test_size=test_size,
+                    stratify=date_label_df.loc[
+                        date_label_df['date'].isin(temp_dates), 'damage_class'],
+                    random_state=self.random_state,
+                    shuffle=True
+                )
 
-            # Filter the original df to get train, validation, and test sets
-            train_df = df[df['date'].isin(train_dates)]
-            val_df = df[df['date'].isin(val_dates)]
-            test_df = df[df['date'].isin(test_dates)]
+                # Filter the original df to get train, validation, and test sets
+                train_df = df[df['date'].isin(train_dates)]
+                val_df = df[df['date'].isin(val_dates)]
+                test_df = df[df['date'].isin(test_dates)]
 
-        elif stratify_by == 'month':
-            # Compute the ratio of events with and without damages on an annual basis
-            df['year'] = df['date'].dt.year
-            df['month'] = df['date'].dt.month
-            df['class'] = np.where(df['target'] > 0, 1, 0)
-            events_month = df.groupby(['year', 'month'])['class'].value_counts().unstack(fill_value=0)
-            events_month['pos_ratio'] = events_month[1] / (events_month[0] + events_month[1])
-            events_month['pos_ratio_ranks'] = events_month['pos_ratio'].rank(method='first')
-            events_month['ratio_class'] = pd.cut(events_month['pos_ratio_ranks'], bins=5, labels=False)
+            elif stratify_by == 'month':
+                # Compute the ratio of events with and without damages on an annual basis
+                df['year'] = df['date'].dt.year
+                df['month'] = df['date'].dt.month
+                df['class'] = np.where(df['target'] > 0, 1, 0)
+                events_month = df.groupby(['year', 'month'])['class'].value_counts().unstack(fill_value=0)
+                events_month['pos_ratio'] = events_month[1] / (events_month[0] + events_month[1])
+                events_month['pos_ratio_ranks'] = events_month['pos_ratio'].rank(method='first')
+                events_month['ratio_class'] = pd.cut(events_month['pos_ratio_ranks'], bins=5, labels=False)
 
-            # Split with stratification on the ratio class
-            train_slct, tmp_slct = train_test_split(
-                events_month,
-                test_size=valid_test_size,
-                random_state=self.random_state,
-                shuffle=True,
-                stratify=events_month['ratio_class']
-            )
-            val_slct, test_slct = train_test_split(
-                tmp_slct,
-                test_size=test_size,
-                random_state=self.random_state,
-                shuffle=True,
-                stratify=tmp_slct['ratio_class']
-            )
+                # Split with stratification on the ratio class
+                train_slct, tmp_slct = train_test_split(
+                    events_month,
+                    test_size=valid_test_size,
+                    random_state=self.random_state,
+                    shuffle=True,
+                    stratify=events_month['ratio_class']
+                )
+                val_slct, test_slct = train_test_split(
+                    tmp_slct,
+                    test_size=test_size,
+                    random_state=self.random_state,
+                    shuffle=True,
+                    stratify=tmp_slct['ratio_class']
+                )
 
-            # Filter the original df to get train, validation, and test sets
-            train_df = df[pd.MultiIndex.from_arrays([df['year'], df['month']]).isin(train_slct.index)]
-            val_df = df[pd.MultiIndex.from_arrays([df['year'], df['month']]).isin(val_slct.index)]
-            test_df = df[pd.MultiIndex.from_arrays([df['year'], df['month']]).isin(test_slct.index)]
+                # Filter the original df to get train, validation, and test sets
+                train_df = df[pd.MultiIndex.from_arrays([df['year'], df['month']]).isin(train_slct.index)]
+                val_df = df[pd.MultiIndex.from_arrays([df['year'], df['month']]).isin(val_slct.index)]
+                test_df = df[pd.MultiIndex.from_arrays([df['year'], df['month']]).isin(test_slct.index)]
 
+            else:
+                raise ValueError(f"Unknown stratification method: {stratify_by}. "
+                                 f"Options are: 'day', 'month'")
         else:
-            raise ValueError(f"Unknown stratification method: {stratify_by}. "
-                             f"Options are: 'day', 'month'")
+            # Sort by date to avoid data leakage
+            df = df.sort_values(by='date').reset_index(drop=True)
+
+            # First split into training and temp (validation + test)
+            train_df, temp_df = train_test_split(
+                df,
+                test_size=valid_test_size,
+                random_state=self.random_state,
+                shuffle=False
+            )
+
+            # Then split temp into validation and test
+            val_df, test_df = train_test_split(
+                temp_df,
+                test_size=test_size,
+                random_state=self.random_state,
+                shuffle=False
+            )
 
         self.x_train = train_df[self.features].to_numpy()
         self.x_valid = val_df[self.features].to_numpy()
