@@ -89,7 +89,7 @@ class ImpactDlOptions(ImpactBasicOptions):
         self.parser.add_argument(
             '--factor-neg-reduction',
             type=int,
-            default=10,
+            default=1,
             help='The factor to reduce the number of negatives only for training'
         )
         self.parser.add_argument(
