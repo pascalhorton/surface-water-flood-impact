@@ -42,7 +42,6 @@ class PrecipitationArchive(Precipitation):
                 end=f'{year_end}-12-31',
                 freq='MS'
             )
-        self.missing = None
 
         self.hash_tag = None
         self.pickle_files = []

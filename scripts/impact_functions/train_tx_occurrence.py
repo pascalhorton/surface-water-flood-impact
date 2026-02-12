@@ -21,8 +21,6 @@ SHOW_PLOTS = False
 
 config = Config()
 
-MISSING_DATES = CombiPrecip.missing
-
 
 def main():
     options = ImpactTransformerOptions()
@@ -50,12 +48,6 @@ def main():
     # Load events
     events_filename = f'events_{options.dataset}_with_target_{options.event_file_label}.pickle'
     events = load_events_from_pickle(filename=events_filename)
-
-    # Remove dates where the precipitation data is not available
-    for date_range in MISSING_DATES:
-        remove_start = (pd.to_datetime(date_range[0]) - pd.Timedelta(days=4))
-        remove_end = (pd.to_datetime(date_range[1]) + pd.Timedelta(days=2))
-        events.remove_period(remove_start, remove_end)
 
     precip_hf = None
     precip_daily = None

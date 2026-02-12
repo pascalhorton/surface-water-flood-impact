@@ -137,3 +137,9 @@ config.yaml
 *.pickle
 *.parquet
 *.keras
+**_2.py
+**_3.py
+**_4.py
+**_5.py
+**_6.py
+**_7.py
