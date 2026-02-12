@@ -943,7 +943,12 @@ class Damages:
         ys_cid = self.domain.cids['ys'][:, 0]
 
         for i, (x, y) in enumerate(zip(xs_mask, ys_mask)):
-            cids[i] = self.domain.cids['ids_map'][ys_cid == y, xs_cid == x]
+            cid = self.domain.cids['ids_map'][ys_cid == y, xs_cid == x]
+            if len(cid) == 0:
+                raise RuntimeError(f"No CID found for coordinates (x={x}, y={y}).")
+            if len(cid) > 1:
+                raise RuntimeError(f"Multiple CIDs found for coordinates (x={x}, y={y}).")
+            cids[i] = cid[0]
 
         self.cids_list = cids
 

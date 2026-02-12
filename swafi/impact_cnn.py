@@ -62,7 +62,7 @@ class ImpactCnn(ImpactDl):
         """
         self.model = model
 
-    def get_data_generator_inference(self, events, features, exposure, precip_stats):
+    def get_data_generator_inference(self, events, features, exposure, precip_stats=None, mean_static=None, std_static=None):
         """
         Get the data generator for inference.
 
@@ -88,6 +88,9 @@ class ImpactCnn(ImpactDl):
             df = df.merge(features, on='cid', how='left')
             df.dropna(subset=self.features, inplace=True)
 
+        # Drop events with missing exposure data
+        df.dropna(subset=['nb_contracts'], inplace=True)
+
         df.rename(columns={'i_max_date': 'date'}, inplace=True)
         df['date'] = pd.to_datetime(df['date'])
 
@@ -96,14 +99,19 @@ class ImpactCnn(ImpactDl):
         y_fields = ['date', 'x', 'y', 'cid']
         event_props = df[y_fields].to_numpy()
 
-        if self.options.log_transform_precip:
-            mean_precip = precip_stats['mean_log'].values
-            std_precip = precip_stats['std_log'].values
-            q99_precip = precip_stats['q99_log'].values
+        if precip_stats is None:
+            mean_precip = None
+            std_precip = None
+            q99_precip = None
         else:
-            mean_precip = precip_stats['mean'].values
-            std_precip = precip_stats['std'].values
-            q99_precip = precip_stats['q99'].values
+            if self.options.log_transform_precip:
+                mean_precip = precip_stats['mean_log'].values
+                std_precip = precip_stats['std_log'].values
+                q99_precip = precip_stats['q99_log'].values
+            else:
+                mean_precip = precip_stats['mean'].values
+                std_precip = precip_stats['std'].values
+                q99_precip = precip_stats['q99'].values
 
         dg = ImpactCnnDataGenerator(
             event_props=event_props,
@@ -121,8 +129,8 @@ class ImpactCnn(ImpactDl):
             transform_static=self.options.transform_static,
             transform_precip=self.options.transform_precip,
             log_transform_precip=self.options.log_transform_precip,
-            mean_static=None,
-            std_static=None,
+            mean_static=mean_static,
+            std_static=std_static,
             min_static=None,
             max_static=None,
             mean_precip=mean_precip,
