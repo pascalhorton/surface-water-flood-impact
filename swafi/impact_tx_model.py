@@ -231,6 +231,25 @@ class ModelTransformer(models.Model):
             inputs=[input_daily, input_high_freq, input_attributes],
             outputs=output)
 
+    def call(self, inputs, training=None, **kwargs):
+        """
+        Call the model.
+
+        Parameters
+        ----------
+        inputs: list
+            The inputs.
+        training: bool
+            Whether the model is in training mode.
+
+        Returns
+        -------
+        The output.
+        """
+        if self.model is None:
+            raise ValueError("Model not defined")
+        return self.model(inputs, training=training, **kwargs)
+
     def project_to_model_dim(self, inputs):
         """
         Project the input into the model dimension.
@@ -320,21 +339,6 @@ class ModelTransformer(models.Model):
 
         return x
 
-    def call(self, inputs, **kwargs):
-        """
-        Call the model.
-
-        Parameters
-        ----------
-        inputs: list
-            The inputs.
-        **kwargs
-
-        Returns
-        -------
-        The output.
-        """
-        return self.model(inputs, **kwargs)
 
 
 class AddLearnedPositionalEmbedding(layers.Layer):

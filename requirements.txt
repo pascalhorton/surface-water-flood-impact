@@ -1,6 +1,6 @@
 numpy
 PyYAML
-pandas==2.*
+pandas
 rasterio
 tqdm
 pyarrow

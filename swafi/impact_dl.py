@@ -436,7 +436,7 @@ class ImpactDl(Impact):
         if prefix is not None:
             prefix = f"{prefix}_"
 
-        metrics = ['loss', 'csi', 'f1_score', 'AUC']
+        metrics = ['loss', 'csi', 'AUC']
 
         for metric in metrics:
             plt.figure(figsize=(10, 5))

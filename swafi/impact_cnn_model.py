@@ -226,6 +226,25 @@ class ModelCnn(keras.models.Model):
         else:
             raise ValueError("At least one input size must be provided")
 
+    def call(self, inputs, training=None, **kwargs):
+        """
+        Call the model.
+
+        Parameters
+        ----------
+        inputs: list
+            The inputs.
+        training: bool
+            Whether the model is in training mode.
+
+        Returns
+        -------
+        The output.
+        """
+        if self.model is None:
+            raise ValueError("Model not defined")
+        return self.model(inputs, training=training, **kwargs)
+
     def _setup(self, task='classification', options=None, input_3d_size=None, input_1d_size=None):
         """
         Setup the model.
@@ -428,18 +447,3 @@ class ModelCnn(keras.models.Model):
 
         return x
 
-    def call(self, inputs, **kwargs):
-        """
-        Call the model.
-
-        Parameters
-        ----------
-        inputs: list
-            The inputs.
-        **kwargs
-
-        Returns
-        -------
-        The output.
-        """
-        return self.model(inputs, **kwargs)
