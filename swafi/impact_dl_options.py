@@ -131,7 +131,7 @@ class ImpactDlOptions(ImpactBasicOptions):
         self.parser.add_argument(
             '--epochs',
             type=int,
-            default=300,
+            default=200,
             help='The number of epochs'
         )
         self.parser.add_argument(
