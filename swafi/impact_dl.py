@@ -124,11 +124,15 @@ class ImpactDl(Impact):
         # Get loss function
         loss_fn = self._get_loss_function()
 
+        # Create instances of ROC-AUC and PR-AUC metrics to track during training
+        roc_auc = keras.metrics.AUC(name='ROC_AUC', curve='ROC')
+        pr_auc = keras.metrics.AUC(name='PR_AUC', curve='PR')
+
         # Compile the model
         self.model.compile(
             loss=loss_fn,
             optimizer=optimizer,
-            metrics=[CriticalSuccessIndex(), F1Score(), 'AUC'],
+            metrics=[CriticalSuccessIndex(), F1Score(), roc_auc, pr_auc],
             run_eagerly=DEBUG  # Set to True for debugging purposes
         )
 
@@ -436,7 +440,7 @@ class ImpactDl(Impact):
         if prefix is not None:
             prefix = f"{prefix}_"
 
-        metrics = ['loss', 'csi', 'AUC']
+        metrics = ['loss', 'csi', 'ROC_AUC', 'PR_AUC']
 
         for metric in metrics:
             plt.figure(figsize=(10, 5))
@@ -858,7 +862,7 @@ class F1Score(keras.metrics.Metric):
     """
     F1 Score metric accumulating TP/FP/FN.
     """
-    def __init__(self, threshold=0.5, name='f1_score', dtype=tf.float32):
+    def __init__(self, threshold=0.5, name='F1', dtype=tf.float32):
         super().__init__(name=name)
         self.threshold = float(threshold)
         self.tp = self.add_weight(name='tp', shape=(), initializer='zeros', dtype=dtype)
