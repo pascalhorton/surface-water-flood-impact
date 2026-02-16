@@ -1,7 +1,7 @@
 """
 Class to define the options for the CNN-based impact function.
 """
-from .impact_dl_options import ImpactDlOptions
+from swafi.impact_dl_options import ImpactDlOptions
 
 import copy
 import math
@@ -168,7 +168,7 @@ class ImpactCnnOptions(ImpactDlOptions):
         self.parser.add_argument(
             '--precip-time-step',
             type=int,
-            default=6,
+            default=1,
             help='The precipitation time step [h]'
         )
         self.parser.add_argument(
@@ -192,7 +192,7 @@ class ImpactCnnOptions(ImpactDlOptions):
         self.parser.add_argument(
             '--dropout-rate-cnn',
             type=float,
-            default=0.4,
+            default=0.2,
             help='The dropout rate for the CNN'
         )
         self.parser.add_argument(
