@@ -4,6 +4,7 @@ Class for the CNN model.
 
 import math
 import keras
+import numpy as np
 
 
 @keras.saving.register_keras_serializable(package="swafi")
@@ -48,6 +49,41 @@ class ModelCnn(keras.models.Model):
 
         self.last_activation = 'relu' if task == 'regression' else 'sigmoid'
 
+        # Training-set feature statistics for inference-time consistency.
+        self.mean_static = None
+        self.std_static = None
+        self.min_static = None
+        self.max_static = None
+        self.mean_precip = None
+        self.std_precip = None
+        self.q99_precip = None
+
+    def set_feature_stats(self, mean_static=None, std_static=None, min_static=None, max_static=None,
+                          mean_precip=None, std_precip=None, q99_precip=None):
+        self.mean_static = mean_static
+        self.std_static = std_static
+        self.min_static = min_static
+        self.max_static = max_static
+        self.mean_precip = mean_precip
+        self.std_precip = std_precip
+        self.q99_precip = q99_precip
+
+    @staticmethod
+    def _serialize_array(value):
+        if value is None:
+            return None
+        if isinstance(value, np.ndarray):
+            return value.tolist()
+        return value
+
+    @staticmethod
+    def _deserialize_array(value):
+        if value is None:
+            return None
+        if isinstance(value, list):
+            return np.asarray(value)
+        return value
+
     def get_config(self):
         """
         Return a serializable config for this wrapper.
@@ -67,6 +103,13 @@ class ModelCnn(keras.models.Model):
             "input_3d_size": self.input_3d_size,
             "input_1d_size": self.input_1d_size,
             "build_config": self.get_build_config(),
+            "mean_static": self._serialize_array(self.mean_static),
+            "std_static": self._serialize_array(self.std_static),
+            "min_static": self._serialize_array(self.min_static),
+            "max_static": self._serialize_array(self.max_static),
+            "mean_precip": self._serialize_array(self.mean_precip),
+            "std_precip": self._serialize_array(self.std_precip),
+            "q99_precip": self._serialize_array(self.q99_precip),
         }
 
         return {**base_config, **config}
@@ -96,6 +139,14 @@ class ModelCnn(keras.models.Model):
         instance.input_3d_size = config.get("input_3d_size", None)
         instance.input_1d_size = config.get("input_1d_size", None)
         instance.last_activation = 'relu' if instance.task == 'regression' else 'sigmoid'
+
+        instance.mean_static = cls._deserialize_array(config.get("mean_static", None))
+        instance.std_static = cls._deserialize_array(config.get("std_static", None))
+        instance.min_static = cls._deserialize_array(config.get("min_static", None))
+        instance.max_static = cls._deserialize_array(config.get("max_static", None))
+        instance.mean_precip = cls._deserialize_array(config.get("mean_precip", None))
+        instance.std_precip = cls._deserialize_array(config.get("std_precip", None))
+        instance.q99_precip = cls._deserialize_array(config.get("q99_precip", None))
 
         # Attempt to rebuild internal functional model from stored config
         build_cfg = config.get("build_config", None)

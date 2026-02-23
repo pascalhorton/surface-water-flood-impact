@@ -62,7 +62,7 @@ class ImpactCnn(ImpactDl):
         """
         self.model = model
 
-    def get_data_generator_inference(self, events, features, exposure, precip_stats=None, mean_static=None, std_static=None):
+    def get_data_generator_inference(self, events, features, exposure, precip_stats=None, mean_static=None, std_static=None, min_static=None, max_static=None):
         """
         Get the data generator for inference.
 
@@ -76,6 +76,18 @@ class ImpactCnn(ImpactDl):
             The exposure data.
         precip_stats: xr.Dataset
             The precipitation statistics.
+        mean_static: np.array|None
+            The mean of the static features to use for normalization. If None, the values from the
+            model will be used if available.
+        std_static: np.array|None
+            The standard deviation of the static features to use for normalization. If None, the values from the
+            model will be used if available.
+        min_static
+            The minimum of the static features to use for normalization. If None, the values from the
+            model will be used if available.
+        max_static
+            The maximum of the static features to use for normalization. If None, the values from the
+            model will be used if available.
 
         Returns
         -------
@@ -99,10 +111,17 @@ class ImpactCnn(ImpactDl):
         y_fields = ['date', 'x', 'y', 'cid']
         event_props = df[y_fields].to_numpy()
 
+        model_stats = getattr(self, 'model', None)
+        if model_stats is not None:
+            mean_static = mean_static if mean_static is not None else getattr(model_stats, 'mean_static', None)
+            std_static = std_static if std_static is not None else getattr(model_stats, 'std_static', None)
+            min_static = min_static if min_static is not None else getattr(model_stats, 'min_static', None)
+            max_static = max_static if max_static is not None else getattr(model_stats, 'max_static', None)
+
         if precip_stats is None:
-            mean_precip = None
-            std_precip = None
-            q99_precip = None
+            mean_precip = getattr(model_stats, 'mean_precip', None) if model_stats is not None else None
+            std_precip = getattr(model_stats, 'std_precip', None) if model_stats is not None else None
+            q99_precip = getattr(model_stats, 'q99_precip', None) if model_stats is not None else None
         else:
             if self.options.log_transform_precip:
                 mean_precip = precip_stats['mean_log'].values
@@ -131,8 +150,8 @@ class ImpactCnn(ImpactDl):
             log_transform_precip=self.options.log_transform_precip,
             mean_static=mean_static,
             std_static=std_static,
-            min_static=None,
-            max_static=None,
+            min_static=min_static,
+            max_static=max_static,
             mean_precip=mean_precip,
             std_precip=std_precip,
             q99_precip=q99_precip,
@@ -255,6 +274,17 @@ class ImpactCnn(ImpactDl):
             input_1d_size=input_1d_size
         )
         self.model.build_model()
+
+        # Persist training-set feature statistics inside the model for inference.
+        self.model.set_feature_stats(
+            mean_static=self.dg_train.mean_static,
+            std_static=self.dg_train.std_static,
+            min_static=self.dg_train.min_static,
+            max_static=self.dg_train.max_static,
+            mean_precip=self.dg_train.mean_precip,
+            std_precip=self.dg_train.std_precip,
+            q99_precip=self.dg_train.q99_precip,
+        )
 
     def set_precipitation(self, precipitation):
         """
