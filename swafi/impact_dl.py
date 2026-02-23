@@ -380,6 +380,20 @@ class ImpactDl(Impact):
                 loss_fn = BCEJaccardLoss()
                 print(f"Using BCE + Jaccard Loss")
 
+            elif loss_type == 'tversky':  # Tversky Loss
+                loss_fn = TverskyLoss()
+                print(f"Using Tversky Loss")
+
+            elif loss_type == 'f1':  # F1 Loss
+                loss_fn = F1Loss()
+                print(f"Using F1 Loss")
+
+            elif loss_type == 'focal_tversky':  # Focal Tversky Loss
+                pos_weight = class_weight[1]
+                alpha = pos_weight / (1.0 + pos_weight)
+                loss_fn = FocalTverskyLoss(alpha=alpha)
+                print(f"Using Focal Tversky Loss (alpha={alpha:.3f})")
+
             else:
                 raise ValueError(f"Loss function '{loss_type}' not recognized for occurrence models.")
 
@@ -420,7 +434,7 @@ class ImpactDl(Impact):
         return optimizer
 
     @staticmethod
-    def _plot_training_history(hist, dir_plots, show_plots, prefix=None):
+    def _plot_training_history(hist, dir_plots, show_plots, tag=None):
         """
         Plot the training history.
 
@@ -432,13 +446,15 @@ class ImpactDl(Impact):
             The directory where to save the plots.
         show_plots: bool
             Whether to show the plots or not.
-        prefix: str
+        tag: str
             A tag to add to the file name (prefix).
         """
         now = datetime.datetime.now()
 
-        if prefix is not None:
-            prefix = f"{prefix}_"
+        if tag is not None:
+            prefix = f"{tag}_"
+        else:
+            prefix = ""
 
         metrics = ['loss', 'csi', 'ROC_AUC', 'PR_AUC']
 
@@ -447,7 +463,10 @@ class ImpactDl(Impact):
             plt.plot(hist.history[metric], label='train')
             plt.plot(hist.history[f'val_{metric}'], label='valid')
             plt.legend()
-            plt.title(metric)
+            if tag is not None:
+                plt.title(f'{metric} ({tag})')
+            else:
+                plt.title(f'{metric}')
             plt.tight_layout()
             plt.savefig(f'{dir_plots}/{prefix}{metric}_'
                         f'{now.strftime("%Y-%m-%d_%H-%M-%S")}.png')
@@ -919,3 +938,232 @@ class F1Score(keras.metrics.Metric):
             "threshold": self.threshold,
         })
         return config
+
+
+@tf.keras.utils.register_keras_serializable()
+class TverskyLoss(keras.losses.Loss):
+    """
+    Tversky Loss for binary segmentation/classification.
+
+    The Tversky index is a generalization of the Dice coefficient. It is more flexible
+    in allowing different weights for false positives and false negatives.
+
+    From: Salehi et al. (2017) "Tversky loss function for image segmentation using
+    3D fully convolutional deep networks"
+
+    Loss = 1 - Tversky_Index
+
+    where Tversky_Index = TP / (TP + alpha*FN + beta*FP)
+
+    When alpha = beta = 0.5, it becomes the Dice coefficient.
+    When alpha = beta = 1, it becomes the Jaccard index.
+
+    Parameters
+    ----------
+    alpha : float
+        Weight of false negatives (default 0.5).
+        Higher values penalize more aggressively for missed positives.
+    beta : float
+        Weight of false positives (default 0.5).
+        Higher values penalize more aggressively for false alarms.
+    eps : float
+        Small epsilon value to avoid division by zero (default 1e-7).
+    """
+    def __init__(self, alpha=0.5, beta=0.5, eps=1e-7, name="tversky_loss"):
+        super().__init__(name=name)
+        self.alpha = float(alpha)
+        self.beta = float(beta)
+        self.eps = float(eps)
+
+    def call(self, y_true, y_pred):
+        # Ensure correct shapes and types
+        y_true = tf.cast(y_true, tf.float32)
+        y_pred = tf.cast(y_pred, tf.float32)
+
+        if y_true.shape.rank == 1:
+            y_true = tf.expand_dims(y_true, axis=-1)
+        if y_pred.shape.rank == 1:
+            y_pred = tf.expand_dims(y_pred, axis=-1)
+
+        # Flatten
+        y_true_f = tf.reshape(y_true, [-1])
+        y_pred_f = tf.reshape(y_pred, [-1])
+
+        # Calculate components
+        true_pos = tf.reduce_sum(y_true_f * y_pred_f)
+        false_neg = tf.reduce_sum(y_true_f * (1.0 - y_pred_f))
+        false_pos = tf.reduce_sum((1.0 - y_true_f) * y_pred_f)
+
+        # Tversky index
+        tversky_index = true_pos / (true_pos + self.alpha * false_neg + self.beta * false_pos + self.eps)
+
+        return 1.0 - tversky_index
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "alpha": self.alpha,
+            "beta": self.beta,
+            "eps": self.eps
+        })
+        return config
+
+    @classmethod
+    def from_config(cls, config):
+        return cls(
+            alpha=config.get("alpha", 0.5),
+            beta=config.get("beta", 0.5),
+            eps=config.get("eps", 1e-7),
+            name=config.get("name", "tversky_loss")
+        )
+
+
+@tf.keras.utils.register_keras_serializable()
+class F1Loss(keras.losses.Loss):
+    """
+    F1 Loss for direct optimization of F1 score in binary classification.
+
+    This loss approximates the F1 score using a smooth/differentiable formulation
+    that allows gradient computation during training. It uses the predictions
+    directly (soft targets) rather than hard thresholding.
+
+    Loss ≈ 1 - F1_smooth where F1_smooth = 2*TP / (2*TP + FP + FN)
+
+    TP ≈ sum(y_true * y_pred)  # soft TP
+    FP ≈ sum((1 - y_true) * y_pred)  # soft FP
+    FN ≈ sum(y_true * (1 - y_pred))  # soft FN
+
+    This formulation preserves gradients for training while still optimizing
+    toward F1-like behavior. Note: The decision threshold should be applied
+    during evaluation, not in the loss function.
+
+    Parameters
+    ----------
+    eps : float
+        Small epsilon value to avoid division by zero (default 1e-7).
+    """
+    def __init__(self, eps=1e-7, name="f1_loss"):
+        super().__init__(name=name)
+        self.eps = float(eps)
+
+    def call(self, y_true, y_pred):
+        # Ensure correct shapes and types
+        y_true = tf.cast(y_true, tf.float32)
+        y_pred = tf.cast(y_pred, tf.float32)
+
+        if y_true.shape.rank == 1:
+            y_true = tf.expand_dims(y_true, axis=-1)
+        if y_pred.shape.rank == 1:
+            y_pred = tf.expand_dims(y_pred, axis=-1)
+
+        # Flatten
+        y_true_f = tf.reshape(y_true, [-1])
+        y_pred_f = tf.reshape(y_pred, [-1])
+
+        # Calculate soft TP, FP, FN using continuous predictions
+        # This preserves gradients for backpropagation
+        true_pos = tf.reduce_sum(y_true_f * y_pred_f)
+        false_pos = tf.reduce_sum((1.0 - y_true_f) * y_pred_f)
+        false_neg = tf.reduce_sum(y_true_f * (1.0 - y_pred_f))
+
+        # Soft F1 score using continuous approximation
+        # F1 = 2*TP / (2*TP + FP + FN)
+        f1_smooth = (2.0 * true_pos) / (2.0 * true_pos + false_pos + false_neg + self.eps)
+
+        return 1.0 - f1_smooth
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "eps": self.eps
+        })
+        return config
+
+    @classmethod
+    def from_config(cls, config):
+        return cls(
+            eps=config.get("eps", 1e-7),
+            name=config.get("name", "f1_loss")
+        )
+
+
+@tf.keras.utils.register_keras_serializable()
+class FocalTverskyLoss(keras.losses.Loss):
+    """
+    Focal Tversky Loss - combines Focal Loss with Tversky Loss.
+
+    This loss combines the focusing mechanism of Focal Loss with the flexibility
+    of Tversky Loss, making it particularly effective for imbalanced datasets
+    where the F1 score is important.
+
+    Loss = (1 - TverskyIndex)^gamma
+
+    From: Abraham & Khan (2019) "A Novel Focal Tversky Loss Function With Improved
+    Attention U-Net for Segmentation of Tumor Lesions"
+
+    Parameters
+    ----------
+    alpha : float
+        Weight of false negatives in Tversky (default 0.5).
+    beta : float
+        Weight of false positives in Tversky (default 0.5).
+    gamma : float
+        Focusing parameter (default 1.5).
+        Higher values focus more on hard examples.
+    eps : float
+        Small epsilon value to avoid division by zero (default 1e-7).
+    """
+    def __init__(self, alpha=0.5, beta=0.5, gamma=1.5, eps=1e-7, name="focal_tversky_loss"):
+        super().__init__(name=name)
+        self.alpha = float(alpha)
+        self.beta = float(beta)
+        self.gamma = float(gamma)
+        self.eps = float(eps)
+
+    def call(self, y_true, y_pred):
+        # Ensure correct shapes and types
+        y_true = tf.cast(y_true, tf.float32)
+        y_pred = tf.cast(y_pred, tf.float32)
+
+        if y_true.shape.rank == 1:
+            y_true = tf.expand_dims(y_true, axis=-1)
+        if y_pred.shape.rank == 1:
+            y_pred = tf.expand_dims(y_pred, axis=-1)
+
+        # Flatten
+        y_true_f = tf.reshape(y_true, [-1])
+        y_pred_f = tf.reshape(y_pred, [-1])
+
+        # Calculate components
+        true_pos = tf.reduce_sum(y_true_f * y_pred_f)
+        false_neg = tf.reduce_sum(y_true_f * (1.0 - y_pred_f))
+        false_pos = tf.reduce_sum((1.0 - y_true_f) * y_pred_f)
+
+        # Tversky index
+        tversky_index = true_pos / (true_pos + self.alpha * false_neg + self.beta * false_pos + self.eps)
+
+        # Focal Tversky Loss with power gamma
+        focal_tversky_loss = tf.pow(1.0 - tversky_index, self.gamma)
+
+        return focal_tversky_loss
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "alpha": self.alpha,
+            "beta": self.beta,
+            "gamma": self.gamma,
+            "eps": self.eps
+        })
+        return config
+
+    @classmethod
+    def from_config(cls, config):
+        return cls(
+            alpha=config.get("alpha", 0.5),
+            beta=config.get("beta", 0.5),
+            gamma=config.get("gamma", 1.5),
+            eps=config.get("eps", 1e-7),
+            name=config.get("name", "focal_tversky_loss")
+        )
+

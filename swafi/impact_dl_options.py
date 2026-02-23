@@ -144,13 +144,16 @@ class ImpactDlOptions(ImpactBasicOptions):
             '--loss-function',
             type=str,
             default='focal',
-            choices=['wbce', 'focal', 'bfce', 'bce_dice', 'bce_jaccard'],
+            choices=['wbce', 'focal', 'bfce', 'bce_dice', 'bce_jaccard', 'tversky', 'f1', 'focal_tversky'],
             help='Loss function: '
                  'wbce (Weighted Binary Cross-Entropy), '
                  'focal (Focal Loss), '
                  'bfce (Binary Focal Cross-Entropy), '
                  'bce_dice (Binary Cross-Entropy + Dice Loss), '
-                 'bce_jaccard (Binary Cross-Entropy + Jaccard Loss)'
+                 'bce_jaccard (Binary Cross-Entropy + Jaccard Loss), '
+                 'tversky (Tversky Loss), '
+                 'f1 (F1 Loss), '
+                 'focal_tversky (Focal Tversky Loss)'
         )
         self.parser.add_argument(
             '--dropout-rate-dense',
@@ -237,7 +240,7 @@ class ImpactDlOptions(ImpactBasicOptions):
 
         if 'batch_size' in hp_to_optimize:
             self.batch_size = trial.suggest_categorical(
-                'batch_size', [16, 32, 64, 128, 256])
+                'batch_size', [16, 32, 64, 128, 256, 512, 1024, 2048])
         if 'learning_rate' in hp_to_optimize:
             self.learning_rate = trial.suggest_float(
                 'learning_rate', 5e-4, 3e-3, log=True)
@@ -283,6 +286,7 @@ class ImpactDlOptions(ImpactBasicOptions):
             print("- transform_precip: ", self.transform_precip)
             print("- log_transform_precip: ", self.log_transform_precip)
 
+        print("- loss_function: ", self.loss_function)
         print("- batch_size: ", self.batch_size)
         print("- epochs: ", self.epochs)
         print("- learning_rate: ", self.learning_rate)
