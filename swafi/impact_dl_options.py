@@ -240,7 +240,7 @@ class ImpactDlOptions(ImpactBasicOptions):
 
         if 'batch_size' in hp_to_optimize:
             self.batch_size = trial.suggest_categorical(
-                'batch_size', [16, 32, 64, 128, 256, 512, 1024, 2048])
+                'batch_size', [32, 64, 128, 256, 512, 1024])
         if 'learning_rate' in hp_to_optimize:
             self.learning_rate = trial.suggest_float(
                 'learning_rate', 5e-4, 3e-3, log=True)
@@ -252,7 +252,7 @@ class ImpactDlOptions(ImpactBasicOptions):
                 'use_batchnorm_dense', [True, False])
         if 'nb_dense_layers' in hp_to_optimize:
             self.nb_dense_layers = trial.suggest_int(
-                'nb_dense_layers', 1, 10)
+                'nb_dense_layers', 1, 8)
         if 'nb_dense_units' in hp_to_optimize:
             self.nb_dense_units = trial.suggest_categorical(
                 'nb_dense_units', [32, 64, 128, 256, 512, 1024, 2048])
