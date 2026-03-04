@@ -222,7 +222,7 @@ class ImpactCnnOptions(ImpactDlOptions):
         self.parser.add_argument(
             '--nb-filters',
             type=int,
-            default=32,
+            default=16,
             help='The number of filters'
         )
         self.parser.add_argument(
@@ -234,7 +234,7 @@ class ImpactCnnOptions(ImpactDlOptions):
         self.parser.add_argument(
             '--pool-size-temporal',
             type=int,
-            default=2,
+            default=3,
             help='The pool size for the temporal (max) pooling'
         )
         self.parser.add_argument(
