@@ -329,6 +329,12 @@ class ModelCnn(keras.models.Model):
             assert len(self.input_3d_size) == 4, \
                 "Input 3D size must be 4D (with channels)"
 
+            # Guard against invalid dimensions to avoid math domain errors below.
+            if any(dim is None or dim <= 0 for dim in self.input_3d_size):
+                raise ValueError(
+                    f"Input 3D size dimensions must be > 0, got {self.input_3d_size}"
+                )
+
             if self.options is None:
                 return
 

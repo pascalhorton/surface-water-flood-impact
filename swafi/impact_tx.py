@@ -228,16 +228,23 @@ class ImpactTransformer(ImpactDl):
         if self.precipitation_hf is None and self.precipitation_daily is None:
             return
 
-        # Extract events dates
-        events = self.df[['e_start', 'e_end', 'date_claim']].copy()
-        events.rename(columns={'date_claim': 'date'}, inplace=True)
+        if 'e_start' in self.df.columns:
+            # Extract events dates
+            events = self.df[['e_start', 'e_end', 'date_claim']].copy()
+            events.rename(columns={'date_claim': 'date'}, inplace=True)
 
-        # Fill NaN values with the mean of the event start and end date (as date, not datetime)
-        events['date'] = events['date'].fillna(events[['e_start', 'e_end']].mean(axis=1))
-        
-        events['e_start'] = pd.to_datetime(events['e_start']).dt.date
-        events['e_end'] = pd.to_datetime(events['e_end']).dt.date
-        events['date'] = pd.to_datetime(events['date']).dt.date
+            # Fill NaN values with the mean of the event start and end date (as date, not datetime)
+            events['date'] = events['date'].fillna(events[['e_start', 'e_end']].mean(axis=1))
+
+            events['e_start'] = pd.to_datetime(events['e_start']).dt.date
+            events['e_end'] = pd.to_datetime(events['e_end']).dt.date
+            events['date'] = pd.to_datetime(events['date']).dt.date
+        elif 'e_date' in self.df.columns:
+            events = self.df[['e_date']].copy()
+            events.rename(columns={'e_date': 'date'}, inplace=True)
+            events['date'] = pd.to_datetime(events['date']).dt.date
+        else:
+            raise ValueError("No event date column found in the dataframe.")
 
         # Precipitation period
         p_hf_start = pd.to_datetime(f'{self.precipitation_hf.year_start}-01-01').date()
