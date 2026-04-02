@@ -29,7 +29,7 @@ def main():
     assert options.is_ok()
 
     # Load events
-    events_filename = f'events_{options.dataset}_with_target_{options.event_file_label}.pickle'
+    events_filename = f'events_{options.dataset}_with_target_{options.event_file_label}_classic.pickle'
     events = load_events_from_pickle(filename=events_filename)
 
     if not options.optimize_with_optuna:

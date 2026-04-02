@@ -58,8 +58,8 @@ class DamagesMobiliar(Damages):
             'priv_int_struc']  # Private, internal, structure
 
         self.exposure_tags = [
-            'KMU_ES_FH',
-            'KMU_ES_GB',
+            'KMU_ES_FH',  # Fahrhabe (Hausrat) -> content
+            'KMU_ES_GB',  # Gebäude -> building structure
             'KMU_W_FH',
             'KMU_W_GB',
             'Privat_ES_FH',

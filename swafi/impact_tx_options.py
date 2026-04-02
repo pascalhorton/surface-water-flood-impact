@@ -91,7 +91,7 @@ class ImpactTransformerOptions(ImpactDlOptions):
             "--precip-hf-time-step", type=int, default=60,
             help="The time step for the high-frequency precipitation [min].")
         self.parser.add_argument(
-            "--precip-hf-days-before", type=int, default=3,
+            "--precip-hf-days-before", type=int, default=2,
             help="The number of days before the event to use for the high-frequency precipitation.")
         self.parser.add_argument(
             "--precip-hf-days-after", type=int, default=1,
@@ -103,7 +103,7 @@ class ImpactTransformerOptions(ImpactDlOptions):
             "--embeddings-2-layers", action=argparse.BooleanOptionalAction,
             default=False, help="Whether to use two dense layers for the embeddings.")
         self.parser.add_argument(
-            "--embeddings-activation", type=str, default="elu",
+            "--embeddings-activation", type=str, default="relu",
             help="The activation function for the embeddings.")
         self.parser.add_argument(
             "--use-single-attributes-vector", action=argparse.BooleanOptionalAction,
@@ -118,19 +118,19 @@ class ImpactTransformerOptions(ImpactDlOptions):
             "--use-cnn-in-tx", action=argparse.BooleanOptionalAction, default=False,
             help="Whether to use a CNN in the transformer instead of the dense layers.")
         self.parser.add_argument(
-            "--nb-transformer-blocks", type=int, default=3,
+            "--nb-transformer-blocks", type=int, default=2,
             help="The number of transformer blocks.")
         self.parser.add_argument(
-            "--tx-model-dim", type=int, default=128,
+            "--tx-model-dim", type=int, default=64,
             help="The model dimension.")
         self.parser.add_argument(
-            "--num-heads", type=int, default=8,
+            "--num-heads", type=int, default=4,
             help="The number of heads.")
         self.parser.add_argument(
-            "--ff-dim", type=int, default=32,
+            "--ff-dim", type=int, default=64,
             help="The feed-forward dimension.")
         self.parser.add_argument(
-            "--dropout-rate", type=float, default=0.4,
+            "--dropout-rate", type=float, default=0.3,
             help="The dropout rate.")
 
     def parse_args(self):
