@@ -22,7 +22,7 @@ setup(
     install_requires=[
         'numpy',
         'PyYAML',
-        'pandas==2.*',
+        'pandas',
         'rasterio',
         'tqdm',
         'pyarrow',
