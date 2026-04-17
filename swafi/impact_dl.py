@@ -118,7 +118,8 @@ class ImpactDl(Impact):
         # Define the optimizer
         optimizer = self._define_optimizer(
             n_samples=len(self.dg_train),
-            lr_method='cosine_decay',
+            lr_method=self.options.lr_method,
+            lr=self.options.learning_rate,
             init_lr=self.options.learning_rate)
 
         # Get loss function

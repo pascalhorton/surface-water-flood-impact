@@ -41,6 +41,8 @@ class ImpactDlOptions(ImpactBasicOptions):
         The number of epochs.
     learning_rate: float
         The learning rate.
+    lr_method: str
+        The learning rate schedule. Options are: 'constant', 'cosine_decay'.
     dropout_rate_dense: float
         The dropout rate for the dense layers.
     use_batchnorm_dense: bool
@@ -72,6 +74,7 @@ class ImpactDlOptions(ImpactBasicOptions):
         self.batch_size = None
         self.epochs = None
         self.learning_rate = None
+        self.lr_method = None
         self.loss_function = None
 
         # Model options for the dense layers
@@ -141,6 +144,13 @@ class ImpactDlOptions(ImpactBasicOptions):
             help='The learning rate'
         )
         self.parser.add_argument(
+            '--lr-method',
+            type=str,
+            default='cosine_decay',
+            choices=['constant', 'cosine_decay'],
+            help='Learning rate schedule: constant or cosine_decay'
+        )
+        self.parser.add_argument(
             '--loss-function',
             type=str,
             default='focal',
@@ -207,6 +217,7 @@ class ImpactDlOptions(ImpactBasicOptions):
         self.batch_size = args.batch_size
         self.epochs = args.epochs
         self.learning_rate = args.learning_rate
+        self.lr_method = args.lr_method
         self.loss_function = args.loss_function
         self.dropout_rate_dense = args.dropout_rate_dense
         self.use_batchnorm_dense = args.use_batchnorm_dense
@@ -290,6 +301,7 @@ class ImpactDlOptions(ImpactBasicOptions):
         print("- batch_size: ", self.batch_size)
         print("- epochs: ", self.epochs)
         print("- learning_rate: ", self.learning_rate)
+        print("- lr_method: ", self.lr_method)
         print("- dropout_rate_dense: ", self.dropout_rate_dense)
         print("- use_batchnorm_dense: ", self.use_batchnorm_dense)
         print("- nb_dense_layers: ", self.nb_dense_layers)
@@ -318,6 +330,7 @@ class ImpactDlOptions(ImpactBasicOptions):
         assert self.batch_size is not None, "batch_size is not set"
         assert self.epochs is not None, "epochs is not set"
         assert self.learning_rate is not None, "learning_rate is not set"
+        assert self.lr_method in ['constant', 'cosine_decay'], "lr_method must be 'constant' or 'cosine_decay'"
         assert self.dropout_rate_dense is not None, "dropout_rate_dense is not set"
         assert isinstance(self.use_batchnorm_dense, bool), "use_batchnorm_dense is not set"
         assert self.nb_dense_layers is not None, "nb_dense_layers is not set"
