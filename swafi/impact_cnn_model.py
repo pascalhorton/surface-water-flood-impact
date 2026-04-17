@@ -281,11 +281,14 @@ class ModelCnn(keras.models.Model):
                 nb_units = max(nb_units, 4)
             else:
                 nb_units = self.options.nb_dense_units
-            x = keras.layers.Dense(nb_units, activation=self.options.inner_activation_dense,
-                             name=f'dense_{i}')(x)
+            x = keras.layers.Dense(nb_units, name=f'dense_{i}')(x)
 
             if self.options.use_batchnorm_dense:
                 x = keras.layers.BatchNormalization(name=f'batchnorm_dense_{i}')(x)
+
+            x = keras.layers.Activation(
+                self.options.inner_activation_dense, name=f'act_dense_{i}'
+            )(x)
 
             if self.options.dropout_rate_dense > 0:
                 x = keras.layers.Dropout(rate=self.options.dropout_rate_dense,
@@ -386,6 +389,7 @@ class ModelCnn(keras.models.Model):
                 kernel_size=kernel_size,
                 dilation_rate=dilation_rate,
                 padding='causal',
+                kernel_initializer='he_normal',
                 name=f'tcn_conv_{i}_{j}'
             )(x)
             x = keras.layers.LayerNormalization(name=f'tcn_ln_{i}_{j}')(x)
@@ -399,7 +403,7 @@ class ModelCnn(keras.models.Model):
         # Residual: 1×1 conv to match dimensions if needed
         if residual.shape[-1] != filters:
             residual = keras.layers.Conv1D(
-                filters, 1, name=f'tcn_res_{i}'
+                filters, 1, kernel_initializer='he_normal', name=f'tcn_res_{i}'
             )(residual)
         return keras.layers.Add(name=f'tcn_add_{i}')([x, residual])
 
