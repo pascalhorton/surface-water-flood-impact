@@ -2,6 +2,8 @@
 Class for the CNN model.
 """
 
+import math
+
 import keras
 import numpy as np
 
@@ -209,12 +211,13 @@ class ModelCnn(keras.models.Model):
                 x = keras.layers.Permute((3, 1, 2, 4), name='permute_to_T_H_W_C')(input_3d)
                 for i in range(self.options.nb_conv_blocks):
                     nb_filters = self.options.nb_filters * (2 ** i)
+                    # Conv2D (no activation) → optional BN → Activation → optional pool → optional dropout
                     x = keras.layers.TimeDistributed(
                         keras.layers.Conv2D(
                             nb_filters,
                             self.options.kernel_size_spatial,
                             padding='same',
-                            activation=self.options.inner_activation_cnn
+                            kernel_initializer='he_normal'
                         ),
                         name=f'td_conv2d_{i}'
                     )(x)
@@ -223,16 +226,26 @@ class ModelCnn(keras.models.Model):
                             keras.layers.BatchNormalization(),
                             name=f'td_bn_{i}'
                         )(x)
+                    x = keras.layers.TimeDistributed(
+                        keras.layers.Activation(self.options.inner_activation_cnn),
+                        name=f'td_act_{i}'
+                    )(x)
                     if self.options.pool_size_spatial > 1:
                         x = keras.layers.TimeDistributed(
                             keras.layers.MaxPooling2D(pool_size=self.options.pool_size_spatial),
                             name=f'td_pool_{i}'
                         )(x)
                     if self.options.dropout_rate_cnn > 0:
-                        x = keras.layers.TimeDistributed(
-                            keras.layers.Dropout(rate=self.options.dropout_rate_cnn),
-                            name=f'td_drop_{i}'
-                        )(x)
+                        if self.options.use_spatial_dropout:
+                            x = keras.layers.TimeDistributed(
+                                keras.layers.SpatialDropout2D(rate=self.options.dropout_rate_cnn),
+                                name=f'td_drop_{i}'
+                            )(x)
+                        else:
+                            x = keras.layers.TimeDistributed(
+                                keras.layers.Dropout(rate=self.options.dropout_rate_cnn),
+                                name=f'td_drop_{i}'
+                            )(x)
                 # Flatten spatial dims per time step → (T, spatial_features)
                 x = keras.layers.TimeDistributed(
                     keras.layers.Flatten(), name='td_flatten'
@@ -311,25 +324,6 @@ class ModelCnn(keras.models.Model):
             raise ValueError("Model not defined")
         return self.model(inputs, training=training, **kwargs)
 
-    def _setup(self, task='classification', options=None, input_3d_size=None, input_1d_size=None):
-        """
-        Setup the model.
-
-        Parameters
-        ----------
-        task: str
-            The task. Options are: 'regression', 'classification'
-        options: ImpactCnnOptions
-            The options.
-        input_3d_size: list, None
-            The input 3D size.
-        input_1d_size: list, None
-            The input 1D size.
-        """
-
-
-        self._check_input_size()
-
     def _check_input_size(self):
         """
         Check the input size.
@@ -355,7 +349,6 @@ class ModelCnn(keras.models.Model):
 
             # Cap nb_conv_blocks to the spatial resolution when using pooling
             if self.options.pool_size_spatial > 1:
-                import math
                 spatial_size = min(self.input_3d_size[0], self.input_3d_size[1])
                 nb_conv_blocks_max = math.floor(
                     math.log(spatial_size, self.options.pool_size_spatial))
@@ -410,76 +403,4 @@ class ModelCnn(keras.models.Model):
             )(residual)
         return keras.layers.Add(name=f'tcn_add_{i}')([x, residual])
 
-    def _conv2d_block(self, x, i, filters, kernel_size=3,
-                      initializer='he_normal', activation='default',
-                      pool_size=2):
-        """
-        2D convolution block.
-
-        Parameters
-        ----------
-        x: keras.layers.Layer
-            The input layer.
-        i: int
-            The index of the block.
-        filters: int
-            The number of filters.
-        kernel_size: int
-            The kernel size (default: 3).
-        initializer: str
-            The initializer.
-        activation: str
-            The activation function.
-        pool_size: int
-            The pool size for the 2D max pooling (default: 2).
-
-        Returns
-        -------
-        The output layer.
-        """
-        if activation == 'default':
-            activation = self.options.inner_activation_cnn
-
-        x = keras.layers.Conv2D(
-            filters=filters,
-            kernel_size=(kernel_size, kernel_size),
-            strides=(1, 1),
-            padding='same',
-            activation=activation,
-            kernel_initializer=initializer,
-            name=f'conv2d_{i}a',
-        )(x)
-        x = keras.layers.Conv2D(
-            filters=filters,
-            kernel_size=(kernel_size, kernel_size),
-            strides=(1, 1),
-            padding='same',
-            activation=activation,
-            kernel_initializer=initializer,
-            name=f'conv2d_{i}b',
-        )(x)
-
-        if self.options.use_batchnorm_cnn:
-            x = keras.layers.BatchNormalization(
-                name=f'batchnorm_cnn_{i}'
-            )(x)
-
-        x = keras.layers.MaxPooling2D(
-            pool_size=pool_size,
-            name=f'maxpool2d_cnn_{i}',
-        )(x)
-
-        if self.options.dropout_rate_cnn > 0:
-            if self.options.use_spatial_dropout and x.shape[1] > 1 and x.shape[2] > 1:
-                x = keras.layers.SpatialDropout2D(
-                    rate=self.options.dropout_rate_cnn,
-                    name=f'spatial_dropout_cnn_{i}',
-                )(x)
-            else:
-                x = keras.layers.Dropout(
-                    rate=self.options.dropout_rate_cnn,
-                    name=f'dropout_cnn_{i}',
-                )(x)
-
-        return x
 
