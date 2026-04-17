@@ -14,7 +14,9 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
                  tmp_dir=None, transform_static='standardize', transform_precip='normalize',
                  log_transform_precip=True, mean_static=None, std_static=None,
                  mean_precip=None, std_precip=None, min_static=None,
-                 max_static=None, q99_precip=None, debug=False):
+                 max_static=None, q99_precip=None,
+                 mean_dem=None, std_dem=None, min_dem=None, max_dem=None,
+                 debug=False):
         """
         event_props: np.array
             The event properties (2D; dates and coordinates).
@@ -64,6 +66,14 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
             The max of the static data.
         q99_precip: np.array
             The 99th percentile of the precipitation data.
+        mean_dem: np.array
+            The mean of the DEM data (from training generator).
+        std_dem: np.array
+            The standard deviation of the DEM data (from training generator).
+        min_dem: np.array
+            The min of the DEM data (from training generator).
+        max_dem: np.array
+            The max of the DEM data (from training generator).
         debug: bool
             Whether to run in debug mode or not (print more messages).
         """
@@ -90,10 +100,10 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
         self.std_precip = std_precip
         self.q99_precip = q99_precip
 
-        self.mean_dem = None
-        self.std_dem = None
-        self.min_dem = None
-        self.max_dem = None
+        self.mean_dem = mean_dem
+        self.std_dem = std_dem
+        self.min_dem = min_dem
+        self.max_dem = max_dem
 
         self.X_precip = x_precip
         self.X_dem = x_dem
@@ -160,15 +170,16 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
         self._compute_static_predictor_statistics()
 
         if self.X_dem is not None:
-            print('Computing DEM predictor statistics')
             if self.transform_precip == 'standardize':
-                # Compute the mean and standard deviation of the DEM (non-temporal)
-                self.mean_dem = self.X_dem.mean(('x', 'y')).compute().values
-                self.std_dem = self.X_dem.std(('x', 'y')).compute().values
+                if self.mean_dem is None or self.std_dem is None:
+                    print('Computing DEM predictor statistics')
+                    self.mean_dem = self.X_dem.mean(('x', 'y')).compute().values
+                    self.std_dem = self.X_dem.std(('x', 'y')).compute().values
             elif self.transform_precip == 'normalize':
-                # Compute the min and max of the DEM (non-temporal)
-                self.min_dem = self.X_dem.min(('x', 'y')).compute().values
-                self.max_dem = self.X_dem.max(('x', 'y')).compute().values
+                if self.min_dem is None or self.max_dem is None:
+                    print('Computing DEM predictor statistics')
+                    self.min_dem = self.X_dem.min(('x', 'y')).compute().values
+                    self.max_dem = self.X_dem.max(('x', 'y')).compute().values
 
         if self.X_precip is None:
             return

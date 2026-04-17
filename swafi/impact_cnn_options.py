@@ -348,7 +348,7 @@ class ImpactCnnOptions(ImpactDlOptions):
                 ]
 
                 if self.optimize_precip_spatial_extent:
-                    hp_to_optimize.append([
+                    hp_to_optimize.extend([
                         'precip_window_size',
                         'kernel_size_spatial',
                         'pool_size_spatial'

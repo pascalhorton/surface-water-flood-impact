@@ -221,6 +221,10 @@ class ImpactCnn(ImpactDl):
             min_static=self.dg_train.min_static,
             max_static=self.dg_train.max_static,
             q99_precip=self.dg_train.q99_precip,
+            mean_dem=self.dg_train.mean_dem,
+            std_dem=self.dg_train.std_dem,
+            min_dem=self.dg_train.min_dem,
+            max_dem=self.dg_train.max_dem,
             debug=DEBUG
         )
 
@@ -249,6 +253,10 @@ class ImpactCnn(ImpactDl):
             min_static=self.dg_train.min_static,
             max_static=self.dg_train.max_static,
             q99_precip=self.dg_train.q99_precip,
+            mean_dem=self.dg_train.mean_dem,
+            std_dem=self.dg_train.std_dem,
+            min_dem=self.dg_train.min_dem,
+            max_dem=self.dg_train.max_dem,
             debug=DEBUG
         )
 
@@ -351,9 +359,7 @@ class ImpactCnn(ImpactDl):
         precip_window_size: int
             The precipitation window size [km].
         """
-        precip_window_size_m = 15 * 1000
-        if precip_window_size > 15:
-            precip_window_size_m = precip_window_size * 1000
+        precip_window_size_m = max(precip_window_size, 15) * 1000
         x_min = self.df['x'].min() - precip_window_size_m / 2
         x_max = self.df['x'].max() + precip_window_size_m / 2
         y_min = self.df['y'].min() - precip_window_size_m / 2
