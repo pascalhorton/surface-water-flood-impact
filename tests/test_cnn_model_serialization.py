@@ -6,25 +6,28 @@ from swafi.impact_cnn_model import ModelCnn
 from swafi.impact_cnn_options import ImpactCnnOptions
 
 
-def make_options(use_3d_cnn: bool) -> ImpactCnnOptions:
+def make_options(pixels_per_side: int = 1) -> ImpactCnnOptions:
     """Create a minimal ImpactCnnOptions instance with required attributes set.
     We intentionally avoid calling parse_args() to prevent pytest CLI arg conflicts.
     Only attributes accessed by ModelCnn.build_model / _check_input_size are set.
     """
     opts = ImpactCnnOptions()
 
-    # Convolutional / CNN-related
-    opts.use_3d_cnn = use_3d_cnn
+    # Convolutional / spatial CNN options
     opts.nb_conv_blocks = 1
     opts.nb_filters = 8
     opts.kernel_size_spatial = 3
-    opts.kernel_size_temporal = 3
     opts.pool_size_spatial = 1
-    opts.pool_size_temporal = 1
     opts.dropout_rate_cnn = 0.0
     opts.use_spatial_dropout = False
     opts.use_batchnorm_cnn = False
     opts.inner_activation_cnn = 'relu'
+
+    # TCN options
+    opts.tcn_filters = 16
+    opts.tcn_kernel_size = 3
+    opts.tcn_nb_layers = 2
+    opts.dropout_rate_tcn = 0.0
 
     # Dense layers
     opts.nb_dense_layers = 1
@@ -34,9 +37,9 @@ def make_options(use_3d_cnn: bool) -> ImpactCnnOptions:
     opts.dropout_rate_dense = 0.0
     opts.use_batchnorm_dense = False
 
-    # Misc flags referenced elsewhere (not strictly needed but keep for completeness)
+    # Misc flags
     opts.use_precip = True
-    opts.precip_window_size = 1
+    opts.precip_window_size = pixels_per_side
     opts.precip_resolution = 1
     opts.precip_time_step = 1
     opts.precip_days_before = 1
@@ -45,13 +48,13 @@ def make_options(use_3d_cnn: bool) -> ImpactCnnOptions:
     return opts
 
 
-@pytest.mark.parametrize("use_3d_cnn", [False, True])
-def test_model_cnn_serialization_roundtrip(tmp_path, use_3d_cnn):
+@pytest.mark.parametrize("pixels_per_side", [1, 4])
+def test_model_cnn_serialization_roundtrip(tmp_path, pixels_per_side):
     np.random.seed(0)
 
-    options = make_options(use_3d_cnn)
+    options = make_options(pixels_per_side)
 
-    input_3d_size = [4, 4, 4, 1] if use_3d_cnn else [4, 4, 4, 1]  # same shape; logic differs inside
+    input_3d_size = [pixels_per_side, pixels_per_side, 4, 1]
     input_1d_size = [10]
 
     model = ModelCnn(task='classification', options=options,
@@ -68,7 +71,7 @@ def test_model_cnn_serialization_roundtrip(tmp_path, use_3d_cnn):
     model.fit([x3d, x1d], y, epochs=1, verbose=0)
 
     # Save without optimizer state to avoid warnings (warnings are errors via pytest config)
-    save_path = tmp_path / f'model_{"3d" if use_3d_cnn else "2d"}.keras'
+    save_path = tmp_path / f'model_px{pixels_per_side}.keras'
     model.save(save_path, include_optimizer=False)
 
     # Load and predict

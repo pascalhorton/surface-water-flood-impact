@@ -2,7 +2,6 @@
 Class for the CNN model.
 """
 
-import math
 import keras
 import numpy as np
 
@@ -201,42 +200,58 @@ class ModelCnn(keras.models.Model):
 
         if self.input_3d_size is not None:
             input_3d = keras.layers.Input(shape=self.input_3d_size, name='input_3d')
+            pixels_per_side = self.input_3d_size[0]
+            t_len = self.input_3d_size[2]
 
-            if not self.options.use_3d_cnn:
-                # If 3D CNN is not used, remove the last dimension (channels)
-                x = keras.layers.Reshape(
-                    (self.input_3d_size[0], self.input_3d_size[1], self.input_3d_size[2]),
-                    name='reshape_input_3d'
-                )(input_3d)
+            if pixels_per_side > 1:
+                # Spatial 2D CNN applied per time step via TimeDistributed
+                # Permute (H, W, T, 1) → (T, H, W, 1)
+                x = keras.layers.Permute((3, 1, 2, 4), name='permute_to_T_H_W_C')(input_3d)
+                for i in range(self.options.nb_conv_blocks):
+                    nb_filters = self.options.nb_filters * (2 ** i)
+                    x = keras.layers.TimeDistributed(
+                        keras.layers.Conv2D(
+                            nb_filters,
+                            self.options.kernel_size_spatial,
+                            padding='same',
+                            activation=self.options.inner_activation_cnn
+                        ),
+                        name=f'td_conv2d_{i}'
+                    )(x)
+                    if self.options.use_batchnorm_cnn:
+                        x = keras.layers.TimeDistributed(
+                            keras.layers.BatchNormalization(),
+                            name=f'td_bn_{i}'
+                        )(x)
+                    if self.options.pool_size_spatial > 1:
+                        x = keras.layers.TimeDistributed(
+                            keras.layers.MaxPooling2D(pool_size=self.options.pool_size_spatial),
+                            name=f'td_pool_{i}'
+                        )(x)
+                    if self.options.dropout_rate_cnn > 0:
+                        x = keras.layers.TimeDistributed(
+                            keras.layers.Dropout(rate=self.options.dropout_rate_cnn),
+                            name=f'td_drop_{i}'
+                        )(x)
+                # Flatten spatial dims per time step → (T, spatial_features)
+                x = keras.layers.TimeDistributed(
+                    keras.layers.Flatten(), name='td_flatten'
+                )(x)
             else:
-                x = input_3d
+                # 1×1 spatial: squeeze to (T, 1)
+                x = keras.layers.Reshape((t_len, 1), name='reshape_1px')(input_3d)
 
-            # Convolution
-            for i in range(self.options.nb_conv_blocks):
-                nb_filters = self.options.nb_filters * (2 ** i)
-                if self.options.use_3d_cnn:
-                    kernel_size = (self.options.kernel_size_spatial,
-                                   self.options.kernel_size_spatial,
-                                   self.options.kernel_size_temporal)
-                    pool_size = (self.options.pool_size_spatial,
-                                 self.options.pool_size_spatial,
-                                 self.options.pool_size_temporal)
-                    x = self._conv3d_block(
-                        x, i,
-                        filters=nb_filters,
-                        kernel_size=kernel_size,
-                        pool_size=pool_size
-                    )
-                else:
-                    x = self._conv2d_block(
-                        x, i,
-                        filters=nb_filters,
-                        kernel_size=self.options.kernel_size_spatial,
-                        pool_size=self.options.pool_size_spatial
-                    )
+            # Project to TCN input dimension → (T, tcn_filters)
+            x = keras.layers.Dense(self.options.tcn_filters, name='tcn_proj')(x)
 
-            # Flatten
-            x = keras.layers.Flatten()(x)
+            # TCN blocks with exponentially increasing dilation rates
+            for i in range(self.options.tcn_nb_layers):
+                x = self._tcn_block(x, dilation_rate=2 ** i,
+                                    filters=self.options.tcn_filters,
+                                    kernel_size=self.options.tcn_kernel_size, i=i)
+
+            # Aggregate over time axis
+            x = keras.layers.GlobalAveragePooling1D(name='tcn_gap')(x)
 
         if self.input_1d_size is not None:
             input_1d = keras.layers.Input(shape=self.input_1d_size, name='input_1d')
@@ -329,7 +344,7 @@ class ModelCnn(keras.models.Model):
             assert len(self.input_3d_size) == 4, \
                 "Input 3D size must be 4D (with channels)"
 
-            # Guard against invalid dimensions to avoid math domain errors below.
+            # Guard against invalid dimensions.
             if any(dim is None or dim <= 0 for dim in self.input_3d_size):
                 raise ValueError(
                     f"Input 3D size dimensions must be > 0, got {self.input_3d_size}"
@@ -338,98 +353,62 @@ class ModelCnn(keras.models.Model):
             if self.options is None:
                 return
 
-            # Check the input 3D size vs nb_conv_blocks
-            nb_conv_blocks_max = self.options.nb_conv_blocks
+            # Cap nb_conv_blocks to the spatial resolution when using pooling
             if self.options.pool_size_spatial > 1:
+                import math
                 spatial_size = min(self.input_3d_size[0], self.input_3d_size[1])
-                nb_conv_blocks_max = min(
-                    nb_conv_blocks_max, math.floor(
-                        math.log(spatial_size, self.options.pool_size_spatial)))
-            if self.options.pool_size_temporal > 1:
-                nb_conv_blocks_max = min(
-                    nb_conv_blocks_max, math.floor(
-                        math.log(self.input_3d_size[2],
-                                 self.options.pool_size_temporal)))
-            if self.options.nb_conv_blocks > nb_conv_blocks_max:
-                self.options.nb_conv_blocks = nb_conv_blocks_max
-                print(f"Warning: Number of convolution blocks was reduced "
-                      f"to {self.options.nb_conv_blocks}")
+                nb_conv_blocks_max = math.floor(
+                    math.log(spatial_size, self.options.pool_size_spatial))
+                if self.options.nb_conv_blocks > nb_conv_blocks_max:
+                    self.options.nb_conv_blocks = nb_conv_blocks_max
+                    print(f"Warning: Number of convolution blocks was reduced "
+                          f"to {self.options.nb_conv_blocks}")
 
-    def _conv3d_block(self, x, i, filters, kernel_size=(3, 3, 3),
-                      initializer='he_normal', activation='default',
-                      pool_size=(1, 1, 3)):
+    def _tcn_block(self, x, dilation_rate, filters, kernel_size, i):
         """
-        3D convolution block.
+        Temporal Convolutional Network (TCN) block with dilated causal Conv1D
+        and a residual connection.
 
         Parameters
         ----------
-        x: keras.layers.Layer
-            The input layer.
-        i: int
-            The index of the block.
+        x: tensor
+            Input tensor of shape (batch, T, features).
+        dilation_rate: int
+            Dilation rate for the Conv1D.
         filters: int
-            The number of filters.
-        kernel_size: tuple
-            The kernel size (default: (3, 3, 3)).
-        initializer: str
-            The initializer.
-        activation: str
-            The activation function.
-        pool_size: tuple
-            The pool size for the 3D max pooling (default: (1, 1, 3)).
+            Number of Conv1D filters.
+        kernel_size: int
+            Kernel size for the Conv1D.
+        i: int
+            Block index (used for layer naming).
 
         Returns
         -------
-        The output layer.
+        Output tensor of shape (batch, T, filters).
         """
-        if activation == 'default':
-            activation = self.options.inner_activation_cnn
-
-        x = keras.layers.Conv3D(
-            filters=filters,
-            kernel_size=kernel_size,
-            strides=(1, 1, 1),
-            padding='same',
-            activation=activation,
-            kernel_initializer=initializer,
-            name=f'conv3d_{i}a',
-        )(x)
-        x = keras.layers.Conv3D(
-            filters=filters,
-            kernel_size=kernel_size,
-            strides=(1, 1, 1),
-            padding='same',
-            activation=activation,
-            kernel_initializer=initializer,
-            name=f'conv3d_{i}b',
-        )(x)
-
-        if self.options.use_batchnorm_cnn:
-            # Batch normalization should be before any dropout
-            # https://stackoverflow.com/questions/59634780/correct-order-for-
-            # spatialdropout2d-batchnormalization-and-activation-function
-            x = keras.layers.BatchNormalization(
-                name=f'batchnorm_cnn_{i}'
+        residual = x
+        for j in range(2):
+            x = keras.layers.Conv1D(
+                filters=filters,
+                kernel_size=kernel_size,
+                dilation_rate=dilation_rate,
+                padding='causal',
+                name=f'tcn_conv_{i}_{j}'
             )(x)
-
-        x = keras.layers.MaxPooling3D(
-            pool_size=pool_size,
-            name=f'maxpool3d_cnn_{i}',
-        )(x)
-
-        if self.options.dropout_rate_cnn > 0:
-            if self.options.use_spatial_dropout and x.shape[1] > 1 and x.shape[2] > 1:
-                x = keras.layers.SpatialDropout3D(
-                    rate=self.options.dropout_rate_cnn,
-                    name=f'spatial_dropout_cnn_{i}',
-                )(x)
-            else:
+            x = keras.layers.LayerNormalization(name=f'tcn_ln_{i}_{j}')(x)
+            x = keras.layers.Activation(
+                self.options.inner_activation_cnn, name=f'tcn_act_{i}_{j}'
+            )(x)
+            if self.options.dropout_rate_tcn > 0:
                 x = keras.layers.Dropout(
-                    rate=self.options.dropout_rate_cnn,
-                    name=f'dropout_cnn_{i}',
+                    rate=self.options.dropout_rate_tcn, name=f'tcn_drop_{i}_{j}'
                 )(x)
-
-        return x
+        # Residual: 1×1 conv to match dimensions if needed
+        if residual.shape[-1] != filters:
+            residual = keras.layers.Conv1D(
+                filters, 1, name=f'tcn_res_{i}'
+            )(residual)
+        return keras.layers.Add(name=f'tcn_add_{i}')([x, residual])
 
     def _conv2d_block(self, x, i, filters, kernel_size=3,
                       initializer='he_normal', activation='default',

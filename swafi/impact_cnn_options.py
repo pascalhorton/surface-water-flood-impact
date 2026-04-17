@@ -32,28 +32,30 @@ class ImpactCnnOptions(ImpactDlOptions):
         The number of days before the event to use for the precipitation.
     precip_days_after: int
         The number of days after the event to use for the precipitation.
-    use_3d_cnn: bool
-        Whether to use a 3D CNN or not.
     dropout_rate_cnn: float
-        The dropout rate for the CNN.
+        The dropout rate for the spatial CNN.
     use_spatial_dropout: bool
         Whether to use spatial dropout or not.
     use_batchnorm_cnn: bool
-        Whether to use batch normalization or not for the CNN.
+        Whether to use batch normalization or not for the spatial CNN.
     kernel_size_spatial: int
         The kernel size for the spatial convolution.
-    kernel_size_temporal: int
-        The kernel size for the temporal convolution.
     nb_filters: int
-        The number of filters.
+        The number of filters for the spatial CNN.
     pool_size_spatial: int
         The pool size for the spatial (max) pooling.
-    pool_size_temporal: int
-        The pool size for the temporal (max) pooling.
     nb_conv_blocks: int
-        The number of convolutional blocks.
+        The number of spatial convolutional blocks.
     inner_activation_cnn: str
-        The inner activation function for the CNN.
+        The inner activation function for the CNN and TCN.
+    tcn_filters: int
+        Number of filters per TCN Conv1D layer.
+    tcn_kernel_size: int
+        Kernel size for dilated Conv1D in TCN.
+    tcn_nb_layers: int
+        Number of dilated Conv1D layers in TCN (dilation rates: 1, 2, 4, ...).
+    dropout_rate_tcn: float
+        Dropout rate after each TCN layer.
     """
     def __init__(self, options_csv=None):
         super().__init__()
@@ -70,17 +72,20 @@ class ImpactCnnOptions(ImpactDlOptions):
         self.precip_days_after = None
 
         # Model options
-        self.use_3d_cnn = None
         self.dropout_rate_cnn = None
         self.use_spatial_dropout = None
         self.use_batchnorm_cnn = None
         self.kernel_size_spatial = None
-        self.kernel_size_temporal = None
         self.nb_filters = None
         self.pool_size_spatial = None
-        self.pool_size_temporal = None
         self.nb_conv_blocks = None
         self.inner_activation_cnn = None
+
+        # TCN options (temporal axis)
+        self.tcn_filters = None
+        self.tcn_kernel_size = None
+        self.tcn_nb_layers = None
+        self.dropout_rate_tcn = None
 
         if options_csv is not None:
             self.load_from_csv(options_csv)
@@ -184,12 +189,6 @@ class ImpactCnnOptions(ImpactDlOptions):
             help='The number of days after the claim/event to use for the precipitation'
         )
         self.parser.add_argument(
-            '--use-3d-cnn',
-            action=argparse.BooleanOptionalAction,
-            default=True,
-            help='Use a 3D CNN (default: True, False for 2D CNN)'
-        )
-        self.parser.add_argument(
             '--dropout-rate-cnn',
             type=float,
             default=0.2,
@@ -214,12 +213,6 @@ class ImpactCnnOptions(ImpactDlOptions):
             help='The kernel size for the spatial convolution'
         )
         self.parser.add_argument(
-            '--kernel-size-temporal',
-            type=int,
-            default=3,
-            help='The kernel size for the temporal convolution'
-        )
-        self.parser.add_argument(
             '--nb-filters',
             type=int,
             default=16,
@@ -232,12 +225,6 @@ class ImpactCnnOptions(ImpactDlOptions):
             help='The pool size for the spatial (max) pooling'
         )
         self.parser.add_argument(
-            '--pool-size-temporal',
-            type=int,
-            default=3,
-            help='The pool size for the temporal (max) pooling'
-        )
-        self.parser.add_argument(
             '--nb-conv-blocks',
             type=int,
             default=4,
@@ -248,6 +235,30 @@ class ImpactCnnOptions(ImpactDlOptions):
             type=str,
             default='elu',
             help='The inner activation function for the CNN'
+        )
+        self.parser.add_argument(
+            '--tcn-filters',
+            type=int,
+            default=64,
+            help='Number of filters per TCN Conv1D layer'
+        )
+        self.parser.add_argument(
+            '--tcn-kernel-size',
+            type=int,
+            default=3,
+            help='Kernel size for dilated Conv1D in TCN'
+        )
+        self.parser.add_argument(
+            '--tcn-nb-layers',
+            type=int,
+            default=4,
+            help='Number of dilated Conv1D layers in TCN (dilation rates: 1,2,4,...)'
+        )
+        self.parser.add_argument(
+            '--dropout-rate-tcn',
+            type=float,
+            default=0.1,
+            help='Dropout rate after each TCN layer'
         )
 
     def parse_args(self):
@@ -265,19 +276,20 @@ class ImpactCnnOptions(ImpactDlOptions):
         self.precip_time_step = args.precip_time_step
         self.precip_days_before = args.precip_days_before
         self.precip_days_after = args.precip_days_after
-        self.use_3d_cnn = args.use_3d_cnn
         self.dropout_rate_cnn = args.dropout_rate_cnn
         self.use_spatial_dropout = args.use_spatial_dropout
         self.use_batchnorm_cnn = args.use_batchnorm_cnn
         self.kernel_size_spatial = args.kernel_size_spatial
-        self.kernel_size_temporal = args.kernel_size_temporal
         self.nb_filters = args.nb_filters
         self.pool_size_spatial = args.pool_size_spatial
-        self.pool_size_temporal = args.pool_size_temporal
         self.nb_conv_blocks = args.nb_conv_blocks
         self.inner_activation_cnn = args.inner_activation_cnn
+        self.tcn_filters = args.tcn_filters
+        self.tcn_kernel_size = args.tcn_kernel_size
+        self.tcn_nb_layers = args.tcn_nb_layers
+        self.dropout_rate_tcn = args.dropout_rate_tcn
 
-        if self.precip_window_size==1:
+        if self.precip_window_size == 1:
             self.kernel_size_spatial = 1
             self.pool_size_spatial = 1
             self.use_spatial_dropout = False
@@ -298,11 +310,12 @@ class ImpactCnnOptions(ImpactDlOptions):
             Options are: weight_denominator, precip_window_size, precip_time_step,
             precip_days_before, precip_resolution, precip_days_after, transform_static,
             transform_precip, log_transform_precip, batch_size, learning_rate,
-            dropout_rate_dense, use_3d_cnn, dropout_rate_cnn, use_spatial_dropout,
+            dropout_rate_dense, dropout_rate_cnn, use_spatial_dropout,
             use_batchnorm_cnn, use_batchnorm_dense, kernel_size_spatial,
-            kernel_size_temporal, nb_filters, pool_size_spatial, pool_size_temporal,
-            nb_conv_blocks, nb_dense_layers, nb_dense_units, nb_dense_units_decreasing,
-            inner_activation_dense, inner_activation_cnn,
+            nb_filters, pool_size_spatial, nb_conv_blocks, nb_dense_layers,
+            nb_dense_units, nb_dense_units_decreasing, inner_activation_dense,
+            inner_activation_cnn, tcn_filters, tcn_kernel_size, tcn_nb_layers,
+            dropout_rate_tcn,
 
         Returns
         -------
@@ -316,11 +329,12 @@ class ImpactCnnOptions(ImpactDlOptions):
                     'log_transform_precip',
                     'nb_conv_blocks',
                     'nb_filters',
-                    'kernel_size_temporal',
-                    'pool_size_temporal',
                     'inner_activation_cnn',
-                    'use_3d_cnn',
                     'dropout_rate_cnn',
+                    'tcn_filters',
+                    'tcn_kernel_size',
+                    'tcn_nb_layers',
+                    'dropout_rate_tcn',
                     'nb_dense_layers',
                     'nb_dense_units',
                     'nb_dense_units_decreasing',
@@ -384,9 +398,6 @@ class ImpactCnnOptions(ImpactDlOptions):
         if 'precip_days_after' in hp_to_optimize:
             self.precip_days_after = trial.suggest_int(
                 'precip_days_after', 1, 2)
-        if 'use_3d_cnn' in hp_to_optimize:
-            self.use_3d_cnn = trial.suggest_categorical(
-                'use_3d_cnn', [True, False])
         if 'dropout_rate_cnn' in hp_to_optimize:
             self.dropout_rate_cnn = trial.suggest_float(
                 'dropout_rate_cnn', 0.2, 0.5)
@@ -402,9 +413,6 @@ class ImpactCnnOptions(ImpactDlOptions):
             kernel_size_spatial_index = trial.suggest_int(
                 'kernel_size_spatial_index', 0, len(choices) - 1)
             self.kernel_size_spatial = choices[kernel_size_spatial_index]
-        if 'kernel_size_temporal' in hp_to_optimize:
-            self.kernel_size_temporal = trial.suggest_categorical(
-                'kernel_size_temporal', [1, 3, 5, 7, 9, 11])
         if 'nb_filters' in hp_to_optimize:
             self.nb_filters = trial.suggest_categorical(
                 'nb_filters', [32, 64, 128, 256, 512])
@@ -412,25 +420,31 @@ class ImpactCnnOptions(ImpactDlOptions):
             max_val = min(self.precip_window_size / self.precip_resolution, 4)
             self.pool_size_spatial = trial.suggest_int(
                 'pool_size_spatial', 1, max_val)
-        if 'pool_size_temporal' in hp_to_optimize:
-            self.pool_size_temporal = trial.suggest_categorical(
-                'pool_size_temporal', [1, 2, 3, 4, 5, 6, 9, 12])
         if 'nb_conv_blocks' in hp_to_optimize:
             max_val = 5
             if self.pool_size_spatial > 1:
                 spatial_size = int(self.precip_window_size / self.precip_resolution)
                 max_val = min(max_val, math.floor(math.log(spatial_size, self.pool_size_spatial)))
-            if self.pool_size_temporal > 1:
-                temporal_size = (self.precip_days_before + self.precip_days_after + 1) * 24 / self.precip_time_step
-                max_val = min(max_val, math.floor(math.log(temporal_size, self.pool_size_temporal)))
             self.nb_conv_blocks = trial.suggest_int(
                 'nb_conv_blocks', 0, max_val)
-            if self.nb_conv_blocks == 0:  # Edge case: force 1 block minimum when using 3D CNN
+            if self.nb_conv_blocks == 0:
                 self.nb_conv_blocks = 1
         if 'inner_activation_cnn' in hp_to_optimize:
             self.inner_activation_cnn = trial.suggest_categorical(
                 'inner_activation_cnn',
                 ['relu', 'leaky_relu', 'silu', 'hard_silu', 'softplus', 'mish'])
+        if 'tcn_filters' in hp_to_optimize:
+            self.tcn_filters = trial.suggest_categorical(
+                'tcn_filters', [32, 64, 128, 256])
+        if 'tcn_kernel_size' in hp_to_optimize:
+            self.tcn_kernel_size = trial.suggest_categorical(
+                'tcn_kernel_size', [2, 3, 4, 5])
+        if 'tcn_nb_layers' in hp_to_optimize:
+            self.tcn_nb_layers = trial.suggest_int(
+                'tcn_nb_layers', 2, 6)
+        if 'dropout_rate_tcn' in hp_to_optimize:
+            self.dropout_rate_tcn = trial.suggest_float(
+                'dropout_rate_tcn', 0.0, 0.3)
 
         return True
 
@@ -463,16 +477,17 @@ class ImpactCnnOptions(ImpactDlOptions):
             print("- precip_days_before: ", self.precip_days_before)
             print("- precip_days_after: ", self.precip_days_after)
             print("- use_spatial_dropout: ", self.use_spatial_dropout)
-            print("- use_3d_cnn: ", self.use_3d_cnn)
             print("- dropout_rate_cnn: ", self.dropout_rate_cnn)
             print("- use_batchnorm_cnn: ", self.use_batchnorm_cnn)
             print("- kernel_size_spatial: ", self.kernel_size_spatial)
-            print("- kernel_size_temporal: ", self.kernel_size_temporal)
             print("- nb_filters: ", self.nb_filters)
             print("- pool_size_spatial: ", self.pool_size_spatial)
-            print("- pool_size_temporal: ", self.pool_size_temporal)
             print("- nb_conv_blocks: ", self.nb_conv_blocks)
             print("- inner_activation_cnn: ", self.inner_activation_cnn)
+            print("- tcn_filters: ", self.tcn_filters)
+            print("- tcn_kernel_size: ", self.tcn_kernel_size)
+            print("- tcn_nb_layers: ", self.tcn_nb_layers)
+            print("- dropout_rate_tcn: ", self.dropout_rate_tcn)
 
         print("-" * 80)
 
