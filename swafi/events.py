@@ -14,6 +14,17 @@ from .config import Config
 config = Config()
 
 
+_PICKLE_LOAD_EXCEPTIONS = (
+    OSError,
+    EOFError,
+    pickle.UnpicklingError,
+    AttributeError,
+    ValueError,
+    TypeError,
+    NotImplementedError,
+)
+
+
 class Events:
     def __init__(self, use_dump=True):
         """
@@ -324,19 +335,18 @@ class Events:
         pickles_dir = config.get('PICKLES_DIR')
         file_path = Path(f'{pickles_dir}/{filename}')
 
-        # Try to load the full Events object first
+        events_only_path = _events_only_pickle_path(pickles_dir, filename)
+
+        # Try to load from the main pickle first (Events object or DataFrame)
         if file_path.is_file():
             try:
-                with open(file_path, 'rb') as f:
-                    values = pickle.load(f)
-                    self.events = values.events
+                self.events = _load_events_from_file(file_path)
                 return
-            except Exception:
+            except (_PICKLE_LOAD_EXCEPTIONS, TypeError):
                 # If full-object unpickling fails, fall back to events-only file
                 pass
 
         # Fallback: try to load the events-only gzipped pickle
-        events_only_path = Path(f'{pickles_dir}/{Path(filename).stem}_events.pkl.gz')
         if events_only_path.is_file():
             self.events = pd.read_pickle(events_only_path, compression='gzip')
 
@@ -351,18 +361,22 @@ class Events:
         pickles_dir = config.get('PICKLES_DIR')
         file_path = Path(f'{pickles_dir}/{filename}')
 
+        events_only_path = _events_only_pickle_path(pickles_dir, filename)
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        events_only_path.parent.mkdir(parents=True, exist_ok=True)
+
         try:
             # Attempt to pickle the whole Events instance
-            file_path.parent.mkdir(parents=True, exist_ok=True)
             data_bytes = pickle.dumps(self, protocol=pickle.HIGHEST_PROTOCOL)
             file_path.write_bytes(data_bytes)
-        except (OSError, OverflowError, pickle.PicklingError, MemoryError) as e:
-            # Fallback: save only the events DataFrame compressed
-            events_only_path = Path(f'{pickles_dir}/{Path(filename).stem}_events.pkl.gz')
-            events_only_path.parent.mkdir(parents=True, exist_ok=True)
+        except (OSError, OverflowError, pickle.PicklingError, MemoryError):
             if self.events is None:
                 raise
-            self.events.to_pickle(events_only_path, compression='gzip')
+
+        # Always persist a portable events-only file to avoid cross-version pickle issues
+        if self.events is None:
+            raise ValueError("Cannot dump events because self.events is None.")
+        self.events.to_pickle(events_only_path, compression='gzip')
 
     def _add_event_id(self):
         """
@@ -383,23 +397,23 @@ def load_events_from_pickle(filename='events.pickle'):
     """
     pickles_dir = config.get('PICKLES_DIR')
     file_path = Path(f'{pickles_dir}/{filename}')
+    events_only_path = _events_only_pickle_path(pickles_dir, filename)
 
     events = Events(use_dump=False)
 
-    # Try to load the full object first
+    # Try to load from the main pickle first (Events object or DataFrame)
     if file_path.is_file():
         try:
-            with open(file_path, 'rb') as f:
-                values = pickle.load(f)
-                events.events = values.events
-        except Exception:
+            events.events = _load_events_from_file(file_path)
+        except (_PICKLE_LOAD_EXCEPTIONS, TypeError):
             # Fallback to events-only gzipped pickle
-            events_only_path = Path(f'{pickles_dir}/{Path(filename).stem}_events.pkl.gz')
             if not events_only_path.is_file():
-                raise Exception(f"File {file_path} or {events_only_path} does not exist or could not be unpickled.")
+                raise Exception(
+                    f"Failed to load {file_path}. Fallback file {events_only_path} "
+                    f"does not exist or could not be unpickled."
+                )
             events.events = pd.read_pickle(events_only_path, compression='gzip')
     else:
-        events_only_path = Path(f'{pickles_dir}/{Path(filename).stem}_events.pkl.gz')
         if not events_only_path.is_file():
             raise Exception(f"File {file_path} or {events_only_path} does not exist.")
         events.events = pd.read_pickle(events_only_path, compression='gzip')
@@ -411,3 +425,28 @@ def load_events_from_pickle(filename='events.pickle'):
         raise AssertionError("There are events without contracts (nb_contracts == 0).")
 
     return events
+
+
+def _events_only_pickle_path(pickles_dir, filename):
+    """Return the portable events-only pickle path for a given filename."""
+    return Path(f'{pickles_dir}/{Path(filename).stem}_events.pkl.gz')
+
+
+def _extract_events_dataframe(loaded_value):
+    """Normalize objects loaded from pickle into an events DataFrame."""
+    if isinstance(loaded_value, pd.DataFrame):
+        return loaded_value
+    if hasattr(loaded_value, 'events'):
+        return loaded_value.events
+    raise TypeError(f"Unsupported pickled object type: {type(loaded_value)!r}")
+
+
+def _load_events_from_file(file_path):
+    """Load events from a pickle path using stdlib pickle then pandas fallback."""
+    try:
+        with open(file_path, 'rb') as f:
+            loaded_value = pickle.load(f)
+    except _PICKLE_LOAD_EXCEPTIONS:
+        loaded_value = pd.read_pickle(file_path)
+    return _extract_events_dataframe(loaded_value)
+
