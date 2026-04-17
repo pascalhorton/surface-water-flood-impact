@@ -205,9 +205,11 @@ class ModelCnn(keras.models.Model):
             pixels_per_side = self.input_3d_size[0]
             t_len = self.input_3d_size[2]
 
+            n_channels = self.input_3d_size[3]
+
             if pixels_per_side > 1:
                 # Spatial 2D CNN applied per time step via TimeDistributed
-                # Permute (H, W, T, 1) → (T, H, W, 1)
+                # Permute (H, W, T, C) → (T, H, W, C)
                 x = keras.layers.Permute((3, 1, 2, 4), name='permute_to_T_H_W_C')(input_3d)
                 for i in range(self.options.nb_conv_blocks):
                     nb_filters = self.options.nb_filters * (2 ** i)
@@ -251,8 +253,8 @@ class ModelCnn(keras.models.Model):
                     keras.layers.Flatten(), name='td_flatten'
                 )(x)
             else:
-                # 1×1 spatial: squeeze to (T, 1)
-                x = keras.layers.Reshape((t_len, 1), name='reshape_1px')(input_3d)
+                # 1×1 spatial: squeeze to (T, C)
+                x = keras.layers.Reshape((t_len, n_channels), name='reshape_1px')(input_3d)
 
             # Project to TCN input dimension → (T, tcn_filters)
             x = keras.layers.Dense(self.options.tcn_filters, name='tcn_proj')(x)

@@ -136,12 +136,13 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
             third_dim_size += self.precip_days_after + self.precip_days_before
             third_dim_size *= int(24 / self.precip_time_step)  # Time step
             third_dim_size += 1  # Because the 1st and last time steps are included.
-        if self.X_dem is not None:
-            third_dim_size += 1  # Add one for the DEM layer
-
         self.third_dim_size = third_dim_size
 
         return third_dim_size
+
+    def get_nb_channels(self):
+        """ Get the number of input channels (1 for precip only, 2 when DEM is included). """
+        return 2 if self.X_dem is not None else 1
 
     def _standardize_precip_inputs(self):
         if self.X_precip is not None:
@@ -229,8 +230,17 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
             for i_b, event in enumerate(self.event_props[idxs]):
                 x_3d[i_b] = self._extract_precipitation(event)
 
-            # Add a new axis for the channels
-            x_3d = np.expand_dims(x_3d, axis=-1)
+            if self.X_dem is not None:
+                # Build DEM channel: broadcast each static (H, W) patch across T time steps
+                x_dem_batch = np.zeros_like(x_3d)
+                for i_b, event in enumerate(self.event_props[idxs]):
+                    dem_patch = self._extract_dem_patch(event, pixels_nb)  # (H, W)
+                    x_dem_batch[i_b] = dem_patch[:, :, np.newaxis]  # broadcast → (H, W, T)
+                # Stack precipitation and DEM as separate channels → (batch, H, W, T, 2)
+                x_3d = np.stack([x_3d, x_dem_batch], axis=-1)
+            else:
+                # Single precipitation channel → (batch, H, W, T, 1)
+                x_3d = np.expand_dims(x_3d, axis=-1)
 
             if self.X_static is None:
                 return x_3d, y
@@ -245,6 +255,7 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
         return (x_3d, x_static), y
 
     def _extract_precipitation(self, event):
+        """ Extract the precipitation patch for a single event. Returns (H, W, T). """
         precip_window_size_m = self.precip_window_size * 1000
         pixels_nb = int(self.precip_window_size / self.precip_resolution)
 
@@ -264,52 +275,56 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
             t_start, t_end, x_start, x_end, y_start, y_end, cid
         )
 
-        # Move the time axis to the last position
+        # Move the time axis to the last position → (H, W, T)
         x_precip_ev = np.moveaxis(x_precip_ev, 0, -1)
 
-        if self.X_dem is not None:
-            # Select the corresponding DEM data in the window
-            x_dem_ev = self.X_dem.sel(
-                x=slice(x_start, x_end),
-                y=slice(y_start, y_end)
-            ).to_numpy()
-
-            # Replace the NaNs by zeros
-            x_dem_ev = np.nan_to_num(x_dem_ev)
-
-            # Add a new axis for the 3rd dimension
-            x_dem_ev = np.expand_dims(x_dem_ev, axis=-1)
-
-            # Concatenate
-            x_3d_ev = np.concatenate([x_precip_ev, x_dem_ev], axis=-1)
-        else:
-            x_3d_ev = x_precip_ev
-
         # If too large, remove the last line(s) or column(s)
-        if x_3d_ev.shape[0] > pixels_nb:
-            x_3d_ev = x_3d_ev[:pixels_nb, :, :]
-        if x_3d_ev.shape[1] > pixels_nb:
-            x_3d_ev = x_3d_ev[:, :pixels_nb, :]
+        if x_precip_ev.shape[0] > pixels_nb:
+            x_precip_ev = x_precip_ev[:pixels_nb, :, :]
+        if x_precip_ev.shape[1] > pixels_nb:
+            x_precip_ev = x_precip_ev[:, :pixels_nb, :]
 
         # Handle missing precipitation data
-        if x_3d_ev.shape[2] != self.get_third_dim_size():
+        if x_precip_ev.shape[2] != self.get_third_dim_size():
             self.warning_counter += 1
             self._analyze_precip_shape_difference(
-                event, x_3d_ev, x_3d_ev.shape[2], self.get_third_dim_size())
+                event, x_precip_ev, x_precip_ev.shape[2], self.get_third_dim_size())
 
-            diff = x_3d_ev.shape[2] - self.get_third_dim_size()
+            diff = x_precip_ev.shape[2] - self.get_third_dim_size()
             if abs(diff / self.get_third_dim_size()) > 0.1:  # 10% tolerance
                 if self.debug:
                     print(f"Warning: too many missing timesteps ({diff}).")
 
-                pixels_nb = int(self.precip_window_size / self.precip_resolution)
-                x_3d_ev = self._create_empty_precip_block(
+                x_precip_ev = self._create_empty_precip_block(
                     (pixels_nb, pixels_nb, self.get_third_dim_size()))
 
             else:
                 empty_block = self._create_empty_precip_block(
-                    (x_3d_ev.shape[0], x_3d_ev.shape[1], -diff))
+                    (x_precip_ev.shape[0], x_precip_ev.shape[1], -diff))
 
-                x_3d_ev = np.concatenate([empty_block, x_3d_ev], axis=-1)
+                x_precip_ev = np.concatenate([empty_block, x_precip_ev], axis=-1)
 
-        return x_3d_ev
+        return x_precip_ev
+
+    def _extract_dem_patch(self, event, pixels_nb):
+        """ Extract and size-correct the DEM patch for a single event. Returns (H, W). """
+        precip_window_size_m = self.precip_window_size * 1000
+        x_start = event[1] - precip_window_size_m / 2
+        x_end = event[1] + precip_window_size_m / 2
+        y_start = event[2] + precip_window_size_m / 2
+        y_end = event[2] - precip_window_size_m / 2
+
+        x_dem_ev = self.X_dem.sel(
+            x=slice(x_start, x_end),
+            y=slice(y_start, y_end)
+        ).to_numpy()
+
+        x_dem_ev = np.nan_to_num(x_dem_ev)
+
+        # Trim to expected spatial size if needed
+        if x_dem_ev.shape[0] > pixels_nb:
+            x_dem_ev = x_dem_ev[:pixels_nb, :]
+        if x_dem_ev.shape[1] > pixels_nb:
+            x_dem_ev = x_dem_ev[:, :pixels_nb]
+
+        return x_dem_ev
