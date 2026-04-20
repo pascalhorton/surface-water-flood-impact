@@ -61,7 +61,8 @@ if __name__ == "__main__":
     coords_df = domain.get_coordinates_df()
 
     # Split the coordinates DataFrame into parts for processing
-    parts = np.array_split(coords_df, n_parts)
+    indices = np.array_split(np.arange(len(coords_df)), n_parts)
+    parts = [coords_df.iloc[idx] for idx in indices]
 
     # Create a directory to store the event parts
     os.makedirs("event_parts", exist_ok=True)
