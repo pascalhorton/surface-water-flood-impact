@@ -344,7 +344,7 @@ class Events:
             try:
                 self.events = _load_events_from_file(file_path)
                 return
-            except (_PICKLE_LOAD_EXCEPTIONS, TypeError):
+            except _PICKLE_LOAD_EXCEPTIONS:
                 # If full-object unpickling fails, fall back to events-only file
                 pass
 
@@ -407,7 +407,7 @@ def load_events_from_pickle(filename='events.pickle'):
     if file_path.is_file():
         try:
             events.events = _load_events_from_file(file_path)
-        except (_PICKLE_LOAD_EXCEPTIONS, TypeError):
+        except _PICKLE_LOAD_EXCEPTIONS:
             # Fallback to events-only gzipped pickle
             if not events_only_path.is_file():
                 raise Exception(
