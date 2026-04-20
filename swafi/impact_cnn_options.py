@@ -215,19 +215,19 @@ class ImpactCnnOptions(ImpactDlOptions):
         self.parser.add_argument(
             '--nb-filters',
             type=int,
-            default=16,
+            default=32,
             help='The number of filters'
         )
         self.parser.add_argument(
             '--pool-size-spatial',
             type=int,
-            default=1,
+            default=2,
             help='The pool size for the spatial (max) pooling'
         )
         self.parser.add_argument(
             '--nb-conv-blocks',
             type=int,
-            default=4,
+            default=2,
             help='The number of convolutional blocks'
         )
         self.parser.add_argument(
@@ -251,7 +251,7 @@ class ImpactCnnOptions(ImpactDlOptions):
         self.parser.add_argument(
             '--tcn-nb-layers',
             type=int,
-            default=4,
+            default=3,
             help='Number of dilated Conv1D layers in TCN (dilation rates: 1,2,4,...)'
         )
         self.parser.add_argument(
