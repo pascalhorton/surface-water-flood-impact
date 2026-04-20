@@ -169,6 +169,13 @@ class Precipitation:
                 (exceed_times + pd.Timedelta(hours=12)).dt.floor('D')
             ]).drop_duplicates().sort_values().to_frame(name='e_date').reset_index(drop=True)
 
+            # Pre-compute rolling precipitation sums for each accumulation window
+            window_hours = [1, 2, 4, 6, 12, 24, 48, 72]
+            dt = (time_series['time'].iloc[1] - time_series['time'].iloc[0]).total_seconds() / 3600
+            for W in window_hours:
+                n_steps = max(1, int(round(W / dt)))
+                time_series[f'p_{W}h'] = time_series['precip'].rolling(n_steps).sum()
+
             # Get the date and time of the maximum precipitation intensity
             for idx, row in events.iterrows():
                 day_series = time_series[
@@ -179,6 +186,19 @@ class Precipitation:
                 events.at[idx, 'i_max'] = day_series['precip'].max()
                 events.at[idx, 'i_max_q'] = day_series['precip_q'].max()
                 events.at[idx, 'i_max_date'] = i_max_date
+
+                # Max rolling sum for each window, constrained to windows ending within
+                # the day of i_max_date (right edge in (day_start, day_end])
+                day_start = i_max_date.normalize()
+                day_end = day_start + pd.Timedelta(hours=24)
+                day_mask = (
+                    (time_series['time'] > day_start) &
+                    (time_series['time'] <= day_end)
+                )
+                for W in window_hours:
+                    events.at[idx, f'p_{W}h'] = time_series.loc[day_mask, f'p_{W}h'].max()
+
+            events = events.astype({f'p_{W}h': 'float32' for W in window_hours})
 
             # Aggregate time series at daily time step
             daily_series = time_series.set_index('time').resample('D').agg({
