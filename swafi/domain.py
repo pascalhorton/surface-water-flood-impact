@@ -178,8 +178,8 @@ class Domain:
             # Extract the axes
             cols, rows = np.meshgrid(np.arange(data.shape[1]), np.arange(data.shape[0]))
             xs, ys = rasterio.transform.xy(dataset.transform, rows, cols)
-            self.cids['xs'] = np.array(xs)
-            self.cids['ys'] = np.array(ys)
+            self.cids['xs'] = np.array(xs).reshape(data.shape)
+            self.cids['ys'] = np.array(ys).reshape(data.shape)
 
         self._dump_object()
 
