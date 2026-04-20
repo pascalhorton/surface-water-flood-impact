@@ -1,6 +1,7 @@
 """
 Train a random forest model to predict the occurrence of damages.
 """
+import logging
 import time
 
 from swafi.config import Config
@@ -8,6 +9,9 @@ from swafi.impact_rf import ImpactRandomForest
 from swafi.impact_rf_options import ImpactRFOptions
 from swafi.events import load_events_from_pickle
 from swafi.utils.optuna import get_or_create_optuna_study
+from swafi.utils.logging_setup import setup_logging
+
+logger = logging.getLogger(__name__)
 
 has_optuna = False
 try:
@@ -23,6 +27,7 @@ config = Config()
 
 
 def main():
+    setup_logging(script_name='train_rf_occurrence')
     options = ImpactRFOptions()
     options.parse_args()
     options.print_options()
@@ -41,7 +46,7 @@ def main():
         if SAVE_MODEL:
             rf.save_model(dir_output=config.get('OUTPUT_DIR'),
                           base_name='model_rf_' + rf.options.run_name)
-            print(f"Model saved in {config.get('OUTPUT_DIR')}")
+            logger.info("Model saved in %s", config.get('OUTPUT_DIR'))
 
     else:
         optimize_model_with_optuna(options, events, dir_plots=config.get('OUTPUT_DIR'))
@@ -89,8 +94,8 @@ def optimize_model_with_optuna(options, events, dir_plots=None):
         float
             The score.
         """
-        print("#" * 80)
-        print(f"Trial {trial.number}")
+        logger.info("%s", "#" * 80)
+        logger.info("Trial %s", trial.number)
         options_c = options.copy()
         options_c.generate_for_optuna(trial)
         options_c.print_options(show_optuna_params=True)
@@ -102,7 +107,7 @@ def optimize_model_with_optuna(options, events, dir_plots=None):
         rf_trial.fit()
 
         end_time = time.time()
-        print(f"Model fitting took {end_time - start_time:.2f} seconds")
+        logger.info("Model fitting took %.2f seconds", end_time - start_time)
 
         # Assess the model
         score = rf_trial.compute_f1_score(rf_trial.x_valid, rf_trial.y_valid)
@@ -112,13 +117,13 @@ def optimize_model_with_optuna(options, events, dir_plots=None):
     study = get_or_create_optuna_study(options)
     study.optimize(optuna_objective, n_trials=options.optuna_trials_nb)
 
-    print("Number of finished trials: ", len(study.trials))
-    print("Best trial:")
+    logger.info("Number of finished trials: %s", len(study.trials))
+    logger.info("Best trial:")
     best_trial = study.best_trial
-    print("  Value: ", best_trial.value)
-    print("  Params: ")
+    logger.info("  Value: %s", best_trial.value)
+    logger.info("  Params: ")
     for key, value in best_trial.params.items():
-        print(f"    {key}: {value}")
+        logger.info("    %s: %s", key, value)
 
 
 if __name__ == '__main__':

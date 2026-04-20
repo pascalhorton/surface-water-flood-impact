@@ -2,13 +2,17 @@
 This script is used to analyze the results of the link between claims and events.
 """
 
+import logging
 from swafi.config import Config
 from swafi.damages_mobiliar import DamagesMobiliar
 from swafi.damages_gvz import DamagesGvz
 from swafi.events import Events
 from swafi.precip_combiprecip import CombiPrecip
+from swafi.utils.logging_setup import setup_logging
 from swafi.utils.plotting import *
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 config = Config()
 
@@ -52,6 +56,7 @@ PLOT_TIME_SERIES_DISAGREEMENT = True
 
 
 def main():
+    setup_logging(script_name='analyze_claims_events_link')
     # Compute the different matching
     compute_link_and_save_to_pickle()
 
@@ -99,7 +104,7 @@ def main():
         # Precipitation data
         precip = CombiPrecip(config.get('YEAR_START'), config.get('YEAR_END'))
         precip.prepare_data(config.get('DIR_PRECIP'))
-        print("Preloading all daily precipitation data.")
+        logger.info("Preloading all daily precipitation data.")
         precip.preload_all_cid_data(cids)
 
     # Compare the events assigned
@@ -178,10 +183,10 @@ def compute_link_and_save_to_pickle():
         file_path = Path(PICKLES_DIR + '/' + filename)
 
         if file_path.exists():
-            print(f"Criteria {criteria} already assessed.")
+            logger.info("Criteria %s already assessed.", criteria)
             continue
 
-        print(f"Assessing criteria {criteria}")
+        logger.info("Assessing criteria %s", criteria)
         if DATASET == 'mobiliar':
             damages = DamagesMobiliar(dir_exposure=config.get('DIR_EXPOSURE_MOBILIAR'),
                                       dir_claims=config.get('DIR_CLAIMS_MOBILIAR'),

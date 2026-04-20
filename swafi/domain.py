@@ -2,6 +2,7 @@
 Class to define the spatial domain and cell IDs.
 """
 
+import logging
 import pickle
 import rasterio
 import numpy as np
@@ -18,6 +19,8 @@ from . import data
 from .config import Config
 
 config = Config()
+
+logger = logging.getLogger(__name__)
 
 
 class Domain:
@@ -48,7 +51,7 @@ class Domain:
                 cid_file_path = str(p)
 
         if not Path(cid_file_path).exists():
-            print(f"Working directory: {Path.cwd()}")
+            logger.error("Working directory: %s", Path.cwd())
             raise FileNotFoundError(f"The CID file {cid_file_path} does not exist.")
 
         self._load_from_dump()

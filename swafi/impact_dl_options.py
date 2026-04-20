@@ -4,6 +4,7 @@ It is not meant to be used directly, but to be inherited by other classes.
 """
 import datetime
 import argparse
+import logging
 
 from swafi.impact_basic_options import ImpactBasicOptions
 
@@ -13,6 +14,9 @@ try:
     has_optuna = True
 except ImportError:
     pass
+
+
+logger = logging.getLogger(__name__)
 
 
 class ImpactDlOptions(ImpactBasicOptions):
@@ -280,34 +284,34 @@ class ImpactDlOptions(ImpactBasicOptions):
 
     def _print_shared_options(self, show_optuna_params=False):
         self._print_basic_options()
-        print("- factor_neg_reduction: ", self.factor_neg_reduction)
-        print("- use_precip: ", self.use_precip)
+        logger.info("- factor_neg_reduction:  %s", self.factor_neg_reduction)
+        logger.info("- use_precip:  %s", self.use_precip)
 
         if self.optimize_with_optuna:
-            print("- epochs: ", self.epochs)
+            logger.info("- epochs:  %s", self.epochs)
             if not show_optuna_params:
                 return  # Do not print the other options
 
-        print("- weight_denominator: ", self.weight_denominator)
+        logger.info("- weight_denominator:  %s", self.weight_denominator)
 
         if self.use_static_attributes:
-            print("- transform_static: ", self.transform_static)
+            logger.info("- transform_static:  %s", self.transform_static)
 
         if self.use_precip:
-            print("- transform_precip: ", self.transform_precip)
-            print("- log_transform_precip: ", self.log_transform_precip)
+            logger.info("- transform_precip:  %s", self.transform_precip)
+            logger.info("- log_transform_precip:  %s", self.log_transform_precip)
 
-        print("- loss_function: ", self.loss_function)
-        print("- batch_size: ", self.batch_size)
-        print("- epochs: ", self.epochs)
-        print("- learning_rate: ", self.learning_rate)
-        print("- lr_method: ", self.lr_method)
-        print("- dropout_rate_dense: ", self.dropout_rate_dense)
-        print("- use_batchnorm_dense: ", self.use_batchnorm_dense)
-        print("- nb_dense_layers: ", self.nb_dense_layers)
-        print("- nb_dense_units: ", self.nb_dense_units)
-        print("- nb_dense_units_decreasing: ", self.nb_dense_units_decreasing)
-        print("- inner_activation_dense: ", self.inner_activation_dense)
+        logger.info("- loss_function:  %s", self.loss_function)
+        logger.info("- batch_size:  %s", self.batch_size)
+        logger.info("- epochs:  %s", self.epochs)
+        logger.info("- learning_rate:  %s", self.learning_rate)
+        logger.info("- lr_method:  %s", self.lr_method)
+        logger.info("- dropout_rate_dense:  %s", self.dropout_rate_dense)
+        logger.info("- use_batchnorm_dense:  %s", self.use_batchnorm_dense)
+        logger.info("- nb_dense_layers:  %s", self.nb_dense_layers)
+        logger.info("- nb_dense_units:  %s", self.nb_dense_units)
+        logger.info("- nb_dense_units_decreasing:  %s", self.nb_dense_units_decreasing)
+        logger.info("- inner_activation_dense:  %s", self.inner_activation_dense)
 
     def is_ok(self):
         """

@@ -7,6 +7,7 @@ from .impact_tx_model import ModelTransformer
 from .impact_tx_data_generator import ImpactTxDataGenerator
 
 import copy
+import logging
 import pandas as pd
 
 has_optuna = False
@@ -17,6 +18,8 @@ except ImportError:
     pass
 
 DEBUG = False
+
+logger = logging.getLogger(__name__)
 
 
 class ImpactTransformer(ImpactDl):
@@ -70,12 +73,12 @@ class ImpactTransformer(ImpactDl):
         )
 
         if self.options.use_precip and self.precipitation_hf is not None:
-            print("Preloading all high-frequency precipitation data.")
+            logger.info("Preloading all high-frequency precipitation data.")
             all_cids = self.df['cid'].unique()
             self.precipitation_hf.preload_all_cid_data(all_cids)
 
         if self.options.use_precip and self.precipitation_daily is not None:
-            print("Preloading all daily precipitation data.")
+            logger.info("Preloading all daily precipitation data.")
             all_cids = self.df['cid'].unique()
             self.precipitation_daily.preload_all_cid_data(all_cids)
 
@@ -175,7 +178,7 @@ class ImpactTransformer(ImpactDl):
             return
 
         if not self.options.use_precip:
-            print("Precipitation is not used and is therefore not loaded.")
+            logger.info("Precipitation is not used and is therefore not loaded.")
             return
 
         time_step = self.options.precip_hf_time_step / 60
@@ -196,7 +199,7 @@ class ImpactTransformer(ImpactDl):
             return
 
         if not self.options.use_precip:
-            print("Precipitation is not used and is therefore not loaded.")
+            logger.info("Precipitation is not used and is therefore not loaded.")
             return
 
         precipitation.prepare_data(time_step=24)

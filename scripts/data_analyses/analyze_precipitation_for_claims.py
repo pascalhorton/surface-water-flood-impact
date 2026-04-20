@@ -1,6 +1,7 @@
 """
 This script analyzes the precipitation data characteristics for each claim.
 """
+import logging
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -10,6 +11,9 @@ from swafi.config import Config
 from swafi.precip_combiprecip import CombiPrecip
 from swafi.damages_mobiliar import DamagesMobiliar
 from swafi.damages_gvz import DamagesGvz
+from swafi.utils.logging_setup import setup_logging
+
+logger = logging.getLogger(__name__)
 
 config = Config(output_dir='analysis_precip_claims')
 
@@ -30,6 +34,7 @@ else:
 
 
 def main():
+    setup_logging(script_name='analyze_precipitation_for_claims')
     generate_csv()
     generate_plots()
 
@@ -64,7 +69,7 @@ def generate_csv():
     # Load CombiPrecip files
     precip = CombiPrecip(year_start, year_end)
     precip.prepare_data(config.get('DIR_PRECIP'))
-    print("Preloading all daily precipitation data.")
+    logger.info("Preloading all daily precipitation data.")
     precip.preload_all_cid_data(cids)
 
     # Add columns to the claims dataframe
@@ -89,7 +94,7 @@ def generate_csv():
         )
 
         if precip_cid is None:
-            print(f'No precipitation data for CID {cid}')
+            logger.warning("No precipitation data for CID %s", cid)
             continue
         precip_cid_q = precip_cid.rank(dim='time', pct=True)
 
@@ -147,16 +152,16 @@ def generate_plots():
     filename = f'claims_precip_{DATASET}.csv'
     claims = pd.read_csv(config.output_dir / filename)
     orig_len = len(claims)
-    print(f"Total number of claims: {orig_len}")
-    print(f"Number of claims with positive precipitation: {len(claims[claims['precip_max'] > 0])}")
+    logger.info("Total number of claims: %s", orig_len)
+    logger.info("Number of claims with positive precipitation: %s", len(claims[claims['precip_max'] > 0]))
 
     if THRESHOLD_24H is not None:
         claims = claims[claims['precip_24h_max'] >= THRESHOLD_24H]
-        print(f"Number of claims after applying 24h threshold of {THRESHOLD_24H} mm: {len(claims)}")
+        logger.info("Number of claims after applying 24h threshold of %s mm: %s", THRESHOLD_24H, len(claims))
 
     if THRESHOLD_Q is not None:
         claims = claims[claims['precip_max_q'] >= THRESHOLD_Q]
-        print(f"Number of claims after applying quantile threshold of {THRESHOLD_Q}: {len(claims)}")
+        logger.info("Number of claims after applying quantile threshold of %s: %s", THRESHOLD_Q, len(claims))
 
     # Copy of the claims with positive precipitation only
     claims_pos = claims[claims['precip_max'] > 0].copy()

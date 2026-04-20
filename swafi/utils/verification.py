@@ -1,6 +1,9 @@
+import logging
 import math
 import numpy as np
 from sklearn.metrics import roc_auc_score
+
+logger = logging.getLogger(__name__)
 
 
 def prepare_full_domain_assessment(ds_pred, ds_damages, ignore_removed=True, relax_days=True, flatten=True):
@@ -122,7 +125,7 @@ def compute_score_binary(metric, tp, tn, fp, fn):
     assert n > 0
 
     if (tp + fn) == 0:
-        print(f"Warning: metrics are undefined when tp + fn = 0")
+        logger.warning("Metrics are undefined when tp + fn = 0")
         return math.nan
 
     if metric in ['base_rate', 'brate']:
@@ -366,21 +369,21 @@ def print_classic_scores(tp, tn, fp, fn):
         The number of false negatives
     """
 
-    print(f"TP: {tp}")
-    print(f"TN: {tn}")
-    print(f"FP: {fp}")
-    print(f"FN: {fn}")
+    logger.info("TP: %s", tp)
+    logger.info("TN: %s", tn)
+    logger.info("FP: %s", fp)
+    logger.info("FN: %s", fn)
 
-    print(f"SEDI: {compute_score_binary('SEDI', tp, tn, fp, fn):.3f}")
-    print(f"False alarm rate (F): {compute_score_binary('F', tp, tn, fp, fn):.3f}")
-    print(f"False alarm ratio (FAR): {compute_score_binary('FAR', tp, tn, fp, fn):.3f}")
-    print(f"Hit rate (H): {compute_score_binary('H', tp, tn, fp, fn):.3f}")
-    print(f"Critical Success Index (CSI): {compute_score_binary('CSI', tp, tn, fp, fn):.3f}")
-    print(f"Bias: {compute_score_binary('bias', tp, tn, fp, fn):.3f}")
-    print(f"Accuracy: {compute_score_binary('Accuracy', tp, tn, fp, fn):.3f}")
-    print(f"Precision: {compute_score_binary('Precision', tp, tn, fp, fn):.3f}")
-    print(f"Recall: {compute_score_binary('Recall', tp, tn, fp, fn):.3f}")
-    print(f"F1: {compute_score_binary('F1', tp, tn, fp, fn):.3f}")
+    logger.info("SEDI: %.3f", compute_score_binary('SEDI', tp, tn, fp, fn))
+    logger.info("False alarm rate (F): %.3f", compute_score_binary('F', tp, tn, fp, fn))
+    logger.info("False alarm ratio (FAR): %.3f", compute_score_binary('FAR', tp, tn, fp, fn))
+    logger.info("Hit rate (H): %.3f", compute_score_binary('H', tp, tn, fp, fn))
+    logger.info("Critical Success Index (CSI): %.3f", compute_score_binary('CSI', tp, tn, fp, fn))
+    logger.info("Bias: %.3f", compute_score_binary('bias', tp, tn, fp, fn))
+    logger.info("Accuracy: %.3f", compute_score_binary('Accuracy', tp, tn, fp, fn))
+    logger.info("Precision: %.3f", compute_score_binary('Precision', tp, tn, fp, fn))
+    logger.info("Recall: %.3f", compute_score_binary('Recall', tp, tn, fp, fn))
+    logger.info("F1: %.3f", compute_score_binary('F1', tp, tn, fp, fn))
 
 
 def store_classic_scores(tp, tn, fp, fn, df_results):
@@ -431,7 +434,7 @@ def assess_roc_auc(y_true, y_pred):
     The ROC AUC score.
     """
 
-    print(f"ROC AUC: {roc_auc_score(y_true, y_pred):.3f}")
+    logger.info("ROC AUC: %.3f", roc_auc_score(y_true, y_pred))
 
     return roc_auc_score(y_true, y_pred)
 

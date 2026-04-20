@@ -1,6 +1,7 @@
 """
 Test script for loading and evaluating different pre-trained models.
 """
+import logging
 import pickle
 import pandas as pd
 import numpy as np
@@ -16,6 +17,9 @@ from swafi.precip_combiprecip import CombiPrecip
 from swafi.damages_mobiliar import DamagesMobiliar
 from swafi.damages_gvz import DamagesGvz
 from swafi.utils.verification import compute_confusion_matrix, print_classic_scores, prepare_full_domain_assessment
+from swafi.utils.logging_setup import setup_logging
+
+logger = logging.getLogger(__name__)
 
 DO_ASSESS = True
 MODEL = R"C:\Users\phorton\Documents\SWF\outputs\model_rf_2025-08-29_160926.pkl"
@@ -30,7 +34,7 @@ def assess(result_path, ds_damages, ignore_removed=True, relax_days=True, prob_t
     y_true = (y_true > 0).astype(int)
     tp, tn, fp, fn = compute_confusion_matrix(y_true, y_pred)
     print_classic_scores(tp, tn, fp, fn)
-    print("*************************************")
+    logger.info("*************************************")
     ds_pred.close()
 
 
@@ -69,6 +73,7 @@ def get_damages_xr(dataset):
 
 
 def main():
+    setup_logging(script_name='use_rf_occurrence')
     options = ImpactRFOptions()
     options.parse_args()
     options.print_options()
@@ -84,10 +89,10 @@ def main():
     events_path = Path(config.get('TMP_DIR')) / events_filename
 
     if not events_path.exists():
-        print(f"Extracting events and saving to {events_path}...")
+        logger.info("Extracting events and saving to %s...", events_path)
         cpc = CombiPrecip(year_start, year_end)
         cpc.open_files(config.get('DIR_PRECIP'))
-        print("Applying smoothing...")
+        logger.info("Applying smoothing...")
         cpc.apply_smoothing(filter_size=3)
         events = cpc.extract_events()
         events.to_pickle(events_path)
@@ -170,7 +175,7 @@ def main():
 
     # Save the results
     ds_pred.to_netcdf(output_path)
-    print(f"Results saved to {output_path}")
+    logger.info("Results saved to %s", output_path)
     ds_pred.close()
 
     if DO_ASSESS:

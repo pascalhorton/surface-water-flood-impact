@@ -2,6 +2,7 @@
 Class to handle all exposure and claims.
 """
 
+import logging
 import pickle
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -21,6 +22,8 @@ from .config import Config
 from .domain import Domain
 
 config = Config()
+
+logger = logging.getLogger(__name__)
 
 
 class Damages:
@@ -86,7 +89,7 @@ class Damages:
             The path to the directory containing the files.
         """
         if self.use_dump and self.mask['mask'].size > 0:
-            print("Exposure files reloaded from pickle file.")
+            logger.info("Exposure files reloaded from pickle file.")
             return
 
         if not directory:
@@ -117,7 +120,7 @@ class Damages:
             The path to the directory containing the files.
         """
         if self.use_dump and not self.claims.empty:
-            print("Claims reloaded from pickle file.")
+            logger.info("Claims reloaded from pickle file.")
             return
 
         if not directory:
@@ -321,7 +324,7 @@ class Damages:
             # Check again that the events to remove were not selected in the claims
             events_to_remove = [ev for ev in events_to_remove if
                                 ev not in self.claims.eid.tolist()]
-            print(f"Events to remove due to claim/event link: {len(events_to_remove)}")
+            logger.info("Events to remove due to claim/event link: %s", len(events_to_remove))
 
             self._print_matches_stats(stats)
 
@@ -350,7 +353,7 @@ class Damages:
             # Check again that the events to remove were not selected in the claims
             events_to_remove = [ev for ev in events_to_remove if
                                 ev not in self.claims.eid.tolist()]
-            print(f"Events to remove due to claim/event link: {len(events_to_remove)}")
+            logger.info("Events to remove due to claim/event link: %s", len(events_to_remove))
 
             self._print_matches_stats(stats)
 
@@ -429,7 +432,7 @@ class Damages:
         if self.use_dump and pickle_path.exists():
             with open(pickle_path, 'rb') as f:
                 claims_ds = pickle.load(f)
-            print(f"Claims datasets reloaded from pickle file: {pickle_path}")
+            logger.info("Claims datasets reloaded from pickle file: %s", pickle_path)
             return claims_ds
 
         # Create daily time axis
@@ -516,13 +519,13 @@ class Damages:
         if self.use_dump:
             with open(pickle_path, 'wb') as f:
                 pickle.dump(xr_ds, f)
-            print(f"Claims datasets saved to pickle file: {pickle_path}")
+            logger.info("Claims datasets saved to pickle file: %s", pickle_path)
 
         # Save to netCDF4
         if save_to_nc and nc4 is not None:
             netcdf_path = Path(self.pickles_dir) / f'damages_{self.name}_{self.year_start}_{self.year_end}.nc'
             xr_ds.to_netcdf(netcdf_path)
-            print(f"Claims datasets saved to netCDF4 file: {netcdf_path}")
+            logger.info("Claims datasets saved to netCDF4 file: %s", netcdf_path)
 
         return xr_ds
 
@@ -737,15 +740,15 @@ class Damages:
 
     @staticmethod
     def _print_matches_stats(stats):
-        print(f"Stats of the events / damage matches:")
-        print(f"- {stats['none']} claims could not be matched")
-        print(f"- {stats['single']} claims had 1 candidate event")
-        print(f"- {stats['two']} claims had 2 candidate events")
-        print(f"- {stats['three']} claims had 3 candidate events")
-        print(f"- {stats['multiple']} claims had more candidate event")
+        logger.info("Stats of the events / damage matches:")
+        logger.info("- %s claims could not be matched", stats['none'])
+        logger.info("- %s claims had 1 candidate event", stats['single'])
+        logger.info("- %s claims had 2 candidate events", stats['two'])
+        logger.info("- %s claims had 3 candidate events", stats['three'])
+        logger.info("- %s claims had more candidate event", stats['multiple'])
         if 'conflicts' in stats:
-            print(f"- {stats['conflicts']} claims had conflicts")
-            print(f"- {stats['unresolved']} matching were unresolved (first event taken)")
+            logger.info("- %s claims had conflicts", stats['conflicts'])
+            logger.info("- %s matching were unresolved (first event taken)", stats['unresolved'])
 
     @staticmethod
     def _compute_temporal_overlap(date_claim, pot_events, window):

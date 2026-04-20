@@ -2,16 +2,20 @@
 Apply the thresholds used in the 2019 method to predict the occurrence of damages.
 """
 
+import logging
 from swafi.config import Config
 from swafi.events import load_events_from_pickle
 from swafi.impact_basic_options import ImpactBasicOptions
 from swafi.impact_thr import ImpactThresholds
+from swafi.utils.logging_setup import setup_logging
 
 
 config = Config()
 
 
 def main():
+    setup_logging(script_name='assess_thresholds_v2019')
+    logger = logging.getLogger(__name__)
     options = ImpactBasicOptions()
     options.parse_args()
     options.print_options()
@@ -30,11 +34,11 @@ def main():
     thr.split_sample()
     thr.show_target_stats()
 
-    print(f"Threshold 2019 method (union):")
+    logger.info("Threshold 2019 method (union):")
     thr.set_thresholds(thr_i_max=0.9, thr_p_sum=0.98, method='union')
     thr.assess_model_on_all_periods(save_results=True, file_tag='thr2019_union')
 
-    print(f"Threshold 2019 method (intersection):")
+    logger.info("Threshold 2019 method (intersection):")
     thr.set_thresholds(thr_i_max=0.9, thr_p_sum=0.98, method='intersection')
     thr.assess_model_on_all_periods(save_results=True, file_tag='thr2019_intersect')
 

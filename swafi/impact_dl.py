@@ -6,6 +6,7 @@ from .impact import Impact
 from .utils.verification import compute_confusion_matrix, print_classic_scores, \
     assess_roc_auc, store_classic_scores
 
+import logging
 import os
 import random
 import keras
@@ -23,6 +24,8 @@ except ImportError:
     pass
 
 DEBUG = False
+
+logger = logging.getLogger(__name__)
 
 
 class ImpactDl(Impact):
@@ -54,8 +57,8 @@ class ImpactDl(Impact):
         self.dg_test = None
 
         # Display if using GPU or CPU
-        print("Built with CUDA: ", tf.test.is_built_with_cuda())
-        print("Available GPU: ", tf.config.list_physical_devices('GPU'))
+        logger.info("Built with CUDA:  %s", tf.test.is_built_with_cuda())
+        logger.info("Available GPU:  %s", tf.config.list_physical_devices('GPU'))
 
         # Options that will be set later
         self.factor_neg_reduction = 1
@@ -81,7 +84,7 @@ class ImpactDl(Impact):
 
         filename = f'{dir_output}/{base_name}_{self.options.run_name}.keras'
         self.model.save(filename)
-        print(f"Model saved: {filename}")
+        logger.info("Model saved: %s", filename)
 
     def fit(self, tag=None, do_plot=True, dir_plots=None, show_plots=False,
             silent=False):
@@ -142,7 +145,7 @@ class ImpactDl(Impact):
             self.model.model.summary()
 
         # Fit the model
-        print("Fitting the model.")
+        logger.info("Fitting the model.")
         verbose = 1 if show_plots else 2
         verbose = 0 if silent else verbose
         hist = self.model.fit(
@@ -180,7 +183,7 @@ class ImpactDl(Impact):
         file_tag: str
             The tag to add to the file name.
         """
-        print("Creating test data generator.")
+        logger.info("Creating test data generator.")
         self._create_data_generator_test()  # Implement this method in the child class
 
         # Determine a good decision threshold from validation data if it's a classifier
@@ -188,12 +191,13 @@ class ImpactDl(Impact):
             thr, metric_name, metric_value = self._find_optimal_threshold(self.dg_val, metric='f1')
             if thr is not None:
                 self.decision_threshold = float(thr)
-                print(f"Selected decision threshold from validation ({metric_name}): {self.decision_threshold:.4f} (score={metric_value:.4f})")
+                logger.info("Selected decision threshold from validation (%s): %.4f (score=%.4f)",
+                            metric_name, self.decision_threshold, metric_value)
             else:
-                print("Could not determine an optimal threshold from validation; using default 0.5")
+                logger.warning("Could not determine an optimal threshold from validation; using default 0.5")
                 self.decision_threshold = 0.5
 
-        print("Assessing the model on all periods.")
+        logger.info("Assessing the model on all periods.")
         df_res = pd.DataFrame(columns=['split'])
         df_res = self._assess_model_dg(self.dg_train, 'train', df_res)
         df_res = self._assess_model_dg(self.dg_val, 'valid', df_res)
@@ -246,7 +250,7 @@ class ImpactDl(Impact):
         y_pred = np.concatenate(all_pred, axis=0)
         y_obs = np.concatenate(all_obs, axis=0)
 
-        print(f"\nSplit: {period_name}")
+        logger.info("\nSplit: %s", period_name)
 
         df_tmp = pd.DataFrame(columns=df_res.columns)
         df_tmp['split'] = [period_name]
@@ -254,7 +258,7 @@ class ImpactDl(Impact):
         # Compute the scores
         if self.target_type == 'occurrence':
             thr = self.decision_threshold
-            print(f"Using decision threshold: {thr:.4f}")
+            logger.info("Using decision threshold: %.4f", thr)
             y_pred_class = (y_pred >= thr).astype(int)
             tp, tn, fp, fn = compute_confusion_matrix(y_obs, y_pred_class)
             print_classic_scores(tp, tn, fp, fn)
@@ -263,9 +267,9 @@ class ImpactDl(Impact):
             df_tmp['ROC_AUC'] = [roc]
         else:
             rmse = np.sqrt(np.mean((y_obs - y_pred) ** 2))
-            print(f"RMSE: {rmse}")
+            logger.info("RMSE: %s", rmse)
             df_tmp['RMSE'] = [rmse]
-        print(f"----------------------------------------")
+        logger.info("----------------------------------------")
 
         df_res = pd.concat([df_res, df_tmp])
 
@@ -335,7 +339,7 @@ class ImpactDl(Impact):
         if self.target_type == 'occurrence':
             # Ensure class weights are floats
             class_weight = {k: float(v) for k, v in self.class_weight.items()}
-            print("Class weights:", class_weight)
+            logger.info("Class weights: %s", class_weight)
 
             # Get loss type from options if available
             loss_type = getattr(self.options, 'loss_function', 'focal')
@@ -346,7 +350,8 @@ class ImpactDl(Impact):
                     neg_weight=class_weight[0],
                     from_logits=False
                 )
-                print(f"Using Weighted BCE (pos_weight={class_weight[1]:.2f}, neg_weight={class_weight[0]:.2f})")
+                logger.info("Using Weighted BCE (pos_weight=%.2f, neg_weight=%.2f)",
+                            class_weight[1], class_weight[0])
 
             elif loss_type == 'focal':  # focal loss
                 # Convert pos_weight to alpha for focal loss
@@ -358,7 +363,7 @@ class ImpactDl(Impact):
                     alpha=alpha,  # Balance positive/negative
                     from_logits=False
                 )
-                print(f"Using Focal Loss (alpha={alpha:.3f}, gamma=2.0)")
+                logger.info("Using Focal Loss (alpha=%.3f, gamma=2.0)", alpha)
 
             elif loss_type == 'bfce':  # binary focal cross-entropy
                 # Convert pos_weight to alpha for focal loss
@@ -371,29 +376,29 @@ class ImpactDl(Impact):
                     alpha=alpha,
                     gamma=2.0,
                 )
-                print(f"Using BinaryFocalCrossentropy Loss (alpha={alpha:.3f}, gamma=2.0)")
+                logger.info("Using BinaryFocalCrossentropy Loss (alpha=%.3f, gamma=2.0)", alpha)
 
             elif loss_type == 'bce_dice':  # BCE + Dice loss
                 loss_fn = BCEDiceLoss()
-                print(f"Using BCE + Dice Loss")
+                logger.info("Using BCE + Dice Loss")
 
             elif loss_type == 'bce_jaccard':  # BCE + Jaccard loss
                 loss_fn = BCEJaccardLoss()
-                print(f"Using BCE + Jaccard Loss")
+                logger.info("Using BCE + Jaccard Loss")
 
             elif loss_type == 'tversky':  # Tversky Loss
                 loss_fn = TverskyLoss()
-                print(f"Using Tversky Loss")
+                logger.info("Using Tversky Loss")
 
             elif loss_type == 'f1':  # F1 Loss
                 loss_fn = F1Loss()
-                print(f"Using F1 Loss")
+                logger.info("Using F1 Loss")
 
             elif loss_type == 'focal_tversky':  # Focal Tversky Loss
                 pos_weight = class_weight[1]
                 alpha = pos_weight / (1.0 + pos_weight)
                 loss_fn = FocalTverskyLoss(alpha=alpha)
-                print(f"Using Focal Tversky Loss (alpha={alpha:.3f})")
+                logger.info("Using Focal Tversky Loss (alpha=%.3f)", alpha)
 
             else:
                 raise ValueError(f"Loss function '{loss_type}' not recognized for occurrence models.")
@@ -561,7 +566,8 @@ class CustomEarlyStopping(keras.callbacks.Callback):
             self.wait += 1
             if self.wait >= self.patience:
                 self.model.stop_training = True
-                print(f"\nEpoch {epoch + 1}: early stopping due to {self.monitor} falling below {self.min_value} for {self.patience} consecutive epochs.")
+                logger.info("\nEpoch %s: early stopping due to %s falling below %s for %s consecutive epochs.",
+                            epoch + 1, self.monitor, self.min_value, self.patience)
         else:
             self.wait = 0
 

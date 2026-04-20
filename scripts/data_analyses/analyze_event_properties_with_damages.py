@@ -2,8 +2,10 @@
 This script analyzes the properties of the precipitation events with and without claims.
 """
 
+import logging
 from swafi.config import Config
 from swafi.events import load_events_from_pickle
+from swafi.utils.logging_setup import setup_logging
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -20,6 +22,8 @@ output_dir = config.output_dir
 
 
 def main():
+    setup_logging(script_name='analyze_event_properties_with_damages')
+    logger = logging.getLogger(__name__)
     # Load events
     events_filename = f'events_{DATASET}_with_target_{LABEL_EVENT_FILE}.pickle'
     events = load_events_from_pickle(filename=events_filename)
@@ -98,7 +102,7 @@ def main():
         plot_histo(with_claims, without_claims, 'nb_contracts')
         plot_histo(with_claims, without_claims, 'nb_contracts', log_scale=True)
 
-    print("Done.")
+    logger.info("Done.")
 
 
 def get_common_bins(df1, df2, n_bins=50, max_val=None):

@@ -2,10 +2,12 @@
 Extracts the precipitation time series from the raw data and saves it as a netCDF files.
 """
 import argparse
+import logging
 import numpy as np
 
 from swafi.config import Config
 from swafi.precip_combiprecip import CombiPrecip
+from swafi.utils.logging_setup import setup_logging
 
 config = Config()
 
@@ -14,6 +16,8 @@ year_end = 2022
 
 
 def main(args):
+    setup_logging(script_name='extract_precipitation_time_series')
+    logger = logging.getLogger(__name__)
     # Load CombiPrecip files
     precip = CombiPrecip(year_start=year_start, year_end=year_end)
     precip.prepare_data(config.get('DIR_PRECIP'))
@@ -30,7 +34,7 @@ def main(args):
         cids = cids[::-1]
 
     for cid in cids:
-        print(f'Processing CID {cid}')
+        logger.info("Processing CID %s", cid)
         precip.save_nc_file_per_cid(cid, f'{year_start}-01-01', f'{year_end}-12-31')
 
 

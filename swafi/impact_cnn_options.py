@@ -4,9 +4,13 @@ Class to define the options for the CNN-based impact function.
 from swafi.impact_dl_options import ImpactDlOptions
 
 import copy
+import logging
 import math
 import argparse
 import keras
+
+
+logger = logging.getLogger(__name__)
 
 
 @keras.saving.register_keras_serializable(package="swafi")
@@ -295,7 +299,7 @@ class ImpactCnnOptions(ImpactDlOptions):
             self.use_spatial_dropout = False
 
         if self.optimize_with_optuna:
-            print("Optimizing with Optuna; some options will be ignored.")
+            logger.info("Optimizing with Optuna; some options will be ignored.")
 
     def generate_for_optuna(self, trial, hp_to_optimize='default'):
         """
@@ -457,39 +461,39 @@ class ImpactCnnOptions(ImpactDlOptions):
         show_optuna_params: bool
             Whether to show the Optuna parameters or not.
         """
-        print("-" * 80)
+        logger.info("-" * 80)
         self._print_shared_options(show_optuna_params)
-        print("CNN-specific options:")
+        logger.info("CNN-specific options:")
 
-        print("- use_dem: ", self.use_dem)
+        logger.info("- use_dem:  %s", self.use_dem)
 
         if self.optimize_with_optuna:
-            print("- optimize_precip_spatial_extent: ", self.optimize_precip_spatial_extent)
-            print("- optimize_precip_time_step: ", self.optimize_precip_time_step)
+            logger.info("- optimize_precip_spatial_extent:  %s", self.optimize_precip_spatial_extent)
+            logger.info("- optimize_precip_time_step:  %s", self.optimize_precip_time_step)
             if not show_optuna_params:
-                print("-" * 80)
+                logger.info("-" * 80)
                 return
 
         if self.use_precip:
-            print("- precip_window_size: ", self.precip_window_size)
-            print("- precip_resolution: ", self.precip_resolution)
-            print("- precip_time_step: ", self.precip_time_step)
-            print("- precip_days_before: ", self.precip_days_before)
-            print("- precip_days_after: ", self.precip_days_after)
-            print("- use_spatial_dropout: ", self.use_spatial_dropout)
-            print("- dropout_rate_cnn: ", self.dropout_rate_cnn)
-            print("- use_batchnorm_cnn: ", self.use_batchnorm_cnn)
-            print("- kernel_size_spatial: ", self.kernel_size_spatial)
-            print("- nb_filters: ", self.nb_filters)
-            print("- pool_size_spatial: ", self.pool_size_spatial)
-            print("- nb_conv_blocks: ", self.nb_conv_blocks)
-            print("- inner_activation_cnn: ", self.inner_activation_cnn)
-            print("- tcn_filters: ", self.tcn_filters)
-            print("- tcn_kernel_size: ", self.tcn_kernel_size)
-            print("- tcn_nb_layers: ", self.tcn_nb_layers)
-            print("- dropout_rate_tcn: ", self.dropout_rate_tcn)
+            logger.info("- precip_window_size:  %s", self.precip_window_size)
+            logger.info("- precip_resolution:  %s", self.precip_resolution)
+            logger.info("- precip_time_step:  %s", self.precip_time_step)
+            logger.info("- precip_days_before:  %s", self.precip_days_before)
+            logger.info("- precip_days_after:  %s", self.precip_days_after)
+            logger.info("- use_spatial_dropout:  %s", self.use_spatial_dropout)
+            logger.info("- dropout_rate_cnn:  %s", self.dropout_rate_cnn)
+            logger.info("- use_batchnorm_cnn:  %s", self.use_batchnorm_cnn)
+            logger.info("- kernel_size_spatial:  %s", self.kernel_size_spatial)
+            logger.info("- nb_filters:  %s", self.nb_filters)
+            logger.info("- pool_size_spatial:  %s", self.pool_size_spatial)
+            logger.info("- nb_conv_blocks:  %s", self.nb_conv_blocks)
+            logger.info("- inner_activation_cnn:  %s", self.inner_activation_cnn)
+            logger.info("- tcn_filters:  %s", self.tcn_filters)
+            logger.info("- tcn_kernel_size:  %s", self.tcn_kernel_size)
+            logger.info("- tcn_nb_layers:  %s", self.tcn_nb_layers)
+            logger.info("- dropout_rate_tcn:  %s", self.dropout_rate_tcn)
 
-        print("-" * 80)
+        logger.info("-" * 80)
 
     def is_ok(self):
         """
@@ -515,6 +519,6 @@ class ImpactCnnOptions(ImpactDlOptions):
         if not self.use_precip:
             if self.use_dem:
                 self.use_dem = False
-                print("Warning: DEM will not be used as precipitation is not.")
+                logger.warning("DEM will not be used as precipitation is not.")
 
         return True

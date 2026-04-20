@@ -5,6 +5,7 @@ Class to compute the impact function.
 from .impact import Impact
 
 import hashlib
+import logging
 import pickle
 import copy
 from sklearn.metrics import f1_score
@@ -20,6 +21,8 @@ except ImportError:
 
 from .utils.plotting import plot_random_forest_feature_importance
 from .utils.verification import compute_confusion_matrix, compute_score_binary
+
+logger = logging.getLogger(__name__)
 
 
 class ImpactRandomForest(Impact):
@@ -68,7 +71,7 @@ class ImpactRandomForest(Impact):
         with open(filename, 'wb') as f:
             pickle.dump(self.model, f)
 
-        print(f"Model saved: {filename}")
+        logger.info("Model saved: %s", filename)
 
     def compute_f1_score(self, x_valid, y_valid):
         """

@@ -1,6 +1,8 @@
 """
 Class to compute the impact function.
 """
+import logging
+
 from .config import Config
 
 import pickle
@@ -13,6 +15,8 @@ from sklearn.model_selection import train_test_split
 
 from .utils.verification import compute_confusion_matrix, print_classic_scores, \
     assess_roc_auc, store_classic_scores
+
+logger = logging.getLogger(__name__)
 
 
 class Impact:
@@ -184,12 +188,12 @@ class Impact:
 
         try:
             if tmp_filename.exists():
-                print(f"Loading data from {tmp_filename}")
+                logger.info("Loading data from %s", tmp_filename)
                 self.df = pd.read_pickle(tmp_filename)
             else:
                 raise FileNotFoundError
         except (pickle.UnpicklingError, FileNotFoundError, EOFError, Exception):
-            print(f"Creating dataframe and saving to {tmp_filename}")
+            logger.info("Creating dataframe and saving to %s", tmp_filename)
             for f in feature_files:
                 df_features = pd.read_csv(f)
 
@@ -339,7 +343,7 @@ class Impact:
         len_before = len(df)
         df.dropna(subset=self.features, inplace=True)
         len_after = len(df)
-        print(f"Number of NaN values removed: {len_before - len_after}")
+        logger.info("Number of NaN values removed: %s", len_before - len_after)
 
         if stratify:
             if stratify_by == 'day':
@@ -455,13 +459,15 @@ class Impact:
 
         # Print the percentage of events with and without damages
         self.show_target_stats()
-        print(f"Theoretical split ratios: train={100 * (1 - valid_test_size):.1f}%, "
-              f"valid={100 * valid_test_size * (1 - test_size):.1f}%, "
-              f"test={100 * valid_test_size * test_size:.1f}%")
+        logger.info("Theoretical split ratios: train=%.1f%%, valid=%.1f%%, test=%.1f%%",
+                    100 * (1 - valid_test_size),
+                    100 * valid_test_size * (1 - test_size),
+                    100 * valid_test_size * test_size)
         y_len = len(self.y_train) + len(self.y_valid) + len(self.y_test)
-        print(f"Actual split ratios: train={100 * len(self.y_train) / y_len:.1f}%, "
-              f"valid={100 * len(self.y_valid) / y_len:.1f}%, "
-              f"test={100 * len(self.y_test) / y_len:.1f}%")
+        logger.info("Actual split ratios: train=%.1f%%, valid=%.1f%%, test=%.1f%%",
+                    100 * len(self.y_train) / y_len,
+                    100 * len(self.y_valid) / y_len,
+                    100 * len(self.y_test) / y_len)
 
     def normalize_features(self):
         """
@@ -515,12 +521,10 @@ class Impact:
                 raise ValueError(f"Split {split} not defined")
             events_with_damages = y[y > 0]
             events_without_damages = y[y == 0]
-            print(f"Number of events with damages ({split}): "
-                  f"({100 * len(events_with_damages) / len(y):.3f}%)"
-                  f"({len(events_with_damages)})")
-            print(f"Number of events without damages ({split}): "
-                  f"({100 * len(events_without_damages) / len(y):.3f}%)"
-                  f"({len(events_without_damages)})")
+            logger.info("Number of events with damages (%s): (%.3f%%)(%s)",
+                        split, 100 * len(events_with_damages) / len(y), len(events_with_damages))
+            logger.info("Number of events without damages (%s): (%.3f%%)(%s)",
+                        split, 100 * len(events_without_damages) / len(y), len(events_without_damages))
 
     def create_benchmark_model(self, model_type='random'):
         """
@@ -597,7 +601,7 @@ class Impact:
         file_name_options = f'{output_dir}/{base_name}_options.csv'
         df_options = pd.DataFrame(self.options.__dict__.items(), columns=['option', 'value'])
         df_options.to_csv(file_name_options, index=False)
-        print(f"Results saved to {file_name}")
+        logger.info("Results saved to %s", file_name)
 
     def _assess_model(self, x, y, period_name, df_res):
         """
@@ -608,7 +612,7 @@ class Impact:
 
         y_pred = self.model.predict(x)
 
-        print(f"\nSplit: {period_name}")
+        logger.info("\nSplit: %s", period_name)
 
         df_tmp = pd.DataFrame(columns=df_res.columns)
         df_tmp['split'] = [period_name]
@@ -623,9 +627,9 @@ class Impact:
             df_tmp['ROC_AUC'] = [roc]
         else:
             rmse = np.sqrt(np.mean((y - y_pred) ** 2))
-            print(f"RMSE: {rmse}")
+            logger.info("RMSE: %s", rmse)
             df_tmp['RMSE'] = [rmse]
-        print(f"----------------------------------------")
+        logger.info("----------------------------------------")
 
         df_res = pd.concat([df_res, df_tmp])
 

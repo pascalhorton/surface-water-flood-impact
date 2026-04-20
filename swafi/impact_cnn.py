@@ -7,6 +7,7 @@ from .impact_cnn_model import ModelCnn
 from .impact_cnn_data_generator import ImpactCnnDataGenerator
 
 import copy
+import logging
 import pandas as pd
 
 has_optuna = False
@@ -17,6 +18,8 @@ except ImportError:
     pass
 
 DEBUG = False
+
+logger = logging.getLogger(__name__)
 
 
 class ImpactCnn(ImpactDl):
@@ -160,7 +163,7 @@ class ImpactCnn(ImpactDl):
 
         if (self.options.use_precip and self.precipitation_hf is not None and
                 self.options.precip_window_size / self.options.precip_resolution == 1):
-            print("Preloading all precipitation data.")
+            logger.info("Preloading all precipitation data.")
             all_cids = df['cid'].unique()
             self.precipitation_hf.preload_all_cid_data(all_cids)
 
@@ -189,7 +192,7 @@ class ImpactCnn(ImpactDl):
 
         if (self.options.use_precip and self.precipitation_hf is not None and
                 self.options.precip_window_size / self.options.precip_resolution == 1):
-            print("Preloading all precipitation data.")
+            logger.info("Preloading all precipitation data.")
             all_cids = self.df['cid'].unique()
             self.precipitation_hf.preload_all_cid_data(all_cids)
 
@@ -307,7 +310,7 @@ class ImpactCnn(ImpactDl):
             return
 
         if not self.options.use_precip:
-            print("Precipitation is not used and is therefore not loaded.")
+            logger.info("Precipitation is not used and is therefore not loaded.")
             return
 
         precipitation.prepare_data(
@@ -335,7 +338,7 @@ class ImpactCnn(ImpactDl):
             return
 
         if not self.options.use_precip:
-            print("DEM is not used and is therefore not loaded.")
+            logger.info("DEM is not used and is therefore not loaded.")
             return
 
         assert dem.ndim == 2, "DEM must be 2D"

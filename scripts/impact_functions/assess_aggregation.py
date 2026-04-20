@@ -1,6 +1,7 @@
 """
 Test script for loading and evaluating different pre-trained models.
 """
+import logging
 import numpy as np
 import xarray as xr
 import geopandas as gpd
@@ -10,6 +11,9 @@ from swafi.config import Config
 from swafi.damages_mobiliar import DamagesMobiliar
 from swafi.damages_gvz import DamagesGvz
 from swafi.utils.verification import compute_confusion_matrix, print_classic_scores, prepare_full_domain_assessment
+from swafi.utils.logging_setup import setup_logging
+
+logger = logging.getLogger(__name__)
 
 AGGREGATION_ZIP = R"C:\Data\Data\GIS\Administration\CH_zip_codes\AMTOVZ_ZIP.shp"
 AGGREGATION_CATCH = R"C:\Data\Projects\2024 SWF\Data\GIS\Catchments\ezgg_40km2.shp"
@@ -216,13 +220,13 @@ def assess(result_path, ds_damages, ignore_removed=False, relax_days=False, prob
     else:
         # Pixel-level assessment
         y_true, y_pred = prepare_full_domain_assessment(ds_pred, ds_damages, ignore_removed, relax_days, flatten=True)
-        print(f"Pixel-level assessment: {y_pred.size} samples.")
+        logger.info("Pixel-level assessment: %s samples.", y_pred.size)
 
     y_pred = (y_pred >= prob_threshold).astype(int)
     y_true = (y_true > 0).astype(int)
     tp, tn, fp, fn = compute_confusion_matrix(y_true, y_pred)
     print_classic_scores(tp, tn, fp, fn)
-    print("*************************************")
+    logger.info("*************************************")
     ds_pred.close()
 
 
@@ -251,6 +255,7 @@ def get_damages_xr(dataset):
 
 
 def main():
+    setup_logging(script_name='assess_aggregation')
     output_path = Path(PREDICTION_FILE)
 
     if not output_path.exists():

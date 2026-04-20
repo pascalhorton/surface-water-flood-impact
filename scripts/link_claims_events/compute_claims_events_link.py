@@ -11,11 +11,15 @@ computed using the following criteria:
     - prior: put more weights on events occurring prior to the claim
 """
 
+import logging
 from swafi.config import Config
 from swafi.damages_mobiliar import DamagesMobiliar
 from swafi.damages_gvz import DamagesGvz
 from swafi.events import Events
+from swafi.utils.logging_setup import setup_logging
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 CONFIG = Config()
 
@@ -59,16 +63,17 @@ else:
 
 
 def main():
+    setup_logging(script_name='compute_claims_events_link')
     # Compute the claims and events link
     damages, events_to_remove = get_damages_linked_to_events()
 
     # Check that the damage categories are the same
     if not damages.claim_categories_are_for_type(CLAIM_CATEGORIES):
-        print("Error: the claim categories are not the same as the ones used for the "
+        logger.error("Error: the claim categories are not the same as the ones used for the "
               "events extraction.")
         return
     if not damages.exposure_categories_are_for_type(EXPOSURE_CATEGORIES):
-        print("Error: the exposure categories are not the same as the ones used for the "
+        logger.error("Error: the exposure categories are not the same as the ones used for the "
               "events extraction.")
         return
 
@@ -83,12 +88,12 @@ def main():
     if events_to_remove is not None:
         events.remove_events(events_to_remove)
     else:
-        print("Warning: no events to remove because the "
+        logger.warning("No events to remove because the "
               "damages where loaded from pickle files.")
     events.remove_events_without_contracts()
 
     nb_events = len(events.events)
-    print(f"Final number of events: {nb_events}")
+    logger.info("Final number of events: %s", nb_events)
 
     # Save the events with target values to a pickle file
     filename = f'events_{DATASET}_with_target_{LABEL_RESULTING_FILE}'
@@ -96,7 +101,7 @@ def main():
     if SAVE_AS_CSV:
         events.save_to_csv(filename=filename + '.csv')
 
-    print(f"Linked performed and saved to {CONFIG.get('PICKLES_DIR')}.")
+    logger.info("Linked performed and saved to %s.", CONFIG.get('PICKLES_DIR'))
 
 
 def get_damages_linked_to_events():
@@ -108,7 +113,7 @@ def get_damages_linked_to_events():
     file_path = Path(PICKLES_DIR + '/' + filename)
 
     if file_path.exists():
-        print(f"Link for {CRITERIA} already computed.")
+        logger.info("Link for %s already computed.", CRITERIA)
         if DATASET == 'mobiliar':
             damages = DamagesMobiliar(
                 pickle_file=filename,
@@ -125,9 +130,9 @@ def get_damages_linked_to_events():
             raise ValueError(f"Unknown damage dataset: {DATASET}")
         return damages, None
 
-    print(f"Linking claims and events using method '{METHOD}'...")
+    logger.info("Linking claims and events using method '%s'...", METHOD)
     if METHOD == 'classic':
-        print(f"Computing link for {CRITERIA} with window days {WINDOW_DAYS}...")
+        logger.info("Computing link for %s with window days %s...", CRITERIA, WINDOW_DAYS)
 
     if DATASET == 'mobiliar':
         damages = DamagesMobiliar(
@@ -162,7 +167,7 @@ def get_damages_linked_to_events():
     events_removed_claims = events.get_events_for_removed_claims(removed_claims, damages)
     events_to_remove.extend(events_removed_claims)
     events_to_remove = list(set(events_to_remove))
-    print(f"Total number of events to remove: {len(events_to_remove)}")
+    logger.info("Total number of events to remove: %s", len(events_to_remove))
 
     return damages, events_to_remove
 

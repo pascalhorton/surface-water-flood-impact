@@ -1,11 +1,13 @@
 """
 Extracts the precipitation time series from the raw data and saves it as a netCDF files.
 """
+import logging
 import xarray as xr
 from pathlib import Path
 
 from swafi.config import Config
 from swafi.precip_combiprecip import CombiPrecip
+from swafi.utils.logging_setup import setup_logging
 
 config = Config()
 
@@ -14,6 +16,8 @@ year_end = 2022
 
 
 def main():
+    setup_logging(script_name='compute_precipitation_statistics')
+    logger = logging.getLogger(__name__)
     # Load CombiPrecip files
     precip = CombiPrecip(year_start=year_start, year_end=year_end)
     precip.prepare_data(config.get('DIR_PRECIP'))
@@ -45,7 +49,7 @@ def main():
     output_dir = Path(config.get('OUTPUT_DIR'))
     output_dir.mkdir(parents=True, exist_ok=True)
     stats_path = output_dir / f'cpc_statistics_{year_start}-{year_end}.nc'
-    print(f'Saving statistics to {stats_path}...')
+    logger.info("Saving statistics to %s...", stats_path)
     ds_stats.to_netcdf(stats_path)
 
 if __name__ == '__main__':

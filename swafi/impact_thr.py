@@ -1,12 +1,15 @@
 """
 Class to compute the impact function.
 """
+import logging
 import numpy as np
 import pandas as pd
 
 from .impact import Impact
 from .utils.verification import compute_confusion_matrix, print_classic_scores, \
     store_classic_scores, assess_roc_auc
+
+logger = logging.getLogger(__name__)
 
 
 class ImpactThresholds(Impact):
@@ -74,7 +77,7 @@ class ImpactThresholds(Impact):
         # Apply the threshold method
         y_pred = self._apply(x)
 
-        print(f"\nSplit: {period_name}")
+        logger.info("\nSplit: %s", period_name)
 
         df_tmp = pd.DataFrame(columns=df_res.columns)
         df_tmp['split'] = [period_name]
@@ -86,9 +89,9 @@ class ImpactThresholds(Impact):
             store_classic_scores(tp, tn, fp, fn, df_tmp)
         else:
             rmse = np.sqrt(np.mean((y - y_pred) ** 2))
-            print(f"RMSE: {rmse}")
+            logger.info("RMSE: %s", rmse)
             df_tmp['RMSE'] = [rmse]
-        print(f"----------------------------------------")
+        logger.info("----------------------------------------")
 
         df_res = pd.concat([df_res, df_tmp])
 

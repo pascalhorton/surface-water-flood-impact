@@ -2,10 +2,14 @@
 Class for the CNN model.
 """
 
+import logging
 import math
 
 import keras
 import numpy as np
+
+
+logger = logging.getLogger(__name__)
 
 
 @keras.saving.register_keras_serializable(package="swafi")
@@ -359,8 +363,8 @@ class ModelCnn(keras.models.Model):
                     math.log(spatial_size, self.options.pool_size_spatial))
                 if self.options.nb_conv_blocks > nb_conv_blocks_max:
                     self.options.nb_conv_blocks = nb_conv_blocks_max
-                    print(f"Warning: Number of convolution blocks was reduced "
-                          f"to {self.options.nb_conv_blocks}")
+                    logger.warning("Number of convolution blocks was reduced to %s",
+                                   self.options.nb_conv_blocks)
 
     def _tcn_block(self, x, dilation_rate, filters, kernel_size, i):
         """

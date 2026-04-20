@@ -1,3 +1,4 @@
+import logging
 
 has_optuna = False
 try:
@@ -5,6 +6,9 @@ try:
     has_optuna = True
 except ImportError:
     pass
+
+
+logger = logging.getLogger(__name__)
 
 
 def get_or_create_optuna_study(options):
@@ -40,7 +44,7 @@ def get_or_create_optuna_study(options):
             storage=storage,
             sampler=sampler
         )
-        print(f"Study '{options.optuna_study_name}' already exists.")
+        logger.info("Study '%s' already exists.", options.optuna_study_name)
     except KeyError:
         # If the study does not exist, create it
         study = optuna.create_study(
@@ -49,6 +53,6 @@ def get_or_create_optuna_study(options):
             direction="maximize",
             sampler=sampler
         )
-        print(f"Study '{options.optuna_study_name}' created successfully.")
+        logger.info("Study '%s' created successfully.", options.optuna_study_name)
 
     return study

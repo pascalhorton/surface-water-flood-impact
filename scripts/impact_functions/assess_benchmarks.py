@@ -2,15 +2,19 @@
 Train a random forest model to predict the occurrence of damages.
 """
 
+import logging
 from swafi.config import Config
 from swafi.impact import Impact
 from swafi.events import load_events_from_pickle
 from swafi.impact_basic_options import ImpactBasicOptions
+from swafi.utils.logging_setup import setup_logging
 
 config = Config()
 
 
 def main():
+    setup_logging(script_name='assess_benchmarks')
+    logger = logging.getLogger(__name__)
     options = ImpactBasicOptions()
     options.parse_args()
     options.print_options()
@@ -21,19 +25,19 @@ def main():
     events = load_events_from_pickle(filename=events_filename)
 
     # Create the impact function
-    print("\nBenchmark model (always false):")
+    logger.info("Benchmark model (always false):")
     bench = Impact(events, options)
     bench.create_benchmark_model('always_false')
     bench.split_sample()
     bench.assess_model_on_all_periods(save_results=True, file_tag='bench_false')
 
-    print("\nBenchmark model (always true):")
+    logger.info("Benchmark model (always true):")
     bench = Impact(events, options)
     bench.create_benchmark_model('always_true')
     bench.split_sample()
     bench.assess_model_on_all_periods(save_results=True, file_tag='bench_true')
 
-    print("\nBenchmark model (random):")
+    logger.info("Benchmark model (random):")
     bench = Impact(events, options)
     bench.create_benchmark_model('random')
     bench.split_sample()

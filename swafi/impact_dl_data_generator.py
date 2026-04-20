@@ -2,9 +2,14 @@
 Class to generate data for the deep learning models.
 """
 
+import logging
+
 import keras
 import numpy as np
 from pathlib import Path
+
+
+logger = logging.getLogger(__name__)
 
 
 class ImpactDlDataGenerator(keras.utils.Sequence):
@@ -102,8 +107,8 @@ class ImpactDlDataGenerator(keras.utils.Sequence):
         self.idxs = np.concatenate([idxs_neg_new, idxs_pos])
         self.n_samples = self.idxs.shape[0]
 
-        print(f"Reduced the number of negative events from {n_neg} to {n_neg_new}")
-        print(f"Number of positive events: {idxs_pos.shape[0]}")
+        logger.info("Reduced the number of negative events from %s to %s", n_neg, n_neg_new)
+        logger.info("Number of positive events: %s", idxs_pos.shape[0])
 
         # Shuffle
         np.random.shuffle(self.idxs)
@@ -170,7 +175,7 @@ class ImpactDlDataGenerator(keras.utils.Sequence):
 
     def _compute_static_predictor_statistics(self):
         if self.X_static is not None:
-            print('Computing/assigning static predictor statistics')
+            logger.info('Computing/assigning static predictor statistics')
             if self.transform_static == 'standardize':
                 # Compute the mean and standard deviation of the static data
                 if self.mean_static is None:
@@ -196,23 +201,20 @@ class ImpactDlDataGenerator(keras.utils.Sequence):
                                          expected_length):
         """Analyze the precipitation data shape difference."""
         if data_length > expected_length:
-            print(f"Data array larger than expected: {data_length} > "
-                  f"{expected_length}")
-            print(f"Event: {event}")
-            print(f"Data shape: {precip_ev.shape}")
-            print(f"Data: {precip_ev}")
+            logger.error("Data array larger than expected: %s > %s", data_length, expected_length)
+            logger.error("Event: %s", event)
+            logger.error("Data shape: %s", precip_ev.shape)
+            logger.error("Data: %s", precip_ev)
             raise ValueError("Data array larger than expected.")
 
         if self.debug:
-            print(f"Shape mismatch: expected: {expected_length} !="
-                  f" got: {data_length}")
-            print(f"Event: {event}")
+            logger.debug("Shape mismatch: expected: %s != got: %s", expected_length, data_length)
+            logger.debug("Event: %s", event)
 
         if self.warning_counter in [10, 50, 100, 500, 1000]:
-            print(f"Shape mismatch: expected: {expected_length} !="
-                  f" got: {precip_ev.shape[-1]}")
-            print(f"Warning: {self.warning_counter} events with "
-                  f"shape mismatch (e.g., missing precipitation data).")
+            logger.warning("Shape mismatch: expected: %s != got: %s", expected_length, precip_ev.shape[-1])
+            logger.warning("%s events with shape mismatch (e.g., missing precipitation data).",
+                           self.warning_counter)
 
         if self.warning_counter > 1000:
             raise ValueError("Too many issues with precipitation data.")

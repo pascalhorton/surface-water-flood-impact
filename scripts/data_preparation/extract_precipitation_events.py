@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
+import logging
 import os
 import multiprocessing
 import concurrent.futures
@@ -11,6 +12,7 @@ from tqdm import tqdm
 from swafi.config import Config
 from swafi.domain import Domain
 from swafi.precip_combiprecip import CombiPrecip
+from swafi.utils.logging_setup import setup_logging
 
 # Configuration for the script
 n_cpus = multiprocessing.cpu_count()
@@ -49,6 +51,9 @@ def process_part(i, part, config):
 
 
 if __name__ == "__main__":
+    setup_logging(script_name='extract_precipitation_events')
+    logger = logging.getLogger(__name__)
+
     config = Config()
 
     # Get the precipitation data domain
@@ -68,7 +73,7 @@ if __name__ == "__main__":
             results.append(f.result())
         assert all(results), "Some parts failed to process."
 
-    print("All parts processed successfully. Events saved in 'event_parts/' directory.")
+    logger.info("All parts processed successfully. Events saved in 'event_parts/' directory.")
 
     # Merge all parts into a single DataFrame
     all_events = []
@@ -78,4 +83,4 @@ if __name__ == "__main__":
     all_events_df = pd.concat(all_events, ignore_index=True)
     all_events_df.to_parquet(f"events_cpc_model_domain_3x3_2005_2024_{method}.parquet")
 
-    print("All parts merged into a single DataFrame.")
+    logger.info("All parts merged into a single DataFrame.")

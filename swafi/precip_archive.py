@@ -1,6 +1,7 @@
 """
 Class to handle the precipitation archive data.
 """
+import logging
 import pickle
 import hashlib
 import dask
@@ -15,6 +16,8 @@ from .config import Config
 from .precip import Precipitation
 
 config = Config()
+
+logger = logging.getLogger(__name__)
 
 
 class PrecipitationArchive(Precipitation):
@@ -140,7 +143,7 @@ class PrecipitationArchive(Precipitation):
         tmp_filename = self.tmp_dir / filename
 
         if tmp_filename.exists():
-            print("Loading all data for each CID from pickle file.")
+            logger.info("Loading all data for each CID from pickle file.")
             try:
                 with open(tmp_filename, 'rb') as f:
                     self.cid_time_series = pickle.load(f)
@@ -164,10 +167,9 @@ class PrecipitationArchive(Precipitation):
                                 {self.x_axis: x, self.y_axis: y}
                             )
                         except ValueError as e:
-                            print(e)
-                            print(f"Error with file {f} and location {x}, {y}")
-                            print(f"Data shape: {data[self.precip_var].shape}")
-                            data.info()
+                            logger.warning("%s", e)
+                            logger.warning("Error with file %s and location %s, %s", f, x, y)
+                            logger.warning("Data shape: %s", data[self.precip_var].shape)
 
                         ts.append(dat)
 
@@ -265,10 +267,10 @@ class PrecipitationArchive(Precipitation):
                             len(x_axis)
                         )
 
-                        print(f"Filling missing values for {t.year}-{t.month:02} "
-                              f"with NaN in {self.precip_var} variable. "
-                              f"Expected shape: {expected_shape}, "
-                              f"actual shape: {data[self.precip_var].shape}")
+                        logger.warning("Filling missing values for %s-%02d with NaN in %s variable. "
+                                       "Expected shape: %s, actual shape: %s",
+                                       t.year, t.month, self.precip_var,
+                                       expected_shape, data[self.precip_var].shape)
 
                         # Create an array filled with np.nan of the expected shape
                         filled_data = np.full(expected_shape, np.nan, dtype='float32')
@@ -446,14 +448,14 @@ class PrecipitationArchive(Precipitation):
             try:
                 with open(mean_file, 'rb') as f:
                     mean = pickle.load(f)
-                    print(f"Precipitation mean loaded from pickle file {mean_file}.")
+                    logger.info("Precipitation mean loaded from pickle file %s.", mean_file)
             except EOFError:
                 raise EOFError(f"Error: {mean_file} is empty or corrupted.")
 
             try:
                 with open(std_file, 'rb') as f:
                     std = pickle.load(f)
-                    print(f"Precipitation sd loaded from pickle file {std_file}.")
+                    logger.info("Precipitation sd loaded from pickle file %s.", std_file)
             except EOFError:
                 raise EOFError(f"Error: {std_file} is empty or corrupted.")
 
@@ -513,7 +515,7 @@ class PrecipitationArchive(Precipitation):
             try:
                 with open(tmp_filename, 'rb') as f:
                     quantiles = pickle.load(f)
-                    print(f"Precipitation quantile {quantile} loaded from pickle file {tmp_filename}.")
+                    logger.info("Precipitation quantile %s loaded from pickle file %s.", quantile, tmp_filename)
             except EOFError:
                 raise EOFError(f"Error: {tmp_filename} is empty or corrupted.")
 
@@ -620,9 +622,9 @@ class PrecipitationArchive(Precipitation):
                     cid=cid
                 ).to_numpy()
             except KeyError as e:
-                print(f"Error with CID {cid} and time {t_start} to {t_end}")
-                print(f"File: precip_{self.dataset_name.lower()}_all_cids_[hash].pickle")
-                print(e)
+                logger.error("Error with CID %s and time %s to %s", cid, t_start, t_end)
+                logger.error("File: precip_%s_all_cids_[hash].pickle", self.dataset_name.lower())
+                logger.error("%s", e)
 
             # If the time series is 1D, add 2 dimensions
             if len(ts.shape) == 1:

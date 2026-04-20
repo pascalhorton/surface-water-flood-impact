@@ -2,12 +2,14 @@
 Extract static data from geotiff files based on the cids and save the results as csv.
 """
 
+import logging
 import rasterio
 import pandas as pd
 from pathlib import Path
 from swafi.config import Config
 from swafi.domain import Domain
 from swafi.utils.spatial import extract_statistics
+from swafi.utils.logging_setup import setup_logging
 
 # Select the attributes of interest. Options are:
 # static_terrain,
@@ -26,6 +28,8 @@ data_dir = Path(base_dir + '/' + SRC_DIR)
 
 
 def main():
+    setup_logging(script_name='extract_static_data_to_csv')
+    logger = logging.getLogger(__name__)
     domain = Domain()
 
     # List all .tif files in the source directory
@@ -34,7 +38,7 @@ def main():
     # Extract the static data for each file
     df = pd.DataFrame()
     for f in tif_files:
-        print(f'Extracting static data from {f.name}...')
+        logger.info("Extracting static data from %s...", f.name)
 
         with rasterio.open(f) as dataset:
             domain.check_projection(dataset, f)
@@ -54,7 +58,7 @@ def main():
     # Save the DataFrame as csv
     df.to_csv(f'{config.output_dir}/{SRC_DIR}.csv', index=False)
 
-    print('Done.')
+    logger.info("Done.")
 
 
 if __name__ == '__main__':

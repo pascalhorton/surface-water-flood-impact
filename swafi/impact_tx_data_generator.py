@@ -3,7 +3,11 @@ Class to generate the data for the Transformer model.
 """
 from .impact_dl_data_generator import ImpactDlDataGenerator
 
+import logging
 import numpy as np
+
+
+logger = logging.getLogger(__name__)
 
 
 class ImpactTxDataGenerator(ImpactDlDataGenerator):
@@ -167,7 +171,7 @@ class ImpactTxDataGenerator(ImpactDlDataGenerator):
         if self.X_precip_hf is not None:
             # Log transform the precipitation
             if self.log_transform_precip:
-                print('Log-transforming high-frequency precipitation')
+                logger.info('Log-transforming high-frequency precipitation')
                 self.X_precip_hf.log_transform()
 
             # Load or compute the precipitation statistics
@@ -183,7 +187,7 @@ class ImpactTxDataGenerator(ImpactDlDataGenerator):
         if self.X_precip_daily is not None:
             # Log transform the precipitation
             if self.log_transform_precip:
-                print('Log-transforming daily precipitation')
+                logger.info('Log-transforming daily precipitation')
                 self.X_precip_daily.log_transform()
 
             # Load or compute the precipitation statistics
@@ -288,7 +292,7 @@ class ImpactTxDataGenerator(ImpactDlDataGenerator):
             diff = x_precip_ev.shape[0] - self.get_precip_hf_length()
             if abs(diff / self.get_precip_hf_length()) > 0.1:  # 10% tolerance
                 if self.debug:
-                    print(f"Warning: too many missing timesteps ({diff}).")
+                    logger.warning("Too many missing timesteps (%s).", diff)
 
                 x_precip_ev = self._create_empty_precip_block(
                     self.get_precip_hf_length())
@@ -329,7 +333,7 @@ class ImpactTxDataGenerator(ImpactDlDataGenerator):
             diff = x_precip_ev.shape[0] - self.get_precip_daily_length()
             if abs(diff / self.get_precip_daily_length()) > 0.1:
                 if self.debug:
-                    print(f"Warning: too many missing timesteps ({diff}).")
+                    logger.warning("Too many missing timesteps (%s).", diff)
 
                 x_precip_ev = self._create_empty_precip_block(
                     self.get_precip_daily_length())

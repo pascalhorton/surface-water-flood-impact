@@ -1,6 +1,7 @@
 """
 Test script for loading and evaluating different pre-trained models.
 """
+import logging
 import pandas as pd
 import numpy as np
 import xarray as xr
@@ -15,6 +16,9 @@ from swafi.precip_combiprecip import CombiPrecip
 from swafi.damages_mobiliar import DamagesMobiliar
 from swafi.damages_gvz import DamagesGvz
 from swafi.utils.verification import compute_confusion_matrix, print_classic_scores, prepare_full_domain_assessment
+from swafi.utils.logging_setup import setup_logging
+
+logger = logging.getLogger(__name__)
 
 DO_ASSESS = True
 
@@ -28,7 +32,7 @@ def assess(result_path, ds_damages, ignore_removed=True, relax_days=True):
     y_pred = (y_pred > 0).astype(int)
     tp, tn, fp, fn = compute_confusion_matrix(y_true, y_pred)
     print_classic_scores(tp, tn, fp, fn)
-    print("*************************************")
+    logger.info("*************************************")
     ds_pred.close()
 
 
@@ -62,6 +66,7 @@ def get_damages_xr(dataset):
 
 
 def main():
+    setup_logging(script_name='use_thr_occurrence')
     options = ImpactBasicOptions()
     options.parse_args()
     options.print_options()
@@ -74,10 +79,10 @@ def main():
     events_path = Path(config.get('TMP_DIR')) / events_filename
 
     if not events_path.exists():
-        print(f"Extracting events and saving to {events_path}...")
+        logger.info("Extracting events and saving to %s...", events_path)
         cpc = CombiPrecip(year_start, year_end)
         cpc.open_files(config.get('DIR_PRECIP'))
-        print("Applying smoothing...")
+        logger.info("Applying smoothing...")
         cpc.apply_smoothing(filter_size=3)
         events = cpc.extract_events()
         events.to_pickle(events_path)
@@ -87,7 +92,7 @@ def main():
     for method in ['union', 'intersection']:
         output_path = Path(config.get('OUTPUT_DIR')) / f'pred_thr_2019_{method}_{year_start}-{year_end}.nc'
 
-        print(f"Processing {method}...")
+        logger.info("Processing %s...", method)
 
         if output_path.exists():
             if DO_ASSESS:
@@ -141,7 +146,7 @@ def main():
 
         # Save the results
         ds_pred.to_netcdf(output_path)
-        print(f"Results saved to {output_path}")
+        logger.info("Results saved to %s", output_path)
         ds_pred.close()
 
         if DO_ASSESS:

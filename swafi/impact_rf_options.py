@@ -3,6 +3,7 @@ Class to handle the RF options.
 """
 import datetime
 import copy
+import logging
 
 from swafi.impact_basic_options import ImpactBasicOptions
 
@@ -12,6 +13,9 @@ try:
     has_optuna = True
 except ImportError:
     pass
+
+
+logger = logging.getLogger(__name__)
 
 
 class ImpactRFOptions(ImpactBasicOptions):
@@ -164,22 +168,22 @@ class ImpactRFOptions(ImpactBasicOptions):
         show_optuna_params: bool
             Whether to show the Optuna parameters or not.
         """
-        print("-" * 80)
+        logger.info("-" * 80)
         self._print_basic_options()
 
         if self.optimize_with_optuna and not show_optuna_params:
-            print("-" * 80)
+            logger.info("-" * 80)
             return  # Do not print the other options
 
-        print("- weight_denominator: ", self.weight_denominator)
-        print("- n_estimators: ", self.n_estimators)
-        print("- criterion: ", self.criterion)
-        print("- max_depth: ", self.max_depth)
-        print("- min_samples_split: ", self.min_samples_split)
-        print("- min_samples_leaf: ", self.min_samples_leaf)
-        print("- max_features: ", self.max_features)
+        logger.info("- weight_denominator:  %s", self.weight_denominator)
+        logger.info("- n_estimators:  %s", self.n_estimators)
+        logger.info("- criterion:  %s", self.criterion)
+        logger.info("- max_depth:  %s", self.max_depth)
+        logger.info("- min_samples_split:  %s", self.min_samples_split)
+        logger.info("- min_samples_leaf:  %s", self.min_samples_leaf)
+        logger.info("- max_features:  %s", self.max_features)
 
-        print("-" * 80)
+        logger.info("-" * 80)
 
     def is_ok(self):
         """

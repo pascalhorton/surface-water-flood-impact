@@ -5,8 +5,12 @@ import argparse
 import datetime
 import copy
 import ast
+import logging
 import pandas as pd
 from typing import List
+
+
+logger = logging.getLogger(__name__)
 
 
 class ImpactBasicOptions:
@@ -236,33 +240,33 @@ class ImpactBasicOptions:
         """
         Print the options.
         """
-        print("-" * 80)
+        logger.info("-" * 80)
         self._print_basic_options()
-        print("-" * 80)
+        logger.info("-" * 80)
 
     def _print_basic_options(self):
         """
         Print the options.
         """
-        print(f"Options (run {self.run_name}):")
-        print("- dataset: ", self.dataset)
-        print("- event_file_label: ", self.event_file_label)
-        print("- min_nb_claims: ", self.min_nb_claims)
-        print("- target_type: ", self.target_type)
-        print("- random_state: ", self.random_state)
-        print("- use_event_attributes: ", self.use_event_attributes)
-        print("- use_static_attributes: ", self.use_static_attributes)
-        print("- use_all_static_attributes: ", self.use_all_static_attributes)
+        logger.info("Options (run %s):", self.run_name)
+        logger.info("- dataset:  %s", self.dataset)
+        logger.info("- event_file_label:  %s", self.event_file_label)
+        logger.info("- min_nb_claims:  %s", self.min_nb_claims)
+        logger.info("- target_type:  %s", self.target_type)
+        logger.info("- random_state:  %s", self.random_state)
+        logger.info("- use_event_attributes:  %s", self.use_event_attributes)
+        logger.info("- use_static_attributes:  %s", self.use_static_attributes)
+        logger.info("- use_all_static_attributes:  %s", self.use_all_static_attributes)
 
         if self.use_static_attributes or self.use_event_attributes:
-            print("- simple_feature_classes: ", self.simple_feature_classes)
-            print("- replace simple_features: ", self.replace_simple_features)
+            logger.info("- simple_feature_classes:  %s", self.simple_feature_classes)
+            logger.info("- replace simple_features:  %s", self.replace_simple_features)
 
         if self.optimize_with_optuna:
-            print("- optimize_with_optuna: ", self.optimize_with_optuna)
-            print("- optuna_study_name: ", self.optuna_study_name)
-            print("- optuna_trials_nb: ", self.optuna_trials_nb)
-            print("- optuna_random_sampler: ", self.optuna_random_sampler)
+            logger.info("- optimize_with_optuna:  %s", self.optimize_with_optuna)
+            logger.info("- optuna_study_name:  %s", self.optuna_study_name)
+            logger.info("- optuna_trials_nb:  %s", self.optuna_trials_nb)
+            logger.info("- optuna_random_sampler:  %s", self.optuna_random_sampler)
 
     def get_attributes_tag(self):
         """

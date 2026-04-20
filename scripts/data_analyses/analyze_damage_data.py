@@ -2,9 +2,11 @@
 This script analyzes the distribution of the number of contracts and claims per cell.
 """
 
+import logging
 from swafi.config import Config
 from swafi.damages_mobiliar import DamagesMobiliar
 from swafi.damages_gvz import DamagesGvz
+from swafi.utils.logging_setup import setup_logging
 import pandas as pd
 import matplotlib.pyplot as plt
 
@@ -27,6 +29,8 @@ elif DATASET == 'gvz':
     CLAIM_CATEGORIES = ['likely_pluvial']
 
 def main():
+    setup_logging(script_name='analyze_damage_data')
+    logger = logging.getLogger(__name__)
     if DATASET == 'mobiliar':
         damages = DamagesMobiliar(dir_exposure=config.get('DIR_EXPOSURE_MOBILIAR'),
                                   dir_claims=config.get('DIR_CLAIMS_MOBILIAR'),
@@ -109,8 +113,8 @@ def main():
     plt.close()
     # Show values
     hist_data = hist_data.sort_index()
-    print(f"Total number of claims: {hist_data.sum()}")
-    print(f"Number of claims per cell: {hist_data} (pc: {100*hist_data / hist_data.sum()}%)")
+    logger.info("Total number of claims: %s", hist_data.sum())
+    logger.info("Number of claims per cell: %s (pc: %s%%)", hist_data, 100*hist_data / hist_data.sum())
 
     # Plot the monthly distribution of the total # of claims for selected categories
     categories = damages.selected_claim_categories
@@ -152,9 +156,9 @@ def main():
         pc_struc = 100 * nb_struc / nb_tot
         pc_cont = 100 * nb_cont / nb_tot
 
-        print(f"Number of claims with both structure and content: {pc_both:.2f}%")
-        print(f"Number of claims with structure only: {pc_struc:.2f}%")
-        print(f"Number of claims with content only: {pc_cont:.2f}%")
+        logger.info("Number of claims with both structure and content: %.2f%%", pc_both)
+        logger.info("Number of claims with structure only: %.2f%%", pc_struc)
+        logger.info("Number of claims with content only: %.2f%%", pc_cont)
 
     # Analyze the distribution of the number of contracts and claims per cell
     df_contracts = damages.exposure
@@ -218,7 +222,7 @@ def main():
     plt.savefig(output_dir / 'scatter_contracts_claims.png')
     plt.savefig(output_dir / 'scatter_contracts_claims.pdf')
 
-    print("Done.")
+    logger.info("Done.")
 
 
 if __name__ == '__main__':

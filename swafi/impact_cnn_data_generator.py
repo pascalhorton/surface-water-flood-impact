@@ -3,8 +3,12 @@ Class to generate the data for the CNN model.
 """
 from .impact_dl_data_generator import ImpactDlDataGenerator
 
+import logging
 import numpy as np
 import pandas as pd
+
+
+logger = logging.getLogger(__name__)
 
 
 class ImpactCnnDataGenerator(ImpactDlDataGenerator):
@@ -173,12 +177,12 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
         if self.X_dem is not None:
             if self.transform_precip == 'standardize':
                 if self.mean_dem is None or self.std_dem is None:
-                    print('Computing DEM predictor statistics')
+                    logger.info('Computing DEM predictor statistics')
                     self.mean_dem = self.X_dem.mean(('x', 'y')).compute().values
                     self.std_dem = self.X_dem.std(('x', 'y')).compute().values
             elif self.transform_precip == 'normalize':
                 if self.min_dem is None or self.max_dem is None:
-                    print('Computing DEM predictor statistics')
+                    logger.info('Computing DEM predictor statistics')
                     self.min_dem = self.X_dem.min(('x', 'y')).compute().values
                     self.max_dem = self.X_dem.max(('x', 'y')).compute().values
 
@@ -187,7 +191,7 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
 
         # Log transform the precipitation
         if self.log_transform_precip:
-            print('Log-transforming precipitation')
+            logger.info('Log-transforming precipitation')
             self.X_precip.log_transform()
 
         # Load or compute the precipitation statistics
@@ -293,7 +297,7 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
             diff = x_precip_ev.shape[2] - self.get_third_dim_size()
             if abs(diff / self.get_third_dim_size()) > 0.1:  # 10% tolerance
                 if self.debug:
-                    print(f"Warning: too many missing timesteps ({diff}).")
+                    logger.warning("Too many missing timesteps (%s).", diff)
 
                 x_precip_ev = self._create_empty_precip_block(
                     (pixels_nb, pixels_nb, self.get_third_dim_size()))

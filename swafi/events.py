@@ -2,6 +2,7 @@
 Class to handle the events.
 """
 
+import logging
 import pickle
 from pathlib import Path
 from tqdm import tqdm
@@ -12,6 +13,8 @@ import pandas as pd
 from .config import Config
 
 config = Config()
+
+logger = logging.getLogger(__name__)
 
 
 _PICKLE_LOAD_EXCEPTIONS = (
@@ -55,12 +58,12 @@ class Events:
             The tag to add to the pickle file (e.g. damage dataset).
         """
         if self.use_dump and self.events is not None:
-            print("Events were reloaded from pickle file.")
+            logger.info("Events were reloaded from pickle file.")
             return
 
         self.events = pd.read_parquet(path)
-        print("Events were loaded from parquet file.")
-        print(f"Number of all events: {len(self.events)}")
+        logger.info("Events were loaded from parquet file.")
+        logger.info("Number of all events: %s", len(self.events))
 
         self.select_years_with_contracts(damages)
         self.select_locations_with_contracts(damages)
@@ -101,8 +104,7 @@ class Events:
             (self.events[date_field].dt.year <= damages.year_end)
             ]
 
-        print(f"Number of events with potential contracts in "
-              f"the selected years: {len(self.events)}")
+        logger.info("Number of events with potential contracts in the selected years: %s", len(self.events))
 
     def select_locations_with_contracts(self, damages):
         """
@@ -127,7 +129,7 @@ class Events:
                 (self.events['e_start'].dt.year != row['year'])
                 ]
 
-        print(f"Number of events with potential contracts: {len(self.events)}")
+        logger.info("Number of events with potential contracts: %s", len(self.events))
 
     def set_target_values_from_damages(self, damages):
         """
@@ -166,7 +168,7 @@ class Events:
         -------
         The events for the removed claims.
         """
-        print("Extracting events for the removed claims.")
+        logger.info("Extracting events for the removed claims.")
 
         cids = removed_claims['cid'].unique()
 
@@ -194,7 +196,7 @@ class Events:
         events_to_remove = [ev for ev in events_to_remove if
                             ev not in damages.claims.eid.tolist()]
 
-        print(f"Events to remove dues to claim classes: {len(events_to_remove)}")
+        logger.info("Events to remove dues to claim classes: %s", len(events_to_remove))
 
         return events_to_remove
 
@@ -239,7 +241,7 @@ class Events:
         len_before = len(self.events)
         self.events.dropna(subset=['nb_contracts'], inplace=True)
         len_after = len(self.events)
-        print(f"Number of events without actual contracts: {len_before - len_after}")
+        logger.info("Number of events without actual contracts: %s", len_before - len_after)
 
     def count_positives(self):
         """
@@ -263,8 +265,8 @@ class Events:
         random_state: int
             The random state.
         """
-        print("Reducing the number of negative events.")
-        print(f"Number of events before reduction: {len(self.events)}")
+        logger.info("Reducing the number of negative events.")
+        logger.info("Number of events before reduction: %s", len(self.events))
 
         # Select only the negative events
         negatives = self.events[self.events['target'] == 0]
@@ -279,7 +281,7 @@ class Events:
         # Shuffle the events
         self.events = self.events.sample(frac=1, random_state=random_state).reset_index(drop=True)
 
-        print(f"Number of events after reduction: {len(self.events)}")
+        logger.info("Number of events after reduction: %s", len(self.events))
 
     def set_contracts_number(self, damages):
         """
