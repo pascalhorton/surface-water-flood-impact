@@ -73,6 +73,24 @@ class ImpactRandomForest(Impact):
 
         logger.info("Model saved: %s", filename)
 
+    def load_model(self, dir_output, base_name):
+        """
+        Load the model.
+
+        Parameters
+        ----------
+        dir_output: str
+            The directory where the model is saved.
+        base_name: str
+            The base name used for the file.
+        """
+        filename = f'{dir_output}/{base_name}_{self.options.run_name}.pkl'
+
+        with open(filename, 'rb') as f:
+            self.model = pickle.load(f)
+
+        logger.info("Model loaded: %s", filename)
+
     def compute_f1_score(self, x_valid, y_valid):
         """
         Compute the F1 score on the given set.
