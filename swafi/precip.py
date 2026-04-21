@@ -233,7 +233,9 @@ class Precipitation:
         # Add coordinates to the DataFrame and round all float values
         df_coords = pd.concat([pd.DataFrame(coords_row).T] * len(events),
                               ignore_index=True)
-        events = pd.concat([df_coords, events], axis=1).round(5)
+        events = pd.concat([df_coords, events], axis=1)
+        float_cols = events.select_dtypes(include='float').columns
+        events[float_cols] = events[float_cols].round(5)
 
         return events
 
