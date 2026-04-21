@@ -16,17 +16,18 @@ from swafi.utils.logging_setup import setup_logging
 
 # Configuration for the script
 n_cpus = multiprocessing.cpu_count()
-n_parts = int(n_cpus * 0.9)  # Number of parts to split the data into for parallel processing
+n_parts = int(n_cpus * 0.5)  # Number of parts to split the data into for parallel processing
 
 # Definition of events extraction method ('classic' for Bernet et al. 2019 or 'simple'
-# for the new simple approach). Use 'classic' for the threshold-based method, random
-# forests, logistic regression, ANN, and 'simple' for the deep learning approaches
-# relying on the precipitation data, such as CNNs and Transformers.
-method = 'simple'
+# for the new simple approach).
+METHOD = 'simple'
+Y_START = 2005
+Y_END = 2024
+
 
 def process_part(i, part, config):
     # Load precipitation files
-    cpc = CombiPrecip()
+    cpc = CombiPrecip(Y_START, Y_END)
     cpc.open_files(config.get('DIR_PRECIP'))
 
     # Extract coordinates and precipitation data for each part
@@ -41,7 +42,7 @@ def process_part(i, part, config):
     # Apply extract_events() function to all grid cells in part
     list_of_events = []
     for _, row in part.iterrows():
-        list_of_events.append(cpc.extract_events(row, method))
+        list_of_events.append(cpc.extract_events(row, METHOD))
 
     # Store and save data as a .parquet file
     events = pd.concat(list_of_events, axis=0).reset_index(drop=True)
@@ -82,6 +83,6 @@ if __name__ == "__main__":
         part_events = pd.read_parquet(f"event_parts/part_{i}.parquet")
         all_events.append(part_events)
     all_events_df = pd.concat(all_events, ignore_index=True)
-    all_events_df.to_parquet(f"events_cpc_model_domain_3x3_2005_2024_{method}.parquet")
+    all_events_df.to_parquet(f"events_cpc_model_domain_3x3_{Y_START}_{Y_END}_{METHOD}.parquet")
 
     logger.info("All parts merged into a single DataFrame.")
