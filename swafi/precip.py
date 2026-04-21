@@ -175,6 +175,7 @@ class Precipitation:
             for W in window_hours:
                 n_steps = max(1, int(round(W / dt)))
                 time_series[f'p_{W}h'] = time_series['precip'].rolling(n_steps).sum()
+                time_series[f'p_{W}h_q'] = time_series[f'p_{W}h'].rank(pct=True)
 
             # Get the date and time of the maximum precipitation intensity
             for idx, row in events.iterrows():
@@ -197,8 +198,12 @@ class Precipitation:
                 )
                 for W in window_hours:
                     events.at[idx, f'p_{W}h'] = time_series.loc[day_mask, f'p_{W}h'].max()
+                    events.at[idx, f'p_{W}h_q'] = time_series.loc[day_mask, f'p_{W}h_q'].max()
 
-            events = events.astype({f'p_{W}h': 'float32' for W in window_hours})
+            events = events.astype({
+                **{f'p_{W}h': 'float32' for W in window_hours},
+                **{f'p_{W}h_q': 'float32' for W in window_hours},
+            })
 
             # Aggregate time series at daily time step
             daily_series = time_series.set_index('time').resample('D').agg({
@@ -209,10 +214,11 @@ class Precipitation:
             daily_series['api'] = self.compute_api(
                 daily_series['precip'].values, 24, api_days_nb, api_reg
             )
+            daily_series['api_q'] = daily_series['api'].rank(pct=True)
 
-            # Attach API to events (fix: include 'time' in right side for merge)
+            # Attach API and its quantile to events
             events = events.merge(
-                daily_series.reset_index()[['time', 'api']],
+                daily_series.reset_index()[['time', 'api', 'api_q']],
                 left_on='e_date',
                 right_on='time',
                 how='left'
