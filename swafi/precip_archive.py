@@ -49,6 +49,7 @@ class PrecipitationArchive(Precipitation):
         self.hash_tag = None
         self.pickle_files = []
         self.cid_time_series = None
+        self.full_grid_data = None
         self.mem_nb_pixels = 64  # Number of pixels to process at once (per spatial dimension; e.g. 100x100)
 
     def reset(self):
@@ -58,6 +59,23 @@ class PrecipitationArchive(Precipitation):
         self.hash_tag = None
         self.pickle_files = []
         self.cid_time_series = None
+        self.full_grid_data = None
+
+    def preload_full_grid(self):
+        """
+        Load all monthly pickle files into a single in-memory xarray Dataset.
+        This enables fast spatial/temporal slicing during batch generation when domain > 1,
+        replacing per-sample pickle deserialization with in-memory xarray indexing.
+        """
+        logger.info("Preloading full precipitation grid into memory...")
+        datasets = []
+        for pk_file in tqdm(self.pickle_files, desc="Loading precipitation grid"):
+            with open(pk_file, 'rb') as f:
+                datasets.append(pickle.load(f))
+        self.full_grid_data = xr.concat(datasets, dim='time')
+        logger.info("Full grid loaded: shape %s, size %.1f GB",
+                    dict(self.full_grid_data.dims),
+                    self.full_grid_data.nbytes / 1e9)
 
     def prepare_data(self):
         raise NotImplementedError("This method must be implemented in the child class.")
@@ -615,6 +633,13 @@ class PrecipitationArchive(Precipitation):
         np.array
             The precipitation data for the temporal and spatial chunk
         """
+        if self.full_grid_data is not None:
+            return self.full_grid_data[self.precip_var].sel(
+                time=slice(t_start, t_end),
+                x=slice(x_start, x_end),
+                y=slice(y_start, y_end)
+            ).to_numpy()
+
         if self.cid_time_series is not None and cid is not None:
             try:
                 ts = self.cid_time_series.sel(

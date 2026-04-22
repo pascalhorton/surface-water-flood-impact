@@ -161,11 +161,14 @@ class ImpactCnn(ImpactDl):
             debug=DEBUG
         )
 
-        if (self.options.use_precip and self.precipitation_hf is not None and
-                self.options.precip_window_size / self.options.precip_resolution == 1):
-            logger.info("Preloading all precipitation data.")
-            all_cids = df['cid'].unique()
-            self.precipitation_hf.preload_all_cid_data(all_cids)
+        if self.options.use_precip and self.precipitation_hf is not None:
+            pixels_nb = int(self.options.precip_window_size / self.options.precip_resolution)
+            if pixels_nb == 1:
+                logger.info("Preloading all precipitation data.")
+                all_cids = df['cid'].unique()
+                self.precipitation_hf.preload_all_cid_data(all_cids)
+            elif self.options.preload_precip:
+                self.precipitation_hf.preload_full_grid()
 
         return dg
 
@@ -190,11 +193,14 @@ class ImpactCnn(ImpactDl):
             debug=DEBUG
         )
 
-        if (self.options.use_precip and self.precipitation_hf is not None and
-                self.options.precip_window_size / self.options.precip_resolution == 1):
-            logger.info("Preloading all precipitation data.")
-            all_cids = self.df['cid'].unique()
-            self.precipitation_hf.preload_all_cid_data(all_cids)
+        if self.options.use_precip and self.precipitation_hf is not None:
+            pixels_nb = int(self.options.precip_window_size / self.options.precip_resolution)
+            if pixels_nb == 1:
+                logger.info("Preloading all precipitation data.")
+                all_cids = self.df['cid'].unique()
+                self.precipitation_hf.preload_all_cid_data(all_cids)
+            elif self.options.preload_precip:
+                self.precipitation_hf.preload_full_grid()
 
         if self.factor_neg_reduction != 1:
             self.dg_train.reduce_negatives(self.factor_neg_reduction)

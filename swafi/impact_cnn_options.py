@@ -91,6 +91,9 @@ class ImpactCnnOptions(ImpactDlOptions):
         self.tcn_nb_layers = None
         self.dropout_rate_tcn = None
 
+        # Data loading options
+        self.preload_precip = False
+
         if options_csv is not None:
             self.load_from_csv(options_csv)
             if not self.is_ok():
@@ -264,6 +267,12 @@ class ImpactCnnOptions(ImpactDlOptions):
             default=0.1,
             help='Dropout rate after each TCN layer'
         )
+        self.parser.add_argument(
+            '--preload-precip',
+            action='store_true',
+            default=False,
+            help='Preload full precipitation grid into memory (for domain > 1 pixel)'
+        )
 
     def parse_args(self):
         """
@@ -292,6 +301,7 @@ class ImpactCnnOptions(ImpactDlOptions):
         self.tcn_kernel_size = args.tcn_kernel_size
         self.tcn_nb_layers = args.tcn_nb_layers
         self.dropout_rate_tcn = args.dropout_rate_tcn
+        self.preload_precip = args.preload_precip
 
         if self.precip_window_size == 1:
             self.kernel_size_spatial = 1
