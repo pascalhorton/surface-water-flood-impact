@@ -155,10 +155,7 @@ class ImpactDl(Impact):
             validation_data=self.dg_val,
             callbacks=callbacks,
             verbose=verbose,
-            shuffle=False,
-            workers=self.options.nb_workers,
-            use_multiprocessing=False,
-            max_queue_size=self.options.nb_workers * 2
+            shuffle=False
         )
 
         # Plot the training history
