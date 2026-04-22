@@ -137,7 +137,8 @@ class ImpactDl(Impact):
             loss=loss_fn,
             optimizer=optimizer,
             metrics=[CriticalSuccessIndex(), F1Score(), roc_auc, pr_auc],
-            run_eagerly=DEBUG  # Set to True for debugging purposes
+            run_eagerly=DEBUG,  # Set to True for debugging purposes
+            steps_per_execution=self.options.steps_per_execution
         )
 
         # Print the model summary
@@ -154,7 +155,10 @@ class ImpactDl(Impact):
             validation_data=self.dg_val,
             callbacks=callbacks,
             verbose=verbose,
-            shuffle=False
+            shuffle=False,
+            workers=self.options.nb_workers,
+            use_multiprocessing=False,
+            max_queue_size=self.options.nb_workers * 2
         )
 
         # Plot the training history

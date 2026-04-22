@@ -89,6 +89,10 @@ class ImpactDlOptions(ImpactBasicOptions):
         self.nb_dense_units_decreasing = None
         self.inner_activation_dense = None
 
+        # Training performance options
+        self.steps_per_execution = 32
+        self.nb_workers = 4
+
     def _set_parser_dl_shared_arguments(self):
         """
         Set the parser arguments.
@@ -205,6 +209,18 @@ class ImpactDlOptions(ImpactBasicOptions):
             default='leaky_relu',
             help='The inner activation function for the dense layers'
         )
+        self.parser.add_argument(
+            '--steps-per-execution',
+            type=int,
+            default=32,
+            help='Number of training steps per compiled TF function call (reduces Python/TF overhead)'
+        )
+        self.parser.add_argument(
+            '--nb-workers',
+            type=int,
+            default=4,
+            help='Number of background threads for batch prefetching during training'
+        )
 
     def _parse_dl_args(self, args):
         """
@@ -227,6 +243,8 @@ class ImpactDlOptions(ImpactBasicOptions):
         self.use_batchnorm_dense = args.use_batchnorm_dense
         self.nb_dense_layers = args.nb_dense_layers
         self.nb_dense_units = args.nb_dense_units
+        self.steps_per_execution = args.steps_per_execution
+        self.nb_workers = args.nb_workers
         self.nb_dense_units_decreasing = args.nb_dense_units_decreasing
         self.inner_activation_dense = args.inner_activation_dense
 
