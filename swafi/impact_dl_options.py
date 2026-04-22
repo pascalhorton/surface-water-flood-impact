@@ -90,7 +90,7 @@ class ImpactDlOptions(ImpactBasicOptions):
         self.inner_activation_dense = None
 
         # Training performance options
-        self.steps_per_execution = 32
+        self.steps_per_execution = 1
 
     def _set_parser_dl_shared_arguments(self):
         """
@@ -211,7 +211,7 @@ class ImpactDlOptions(ImpactBasicOptions):
         self.parser.add_argument(
             '--steps-per-execution',
             type=int,
-            default=32,
+            default=1,
             help='Number of training steps per compiled TF function call (reduces Python/TF overhead)'
         )
 
