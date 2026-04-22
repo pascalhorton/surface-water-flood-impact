@@ -150,7 +150,7 @@ class ImpactDlOptions(ImpactBasicOptions):
         self.parser.add_argument(
             '--lr-method',
             type=str,
-            default='cosine_decay',
+            default='constant',
             choices=['constant', 'cosine_decay'],
             help='Learning rate schedule: constant or cosine_decay'
         )
