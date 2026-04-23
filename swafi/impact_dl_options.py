@@ -219,8 +219,8 @@ class ImpactDlOptions(ImpactBasicOptions):
             '--disable-xla-autotune',
             action=argparse.BooleanOptionalAction,
             default=True,
-            help='Disable XLA cuDNN autotuner (workaround for "Autotuner could not find any '
-                 'supported configs" errors with large tensors)'
+            help='Disable XLA JIT compilation (workaround for "Autotuner could not find any '
+                 'supported configs" errors with large tensors; prevents cuDNN fused kernels)'
         )
 
     def _parse_dl_args(self, args):
