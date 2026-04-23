@@ -3,7 +3,6 @@ Class for the CNN model.
 """
 
 import logging
-import math
 
 import keras
 import numpy as np
@@ -356,15 +355,23 @@ class ModelCnn(keras.models.Model):
             if self.options is None:
                 return
 
-            # Cap nb_conv_blocks to the spatial resolution when using pooling
+            # Cap nb_conv_blocks so no intermediate pooled spatial dim is
+            # non-divisible by pool_size. Odd/non-aligned dims (e.g. 10÷2=5)
+            # cause cuDNN's fused conv kernel to fail on RTX 4090 / cuDNN 9.5.
             if self.options.pool_size_spatial > 1:
                 spatial_size = min(self.input_3d_size[0], self.input_3d_size[1])
-                nb_conv_blocks_max = math.floor(
-                    math.log(spatial_size, self.options.pool_size_spatial))
+                nb_conv_blocks_max = 0
+                s = spatial_size
+                while s % self.options.pool_size_spatial == 0:
+                    nb_conv_blocks_max += 1
+                    s //= self.options.pool_size_spatial
+                nb_conv_blocks_max = max(1, nb_conv_blocks_max)
                 if self.options.nb_conv_blocks > nb_conv_blocks_max:
                     self.options.nb_conv_blocks = nb_conv_blocks_max
-                    logger.warning("Number of convolution blocks was reduced to %s",
-                                   self.options.nb_conv_blocks)
+                    logger.warning(
+                        "Number of convolution blocks was reduced to %s "
+                        "(spatial %s must be divisible by pool_size^nb_conv_blocks)",
+                        self.options.nb_conv_blocks, spatial_size)
 
     def _tcn_block(self, x, dilation_rate, filters, kernel_size, i):
         """

@@ -91,7 +91,6 @@ class ImpactDlOptions(ImpactBasicOptions):
 
         # Training performance options
         self.steps_per_execution = 1
-        self.disable_xla_autotune = True
 
     def _set_parser_dl_shared_arguments(self):
         """
@@ -215,14 +214,6 @@ class ImpactDlOptions(ImpactBasicOptions):
             default=1,
             help='Number of training steps per compiled TF function call (reduces Python/TF overhead)'
         )
-        self.parser.add_argument(
-            '--disable-xla-autotune',
-            action=argparse.BooleanOptionalAction,
-            default=True,
-            help='Disable XLA JIT compilation (workaround for "Autotuner could not find any '
-                 'supported configs" errors with large tensors; prevents cuDNN fused kernels)'
-        )
-
     def _parse_dl_args(self, args):
         """
         Parse the arguments.
@@ -245,7 +236,6 @@ class ImpactDlOptions(ImpactBasicOptions):
         self.nb_dense_layers = args.nb_dense_layers
         self.nb_dense_units = args.nb_dense_units
         self.steps_per_execution = args.steps_per_execution
-        self.disable_xla_autotune = args.disable_xla_autotune
         self.nb_dense_units_decreasing = args.nb_dense_units_decreasing
         self.inner_activation_dense = args.inner_activation_dense
 
