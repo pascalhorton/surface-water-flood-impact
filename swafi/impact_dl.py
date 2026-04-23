@@ -838,16 +838,8 @@ class CriticalSuccessIndex(keras.metrics.Metric):
         y_pred = tf.cast(y_pred, self.dtype)
         y_true = tf.cast(y_true, self.dtype)
 
-        def _maybe_squeeze(a):
-            a = tf.convert_to_tensor(a)
-            rank = tf.rank(a)
-            last_dim = tf.shape(a)[-1]
-            return tf.cond(tf.logical_and(tf.equal(rank, 2), tf.equal(last_dim, 1)),
-                           lambda: tf.squeeze(a, axis=-1),
-                           lambda: a)
-
-        y_true = _maybe_squeeze(y_true)
-        y_pred = _maybe_squeeze(y_pred)
+        y_true = tf.reshape(tf.convert_to_tensor(y_true), [-1])
+        y_pred = tf.reshape(tf.convert_to_tensor(y_pred), [-1])
 
         y_pred_bin = tf.cast(tf.greater_equal(y_pred, self.threshold), self.dtype)
 
@@ -902,16 +894,8 @@ class F1Score(keras.metrics.Metric):
         y_pred = tf.cast(y_pred, self.dtype)
         y_true = tf.cast(y_true, self.dtype)
 
-        def _maybe_squeeze(a):
-            a = tf.convert_to_tensor(a)
-            rank = tf.rank(a)
-            last_dim = tf.shape(a)[-1]
-            return tf.cond(tf.logical_and(tf.equal(rank, 2), tf.equal(last_dim, 1)),
-                           lambda: tf.squeeze(a, axis=-1),
-                           lambda: a)
-
-        y_true = _maybe_squeeze(y_true)
-        y_pred = _maybe_squeeze(y_pred)
+        y_true = tf.reshape(tf.convert_to_tensor(y_true), [-1])
+        y_pred = tf.reshape(tf.convert_to_tensor(y_pred), [-1])
 
         y_pred_bin = tf.cast(tf.greater_equal(y_pred, self.threshold), self.dtype)
 
