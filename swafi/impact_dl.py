@@ -145,6 +145,12 @@ class ImpactDl(Impact):
         if not silent:
             self.model.model.summary()
 
+        if self.options.disable_xla_autotune:
+            xla_flags = os.environ.get('XLA_FLAGS', '')
+            if '--xla_gpu_autotune_level' not in xla_flags:
+                os.environ['XLA_FLAGS'] = (xla_flags + ' --xla_gpu_autotune_level=0').strip()
+            logger.info("XLA autotuner disabled (XLA_FLAGS=%s)", os.environ['XLA_FLAGS'])
+
         # Fit the model
         logger.info("Fitting the model.")
         verbose = 1 if show_plots else 2
