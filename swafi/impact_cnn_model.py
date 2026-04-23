@@ -395,6 +395,7 @@ class ModelCnn(keras.models.Model):
                 kernel_size=kernel_size,
                 dilation_rate=dilation_rate,
                 padding='causal',
+                use_bias=False,
                 kernel_initializer='he_normal',
                 name=f'tcn_conv_{i}_{j}'
             )(x)
