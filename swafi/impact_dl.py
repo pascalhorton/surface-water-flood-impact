@@ -87,7 +87,7 @@ class ImpactDl(Impact):
         logger.info("Model saved: %s", filename)
 
     def fit(self, tag=None, do_plot=True, dir_plots=None, show_plots=False,
-            silent=False, debug=True):
+            silent=False, debug=False):
         """
         Fit the model.
 
