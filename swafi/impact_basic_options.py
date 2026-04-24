@@ -27,6 +27,8 @@ class ImpactBasicOptions:
         The name of the dataset (mobiliar or gvz).
     event_file_label: str
         The event file label (default: 'default_occurrence').
+    event_method: str|None
+        The event extraction method. Options: 'simple', 'classic'. Default: None.
     target_type : str
         The target type. Options are: 'occurrence', 'damage_ratio'
     random_state: int|None
@@ -60,6 +62,7 @@ class ImpactBasicOptions:
         self.run_name = None
         self.dataset = None
         self.event_file_label = None
+        self.event_method = None
         self.min_nb_claims = None
         self.target_type = None
         self.random_state = None
@@ -157,6 +160,10 @@ class ImpactBasicOptions:
             "--event-file-label", type=str, default='default_occurrence',
             help="The event file label (default: 'default_occurrence').")
         self.parser.add_argument(
+            "--event-method", type=str, default=None,
+            choices=['simple', 'classic'],
+            help="The event extraction method ('simple' or 'classic').")
+        self.parser.add_argument(
             '--min-nb-claims', type=int, default=1,
             help='The minimum number of claims for an event to be considered.')
         self.parser.add_argument(
@@ -213,6 +220,7 @@ class ImpactBasicOptions:
         self.run_name = args.run_name
         self.dataset = args.dataset
         self.event_file_label = args.event_file_label
+        self.event_method = args.event_method
         self.min_nb_claims = args.min_nb_claims
         self.target_type = args.target_type
         self.random_state = args.random_state
@@ -251,6 +259,7 @@ class ImpactBasicOptions:
         logger.info("Options (run %s):", self.run_name)
         logger.info("- dataset:  %s", self.dataset)
         logger.info("- event_file_label:  %s", self.event_file_label)
+        logger.info("- event_method:  %s", self.event_method)
         logger.info("- min_nb_claims:  %s", self.min_nb_claims)
         logger.info("- target_type:  %s", self.target_type)
         logger.info("- random_state:  %s", self.random_state)

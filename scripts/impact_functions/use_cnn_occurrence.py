@@ -87,6 +87,7 @@ def main():
     options.dataset = DATASET
     options.print_options()
     assert options.is_ok()
+    assert options.event_method in ['simple', 'classic'], "Invalid event method."
 
     # Clear session and set the seed
     keras.backend.clear_session()
@@ -102,7 +103,7 @@ def main():
     # Extract precipitation events
     year_start = config.get('YEAR_START_TEST')
     year_end = config.get('YEAR_END_TEST')
-    events_filename = f'test_events_{year_start}-{year_end}.pickle'
+    events_filename = f'test_events_{options.event_method}_{year_start}-{year_end}.pickle'
     events_path = Path(config.get('TMP_DIR')) / events_filename
 
     if not events_path.exists():
@@ -111,7 +112,7 @@ def main():
         cpc.open_files(config.get('DIR_PRECIP'))
         logger.info("Applying smoothing...")
         cpc.apply_smoothing(filter_size=3)
-        events = cpc.extract_events()
+        events = cpc.extract_events(method=options.event_method)
         events.to_pickle(events_path)
     else:
         events = pd.read_pickle(events_path)
