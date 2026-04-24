@@ -279,9 +279,9 @@ class ImpactCnn(ImpactDl):
                            self.options.precip_resolution)
 
         if self.options.use_precip:
-            input_3d_size = [pixels_per_side,
+            input_3d_size = [self.dg_train.get_time_dim_size(),
                              pixels_per_side,
-                             self.dg_train.get_third_dim_size(),
+                             pixels_per_side,
                              self.dg_train.get_nb_channels()]
 
         self.model = ModelCnn(

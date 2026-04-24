@@ -54,7 +54,7 @@ def test_model_cnn_serialization_roundtrip(tmp_path, pixels_per_side):
 
     options = make_options(pixels_per_side)
 
-    input_3d_size = [pixels_per_side, pixels_per_side, 4, 1]
+    input_3d_size = [4, pixels_per_side, pixels_per_side, 1]
     input_1d_size = [10]
 
     model = ModelCnn(task='classification', options=options,

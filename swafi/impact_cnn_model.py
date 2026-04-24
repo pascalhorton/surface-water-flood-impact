@@ -206,15 +206,15 @@ class ModelCnn(keras.models.Model):
 
         if self.input_3d_size is not None:
             input_3d = keras.layers.Input(shape=self.input_3d_size, name='input_3d')
-            pixels_per_side = self.input_3d_size[0]
-            t_len = self.input_3d_size[2]
+            t_len = self.input_3d_size[0]
+            pixels_per_side = self.input_3d_size[1]
 
             n_channels = self.input_3d_size[3]
 
             if pixels_per_side > 1:
                 # Spatial 2D CNN applied per time step via TimeDistributed
-                # Permute (H, W, T, C) → (T, H, W, C)
-                x = keras.layers.Permute((3, 1, 2, 4), name='permute_to_T_H_W_C')(input_3d)
+                # Input is already (T, H, W, C) — no permutation needed.
+                x = input_3d
                 for i in range(self.options.nb_conv_blocks):
                     nb_filters = self.options.nb_filters * (2 ** i)
                     # Conv2D (no activation) → optional BN → Activation → optional pool → optional dropout
@@ -364,7 +364,7 @@ class ModelCnn(keras.models.Model):
             # non-divisible by pool_size. Odd/non-aligned dims (e.g. 10÷2=5)
             # cause cuDNN's fused conv kernel to fail on RTX 4090 / cuDNN 9.5.
             if self.options.pool_size_spatial > 1:
-                spatial_size = min(self.input_3d_size[0], self.input_3d_size[1])
+                spatial_size = min(self.input_3d_size[1], self.input_3d_size[2])
                 nb_conv_blocks_max = 0
                 s = spatial_size
                 while s % self.options.pool_size_spatial == 0:
