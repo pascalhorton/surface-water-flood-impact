@@ -178,7 +178,7 @@ class ImpactDlOptions(ImpactBasicOptions):
         self.parser.add_argument(
             '--jit-compile',
             action=argparse.BooleanOptionalAction,
-            default=False,
+            default=True,
             help='Enable XLA JIT compilation in Keras model.compile. Disabled by default because some GPU CNN conv kernels fail to autotune under XLA.'
         )
         self.parser.add_argument(
