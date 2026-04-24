@@ -47,6 +47,8 @@ class ImpactDlOptions(ImpactBasicOptions):
         The learning rate.
     lr_method: str
         The learning rate schedule. Options are: 'constant', 'cosine_decay'.
+    jit_compile: bool
+        Whether to enable XLA JIT compilation in Keras model.compile.
     dropout_rate_dense: float
         The dropout rate for the dense layers.
     use_batchnorm_dense: bool
@@ -80,6 +82,7 @@ class ImpactDlOptions(ImpactBasicOptions):
         self.learning_rate = None
         self.lr_method = None
         self.loss_function = None
+        self.jit_compile = False
 
         # Model options for the dense layers
         self.dropout_rate_dense = None
@@ -173,6 +176,12 @@ class ImpactDlOptions(ImpactBasicOptions):
                  'focal_tversky (Focal Tversky Loss)'
         )
         self.parser.add_argument(
+            '--jit-compile',
+            action=argparse.BooleanOptionalAction,
+            default=False,
+            help='Enable XLA JIT compilation in Keras model.compile. Disabled by default because some GPU CNN conv kernels fail to autotune under XLA.'
+        )
+        self.parser.add_argument(
             '--dropout-rate-dense',
             type=float,
             default=0.4,
@@ -231,6 +240,7 @@ class ImpactDlOptions(ImpactBasicOptions):
         self.learning_rate = args.learning_rate
         self.lr_method = args.lr_method
         self.loss_function = args.loss_function
+        self.jit_compile = args.jit_compile
         self.dropout_rate_dense = args.dropout_rate_dense
         self.use_batchnorm_dense = args.use_batchnorm_dense
         self.nb_dense_layers = args.nb_dense_layers
@@ -311,6 +321,7 @@ class ImpactDlOptions(ImpactBasicOptions):
             logger.info("- log_transform_precip:  %s", self.log_transform_precip)
 
         logger.info("- loss_function:  %s", self.loss_function)
+        logger.info("- jit_compile:  %s", self.jit_compile)
         logger.info("- batch_size:  %s", self.batch_size)
         logger.info("- epochs:  %s", self.epochs)
         logger.info("- learning_rate:  %s", self.learning_rate)
@@ -344,6 +355,7 @@ class ImpactDlOptions(ImpactBasicOptions):
         assert self.epochs is not None, "epochs is not set"
         assert self.learning_rate is not None, "learning_rate is not set"
         assert self.lr_method in ['constant', 'cosine_decay'], "lr_method must be 'constant' or 'cosine_decay'"
+        assert isinstance(self.jit_compile, bool), "jit_compile is not set"
         assert self.dropout_rate_dense is not None, "dropout_rate_dense is not set"
         assert isinstance(self.use_batchnorm_dense, bool), "use_batchnorm_dense is not set"
         assert self.nb_dense_layers is not None, "nb_dense_layers is not set"

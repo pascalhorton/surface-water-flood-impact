@@ -104,7 +104,7 @@ class ImpactDl(Impact):
         silent: bool
             Hide model summary and training progress.
         """
-        os.environ.setdefault('TF_GPU_ALLOCATOR', 'cuda_malloc_async')
+        #os.environ.setdefault('TF_GPU_ALLOCATOR', 'cuda_malloc_async')
         self._set_random_state()
         self._create_data_generator_train()
         self._create_data_generator_valid()
@@ -133,6 +133,8 @@ class ImpactDl(Impact):
         roc_auc = keras.metrics.AUC(name='ROC_AUC', curve='ROC')
         pr_auc = keras.metrics.AUC(name='PR_AUC', curve='PR')
 
+        logger.info("Compiling model with jit_compile=%s", self.options.jit_compile)
+
         # Compile the model
         self.model.compile(
             loss=loss_fn,
@@ -140,6 +142,7 @@ class ImpactDl(Impact):
             metrics=[CriticalSuccessIndex(), F1Score(), roc_auc, pr_auc],
             run_eagerly=DEBUG,  # Set to True for debugging purposes
             steps_per_execution=self.options.steps_per_execution,
+            jit_compile=self.options.jit_compile,
         )
 
         # Print the model summary
