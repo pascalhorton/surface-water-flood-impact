@@ -5,6 +5,7 @@ Class for the CNN model.
 import logging
 
 import keras
+import tensorflow as tf
 import numpy as np
 
 
@@ -268,8 +269,12 @@ class ModelCnn(keras.models.Model):
                                     filters=self.options.tcn_filters,
                                     kernel_size=self.options.tcn_kernel_size, i=i)
 
-            # Aggregate over time axis
-            x = keras.layers.GlobalAveragePooling1D(name='tcn_gap')(x)
+            # Attention pooling
+            weights = keras.layers.Dense(1)(x)  # (batch, T, 1)
+            weights = keras.layers.Softmax(axis=1)(weights)
+
+            x = keras.layers.Multiply()([x, weights])
+            x = keras.layers.Lambda(lambda t: tf.reduce_sum(t, axis=1))(x)
 
         if self.input_1d_size is not None:
             input_1d = keras.layers.Input(shape=self.input_1d_size, name='input_1d')
