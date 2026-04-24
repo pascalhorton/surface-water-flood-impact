@@ -87,7 +87,7 @@ class ImpactDl(Impact):
         logger.info("Model saved: %s", filename)
 
     def fit(self, tag=None, do_plot=True, dir_plots=None, show_plots=False,
-            silent=False):
+            silent=False, debug=True):
         """
         Fit the model.
 
@@ -103,12 +103,32 @@ class ImpactDl(Impact):
             Whether to show the plots or not.
         silent: bool
             Hide model summary and training progress.
+        debug: bool
+            Whether to run in debug mode or not (print more messages).
         """
-        #os.environ.setdefault('TF_GPU_ALLOCATOR', 'cuda_malloc_async')
+        os.environ.setdefault('TF_GPU_ALLOCATOR', 'cuda_malloc_async')
         self._set_random_state()
         self._create_data_generator_train()
         self._create_data_generator_valid()
         self._define_model()
+
+        try:
+            logger.info("Training batches per epoch: %s", len(self.dg_train))
+        except Exception:
+            pass
+        try:
+            logger.info("Validation batches per epoch: %s", len(self.dg_val))
+        except Exception:
+            pass
+
+        # Time a single batch fetch to separate data-loading slowness from model compute issues.
+        try:
+            t0 = datetime.datetime.now()
+            _ = self.dg_train[0]
+            dt_s = (datetime.datetime.now() - t0).total_seconds()
+            logger.info("First training batch materialization time: %.2f s", dt_s)
+        except Exception as exc:
+            logger.warning("Could not time first training batch materialization: %s", exc)
 
         # Early stopping callbacks
         early_stopping_csi = keras.callbacks.EarlyStopping(
@@ -118,6 +138,8 @@ class ImpactDl(Impact):
         early_stopping_no_skill = CustomEarlyStopping(
             monitor='val_csi', patience=30, min_value=0.00001)
         callbacks = [early_stopping_csi, early_stopping_no_skill]
+        if debug:
+            callbacks.append(BatchHeartbeat(every_n_batches=100))
 
         # Define the optimizer
         optimizer = self._define_optimizer(
@@ -575,6 +597,29 @@ class CustomEarlyStopping(keras.callbacks.Callback):
                             epoch + 1, self.monitor, self.min_value, self.patience)
         else:
             self.wait = 0
+
+
+class BatchHeartbeat(keras.callbacks.Callback):
+    """Log periodic training batch progress to avoid silent long epochs."""
+
+    def __init__(self, every_n_batches=100):
+        super().__init__()
+        self.every_n_batches = max(1, int(every_n_batches))
+        self._last_ts = None
+
+    def on_train_begin(self, logs=None):
+        self._last_ts = datetime.datetime.now()
+
+    def on_train_batch_end(self, batch, logs=None):
+        batch_idx = int(batch) + 1
+        if batch_idx % self.every_n_batches != 0:
+            return
+        now = datetime.datetime.now()
+        dt = (now - self._last_ts).total_seconds() if self._last_ts is not None else float('nan')
+        self._last_ts = now
+        loss = None if logs is None else logs.get('loss', None)
+        logger.info("Heartbeat: completed batch %s (last %s batches in %.1f s, loss=%s)",
+                    batch_idx, self.every_n_batches, dt, loss)
 
 
 @tf.keras.utils.register_keras_serializable()
