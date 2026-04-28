@@ -61,9 +61,9 @@ class ImpactLogisticRegression(Impact):
         filename = f'{dir_output}/{base_name}_{self.options.run_name}.pkl'
 
         payload = {'model': self.model}
-        if self._mean is not None:
-            payload['mean'] = self._mean
-            payload['std'] = self._std
+        if self.x_mean is not None:
+            payload['mean'] = self.x_mean
+            payload['std'] = self.x_std
 
         with open(filename, 'wb') as f:
             pickle.dump(payload, f)
@@ -91,7 +91,7 @@ class ImpactLogisticRegression(Impact):
                              "expected a dictionary with 'model' key")
 
         self.model = payload['model']
-        self._mean = payload.get('mean', None)
-        self._std = payload.get('std', None)
+        self.x_mean = payload.get('mean', None)
+        self.x_std = payload.get('std', None)
 
         logger.info("Model loaded: %s", filename)

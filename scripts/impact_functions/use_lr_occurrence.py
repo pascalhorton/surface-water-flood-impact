@@ -133,8 +133,8 @@ def main():
     # Create the impact function
     lr = ImpactLogisticRegression(options)
     lr.model = lr_model
-    lr._mean = lr_mean
-    lr._std = lr_std
+    lr.x_mean = lr_mean
+    lr.x_std = lr_std
     lr.select_features(lr.options.replace_simple_features)
     features = lr.get_all_features(lr.options.simple_feature_classes)
 
@@ -168,10 +168,12 @@ def main():
 
             lr.df.dropna(subset=lr.features, inplace=True)
             x_input = lr.df[lr.features].to_numpy()
-            if lr._mean is not None:
-                x_input = (x_input - lr._mean) / lr._std
+            if lr.x_mean is not None:
+                x_input = (x_input - lr.x_mean) / lr.x_std
             y_pred = lr.model.predict_proba(x_input)[:, 1]  # Probability of class 1
-            assert len(y_pred) == len(cell_events)
+            assert len(y_pred) == len(cell_events), \
+                (f"Number of predictions ({len(y_pred)}) does not match "
+                 f"number of events ({len(cell_events)}) for cell_id {cell_id}")
 
             # Loop over events and store the target value at the correct date
             for i, (_, event) in enumerate(cell_events.iterrows()):
