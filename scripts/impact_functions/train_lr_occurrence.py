@@ -1,23 +1,29 @@
 """
 Train a logistic regression model to predict the occurrence of damages.
 """
+import logging
 
 from swafi.config import Config
 from swafi.events import load_events_from_pickle
 from swafi.impact_basic_options import ImpactBasicOptions
 from swafi.impact_lr import ImpactLogisticRegression
+from swafi.utils.logging_setup import setup_logging
 
+logger = logging.getLogger(__name__)
+
+SAVE_MODEL = True
 
 config = Config()
 
 # Define the weight denominators. Optimal value is 30 for GVZ and 45 for Mobiliar.
-weight_denominators = [20, 30, 40, 50]
+weight_denominators = [5, 10, 20, 30, 40, 50]
 
 # Enable to test different weight denominators
 # weight_denominators = [1, 2, 3, 4, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 60, 80, 100]
 
 
 def main():
+    setup_logging(script_name='train_lr_occurrence')
     options = ImpactBasicOptions()
     options.parse_args()
     options.print_options()
@@ -30,7 +36,7 @@ def main():
 
     for weight_denominator in weight_denominators:
         # Create the impact function
-        lr = ImpactLogisticRegression(events, options)
+        lr = ImpactLogisticRegression(options, events)
 
         lr.select_features(options.replace_simple_features)
         lr.load_features(options.simple_feature_classes)
@@ -45,6 +51,11 @@ def main():
 
         file_tag = f'lr_{tag_atts}_wd_{weight_denominator}'
         lr.assess_model_on_all_periods(save_results=True, file_tag=file_tag)
+
+        if SAVE_MODEL:
+            lr.save_model(dir_output=config.get('OUTPUT_DIR'),
+                          base_name=f'model_lr_{options.dataset}_{options.event_file_label}_wd_{weight_denominator}')
+            logger.info("Model saved in %s", config.get('OUTPUT_DIR'))
 
 
 if __name__ == '__main__':

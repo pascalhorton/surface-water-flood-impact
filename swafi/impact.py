@@ -580,6 +580,7 @@ class Impact:
         file_tag: str
             The tag to add to the file name.
         """
+        logger.info("Assessing the model on all periods.")
         df_res = pd.DataFrame(columns=['split'])
         df_res = self._assess_model(self.x_train, self.y_train, 'train', df_res)
         df_res = self._assess_model(self.x_valid, self.y_valid, 'valid', df_res)
