@@ -168,6 +168,10 @@ def main():
 
             lr.df.dropna(subset=lr.features, inplace=True)
             x_input = lr.df[lr.features].to_numpy()
+            if len(x_input) == 0:
+                ds_pred['predict'][:, i_y, i_x] = np.nan
+                continue
+
             if lr._mean is not None:
                 x_input = (x_input - lr._mean) / lr._std
             y_pred = lr.model.predict_proba(x_input)[:, 1]  # Probability of class 1

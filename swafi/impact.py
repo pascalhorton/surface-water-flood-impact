@@ -668,7 +668,7 @@ class Impact:
         self.tabular_features = {}
 
         if self.options.use_event_attributes:
-            if 'e_date' in events_columns:
+            if self.options.event_method=='simple' or 'e_date' in events_columns:
                 self.tabular_features['event'] = [
                     'i_max_q', 'api_q',
                     'p_1h_q', 'p_2h_q', 'p_4h_q', 'p_6h_q',
