@@ -6,9 +6,11 @@ from .impact import Impact
 from .utils.verification import compute_confusion_matrix, print_classic_scores, \
     assess_roc_auc, store_classic_scores
 
+import json
 import logging
 import os
 import random
+from pathlib import Path
 import keras
 import numpy as np
 import pandas as pd
@@ -110,7 +112,36 @@ class ImpactDl(Impact):
         self._set_random_state()
         self._create_data_generator_train()
         self._create_data_generator_valid()
-        self._define_model()
+
+        # Checkpoint / resume setup
+        initial_epoch = 0
+        initial_best_val_csi = -np.inf
+        initial_best_epoch = 0
+        ckpt_mgr = None
+        resuming = False
+
+        if self.options.checkpoint_dir is not None:
+            ckpt_mgr = TrainingCheckpointManager(
+                self.options.checkpoint_dir, self.options.run_name)
+            if self.options.resume_training and ckpt_mgr.checkpoint_exists():
+                resume_meta = ckpt_mgr.load_meta()
+                initial_epoch = resume_meta['current_epoch']
+                initial_best_val_csi = resume_meta['best_val_csi']
+                initial_best_epoch = resume_meta['best_epoch']
+                if initial_epoch >= self.options.epochs:
+                    logger.warning(
+                        "Resume epoch (%d) >= total epochs (%d); training is already complete.",
+                        initial_epoch, self.options.epochs)
+                else:
+                    logger.info("Resuming training from checkpoint: epoch=%d, best_val_csi=%.5f",
+                                initial_epoch, initial_best_val_csi)
+                    self.model = ckpt_mgr.load_model()
+                    resuming = True
+            elif self.options.resume_training:
+                logger.info("resume_training=True but no checkpoint found; starting fresh.")
+
+        if not resuming:
+            self._define_model()
 
         try:
             logger.info("Training batches per epoch: %s", len(self.dg_train))
@@ -130,42 +161,56 @@ class ImpactDl(Impact):
         except Exception as exc:
             logger.warning("Could not time first training batch materialization: %s", exc)
 
-        # Early stopping callbacks
-        early_stopping_csi = keras.callbacks.EarlyStopping(
+        # Early stopping callbacks — ResumableEarlyStopping restores best/wait on resume
+        early_stopping_csi = ResumableEarlyStopping(
             monitor='val_csi', patience=40, verbose=1,
-            restore_best_weights=True, mode='max')
+            restore_best_weights=True, mode='max',
+            initial_best=initial_best_val_csi if resuming else None,
+            initial_wait=resume_meta['early_stopping_wait'] if resuming else 0)
         # Fallback: stop if CSI drops to near-zero and stays there
         early_stopping_no_skill = CustomEarlyStopping(
             monitor='val_csi', patience=30, min_value=0.00001)
+        if resuming:
+            early_stopping_no_skill.wait = resume_meta['no_skill_wait']
+
         callbacks = [early_stopping_csi, early_stopping_no_skill]
         if debug:
             callbacks.append(BatchHeartbeat(every_n_batches=100))
+        if ckpt_mgr is not None:
+            callbacks.append(EpochCheckpointCallback(
+                checkpoint_manager=ckpt_mgr,
+                early_stopping_csi_cb=early_stopping_csi,
+                early_stopping_no_skill_cb=early_stopping_no_skill,
+                initial_best_val_csi=initial_best_val_csi,
+                initial_best_epoch=initial_best_epoch,
+            ))
 
-        # Define the optimizer
-        optimizer = self._define_optimizer(
-            n_samples=len(self.dg_train),
-            lr_method=self.options.lr_method,
-            lr=self.options.learning_rate,
-            init_lr=self.options.learning_rate)
+        if not resuming:
+            # Define the optimizer
+            optimizer = self._define_optimizer(
+                n_samples=len(self.dg_train),
+                lr_method=self.options.lr_method,
+                lr=self.options.learning_rate,
+                init_lr=self.options.learning_rate)
 
-        # Get loss function
-        loss_fn = self._get_loss_function()
+            # Get loss function
+            loss_fn = self._get_loss_function()
 
-        # Create instances of ROC-AUC and PR-AUC metrics to track during training
-        roc_auc = keras.metrics.AUC(name='ROC_AUC', curve='ROC')
-        pr_auc = keras.metrics.AUC(name='PR_AUC', curve='PR')
+            # Create instances of ROC-AUC and PR-AUC metrics to track during training
+            roc_auc = keras.metrics.AUC(name='ROC_AUC', curve='ROC')
+            pr_auc = keras.metrics.AUC(name='PR_AUC', curve='PR')
 
-        logger.info("Compiling model with jit_compile=%s", self.options.jit_compile)
+            logger.info("Compiling model with jit_compile=%s", self.options.jit_compile)
 
-        # Compile the model
-        self.model.compile(
-            loss=loss_fn,
-            optimizer=optimizer,
-            metrics=[CriticalSuccessIndex(), F1Score(), roc_auc, pr_auc],
-            run_eagerly=DEBUG,  # Set to True for debugging purposes
-            steps_per_execution=self.options.steps_per_execution,
-            jit_compile=self.options.jit_compile,
-        )
+            # Compile the model
+            self.model.compile(
+                loss=loss_fn,
+                optimizer=optimizer,
+                metrics=[CriticalSuccessIndex(), F1Score(), roc_auc, pr_auc],
+                run_eagerly=DEBUG,  # Set to True for debugging purposes
+                steps_per_execution=self.options.steps_per_execution,
+                jit_compile=self.options.jit_compile,
+            )
 
         # Print the model summary
         if not silent:
@@ -177,12 +222,21 @@ class ImpactDl(Impact):
         verbose = 0 if silent else verbose
         hist = self.model.fit(
             self.dg_train,
+            initial_epoch=initial_epoch,
             epochs=self.options.epochs,
             validation_data=self.dg_val,
             callbacks=callbacks,
             verbose=verbose,
             shuffle=False
         )
+
+        # After training: load the best model and remove rolling checkpoint files
+        if ckpt_mgr is not None:
+            if ckpt_mgr.best_path.exists():
+                logger.info("Loading best checkpoint model from %s",
+                            ckpt_mgr.best_path)
+                self.model = keras.models.load_model(str(ckpt_mgr.best_path))
+            ckpt_mgr.cleanup()
 
         # Plot the training history
         if do_plot:
@@ -573,6 +627,147 @@ class ImpactDl(Impact):
                 best_thr = thr
 
         return best_thr, metric_name, float(best_score)
+
+
+class TrainingCheckpointManager:
+    """
+    Manages crash-safe training checkpoints using a two-slot rolling strategy.
+
+    File layout under checkpoint_dir (all prefixed with the run_name):
+      ckpt_<run>_slot0.keras, ckpt_<run>_slot1.keras  — rolling snapshots
+      ckpt_<run>_best.keras                            — best val_csi model
+      ckpt_<run>_meta.json                             — epoch/state metadata
+    """
+
+    def __init__(self, checkpoint_dir, run_name):
+        self._dir = Path(checkpoint_dir)
+        self._run = run_name
+        self._dir.mkdir(parents=True, exist_ok=True)
+
+    @property
+    def best_path(self):
+        return self._dir / f'ckpt_{self._run}_best.keras'
+
+    @property
+    def _meta_path(self):
+        return self._dir / f'ckpt_{self._run}_meta.json'
+
+    def _slot_path(self, slot):
+        return self._dir / f'ckpt_{self._run}_slot{slot}.keras'
+
+    def checkpoint_exists(self):
+        return self._meta_path.exists()
+
+    def load_meta(self):
+        if not self._meta_path.exists():
+            return {
+                'current_epoch': 0,
+                'best_val_csi': float(-np.inf),
+                'early_stopping_wait': 0,
+                'no_skill_wait': 0,
+                'best_epoch': 0,
+                'active_slot': 0,
+            }
+        with open(self._meta_path) as f:
+            return json.load(f)
+
+    def load_model(self):
+        meta = self.load_meta()
+        slot = meta.get('active_slot', 0)
+        path = self._slot_path(slot)
+        if not path.exists():
+            raise FileNotFoundError(
+                f"Checkpoint slot {slot} not found at: {path}")
+        logger.info("Loading checkpoint model from %s", path)
+        return keras.models.load_model(str(path))
+
+    def save(self, model, epoch, val_csi, es_wait, no_skill_wait,
+             best_val_csi, best_epoch):
+        meta = self.load_meta()
+        next_slot = 1 - meta.get('active_slot', 0)
+
+        model.save(str(self._slot_path(next_slot)))
+
+        if val_csi > best_val_csi:
+            model.save(str(self.best_path))
+            best_val_csi = val_csi
+            best_epoch = epoch
+
+        new_meta = {
+            'current_epoch': epoch + 1,
+            'best_val_csi': float(best_val_csi),
+            'early_stopping_wait': int(es_wait),
+            'no_skill_wait': int(no_skill_wait),
+            'best_epoch': int(best_epoch),
+            'active_slot': next_slot,
+        }
+        tmp = self._meta_path.with_suffix('.tmp')
+        tmp.write_text(json.dumps(new_meta, indent=2))
+        tmp.replace(self._meta_path)
+
+        logger.info("Checkpoint saved (epoch=%d, val_csi=%.5f, slot=%d)",
+                    epoch + 1, float(val_csi), next_slot)
+        return best_val_csi, best_epoch
+
+    def cleanup(self):
+        for slot in [0, 1]:
+            p = self._slot_path(slot)
+            if p.exists():
+                p.unlink()
+        if self._meta_path.exists():
+            self._meta_path.unlink()
+        logger.info("Rolling checkpoints removed (best model kept at %s)",
+                    self.best_path)
+
+
+class ResumableEarlyStopping(keras.callbacks.EarlyStopping):
+    """
+    EarlyStopping that can restore its best/wait state when training resumes
+    after a job restart. Pass initial_best and initial_wait to resume correctly.
+    """
+
+    def __init__(self, *args, initial_best=None, initial_wait=0, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._initial_best = initial_best
+        self._initial_wait = initial_wait
+
+    def on_train_begin(self, logs=None):
+        super().on_train_begin(logs)
+        if self._initial_best is not None:
+            self.best = self._initial_best
+        if self._initial_wait > 0:
+            self.wait = self._initial_wait
+
+
+class EpochCheckpointCallback(keras.callbacks.Callback):
+    """
+    Saves a full model checkpoint after every epoch for crash recovery.
+    Also tracks the globally best model across restarts.
+    """
+
+    def __init__(self, checkpoint_manager, early_stopping_csi_cb,
+                 early_stopping_no_skill_cb, initial_best_val_csi,
+                 initial_best_epoch):
+        super().__init__()
+        self._mgr = checkpoint_manager
+        self._es_csi = early_stopping_csi_cb
+        self._es_no_skill = early_stopping_no_skill_cb
+        self._best_val_csi = initial_best_val_csi
+        self._best_epoch = initial_best_epoch
+
+    def on_epoch_end(self, epoch, logs=None):
+        val_csi = float((logs or {}).get('val_csi', -np.inf))
+        es_wait = int(getattr(self._es_csi, 'wait', 0))
+        no_skill_wait = int(getattr(self._es_no_skill, 'wait', 0))
+        self._best_val_csi, self._best_epoch = self._mgr.save(
+            model=self.model,
+            epoch=epoch,
+            val_csi=val_csi,
+            es_wait=es_wait,
+            no_skill_wait=no_skill_wait,
+            best_val_csi=self._best_val_csi,
+            best_epoch=self._best_epoch,
+        )
 
 
 # Define a custom early stopping callback to stop when the CSI is almost 0

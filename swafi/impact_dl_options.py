@@ -95,6 +95,10 @@ class ImpactDlOptions(ImpactBasicOptions):
         # Training performance options
         self.steps_per_execution = 1
 
+        # Checkpoint / resume options
+        self.checkpoint_dir = None
+        self.resume_training = False
+
     def _set_parser_dl_shared_arguments(self):
         """
         Set the parser arguments.
@@ -223,6 +227,20 @@ class ImpactDlOptions(ImpactBasicOptions):
             default=1,
             help='Number of training steps per compiled TF function call (reduces Python/TF overhead)'
         )
+        self.parser.add_argument(
+            '--checkpoint-dir',
+            type=str,
+            default=None,
+            help='Directory for saving training checkpoints after each epoch. '
+                 'If None, checkpointing is disabled.'
+        )
+        self.parser.add_argument(
+            '--resume-training',
+            action=argparse.BooleanOptionalAction,
+            default=False,
+            help='Resume training from the latest checkpoint in --checkpoint-dir.'
+        )
+
     def _parse_dl_args(self, args):
         """
         Parse the arguments.
@@ -248,6 +266,8 @@ class ImpactDlOptions(ImpactBasicOptions):
         self.steps_per_execution = args.steps_per_execution
         self.nb_dense_units_decreasing = args.nb_dense_units_decreasing
         self.inner_activation_dense = args.inner_activation_dense
+        self.checkpoint_dir = args.checkpoint_dir
+        self.resume_training = args.resume_training
 
     def _generate_for_optuna(self, trial, hp_to_optimize):
         if not has_optuna:
@@ -332,6 +352,8 @@ class ImpactDlOptions(ImpactBasicOptions):
         logger.info("- nb_dense_units:  %s", self.nb_dense_units)
         logger.info("- nb_dense_units_decreasing:  %s", self.nb_dense_units_decreasing)
         logger.info("- inner_activation_dense:  %s", self.inner_activation_dense)
+        logger.info("- checkpoint_dir:  %s", self.checkpoint_dir)
+        logger.info("- resume_training:  %s", self.resume_training)
 
     def is_ok(self):
         """
