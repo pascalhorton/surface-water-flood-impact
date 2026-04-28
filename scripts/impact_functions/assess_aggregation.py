@@ -23,6 +23,8 @@ DATASET = 'mobiliar'  # 'mobiliar' or 'gvz'
 PREDICTION_FILE = R"C:\Data\Projects\2024 SWF\Analyses\08 Independent predictions\pred_rf_2023-2024.nc"
 AGGREGATION = AGGREGATION_CATCH
 DAMAGES_FILE = R"C:\Data\Projects\2024 SWF\Analyses\08 Independent predictions\damages_mobiliar_2023_2024.nc"
+RELAX = True
+THRESHOLD = 0.5
 
 config = Config()
 
@@ -263,7 +265,7 @@ def main():
                f"Please run the prediction script first.")
 
     damages = get_damages_xr(DATASET)
-    assess(output_path, damages)
+    assess(output_path, damages, ignore_removed=RELAX, relax_days=RELAX, prob_threshold=THRESHOLD)
 
 
 if __name__ == '__main__':
