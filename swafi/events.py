@@ -243,6 +243,20 @@ class Events:
         len_after = len(self.events)
         logger.info("Number of events without actual contracts: %s", len_before - len_after)
 
+    def remove_duplicates(self):
+        """
+        Remove duplicate events with the same cid and i_max_date.
+        The row with the highest nb_claims is kept; its nb_claims is set
+        to the sum of all duplicates' nb_claims.
+        """
+        len_before = len(self.events)
+        grouped = self.events.groupby(['cid', 'i_max_date'], sort=False)
+        keep_idx = grouped['nb_claims'].idxmax()
+        claims_sum = grouped['nb_claims'].transform('sum')
+        self.events['nb_claims'] = claims_sum
+        self.events = self.events.loc[keep_idx].reset_index(drop=True)
+        logger.info("Duplicate events removed: %s", len_before - len(self.events))
+
     def count_positives(self):
         """
         Count the number of positive events.

@@ -91,6 +91,8 @@ def main():
         logger.warning("No events to remove because the "
               "damages where loaded from pickle files.")
     events.remove_events_without_contracts()
+    if METHOD == 'simple':
+        events.remove_duplicates()
 
     nb_events = len(events.events)
     logger.info("Final number of events: %s", nb_events)
