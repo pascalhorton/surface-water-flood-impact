@@ -164,14 +164,14 @@ def main():
             rf.df.dropna(subset=rf.features, inplace=True)
             x_input = rf.df[rf.features].to_numpy()
             y_pred = rf.model.predict_proba(x_input)[:, 1]  # Probability of class 1
-            assert len(y_pred) == len(cell_events)
+            assert len(y_pred) == len(rf.df)
 
             # Loop over events and store the target value at the correct date
-            for i, (_, event) in enumerate(cell_events.iterrows()):
+            for i, (_, row) in enumerate(rf.df.iterrows()):
                 if y_pred[i] == 0:
                     continue
                 # Store the prediction at the date of the event
-                ref_date = pd.to_datetime(event['i_max_date']).replace(hour=0, minute=0)
+                ref_date = pd.to_datetime(row['i_max_date']).replace(hour=0, minute=0)
                 ds_pred['predict'].loc[dict(time=ref_date, y=y, x=x)] = y_pred[i]
 
     # Save the results
