@@ -121,7 +121,7 @@ def main():
     cpc = CombiPrecip(year_start, year_end)
     cpc.set_data_path(config.get('DIR_PRECIP'))
 
-    output_path = Path(config.get('OUTPUT_DIR')) / f'pred_cnn_{options.run_name}_{year_start}-{year_end}.nc'
+    output_path = Path(config.get('OUTPUT_DIR')) / f'pred_cnn_{options.dataset}_{options.run_name}_{year_start}-{year_end}.nc'
 
     if output_path.exists():
         if DO_ASSESS:

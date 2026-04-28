@@ -91,7 +91,7 @@ def main():
         events = pd.read_pickle(events_path)
 
     for method in ['union', 'intersection']:
-        output_path = Path(config.get('OUTPUT_DIR')) / f'pred_thr_2019_{method}_{year_start}-{year_end}.nc'
+        output_path = Path(config.get('OUTPUT_DIR')) / f'pred_thr_2019_{options.dataset}_{method}_{year_start}-{year_end}.nc'
 
         logger.info("Processing %s...", method)
 

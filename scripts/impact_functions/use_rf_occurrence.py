@@ -100,7 +100,7 @@ def main():
     else:
         events = pd.read_pickle(events_path)
 
-    output_path = Path(config.get('OUTPUT_DIR')) / f'pred_rf_{year_start}-{year_end}.nc'
+    output_path = Path(config.get('OUTPUT_DIR')) / f'pred_rf_{options.dataset}_{options.run_name}_{year_start}-{year_end}.nc'
 
     if output_path.exists():
         if DO_ASSESS:
