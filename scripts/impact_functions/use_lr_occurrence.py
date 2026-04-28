@@ -85,6 +85,7 @@ def main():
     lr_model = payload['model']
     lr_mean = payload.get('mean', None)
     lr_std = payload.get('std', None)
+    saved_features = payload.get('features', None)
 
     # Extract precipitation events
     year_start = config.get('YEAR_START_TEST')
@@ -137,6 +138,13 @@ def main():
     lr.x_std = lr_std
     lr.select_features(lr.options.replace_simple_features)
     features = lr.get_all_features(lr.options.simple_feature_classes)
+
+    if saved_features is not None:
+        assert lr.features == saved_features, (
+            f"Feature mismatch between saved model and current options.\n"
+            f"  Saved:   {saved_features}\n"
+            f"  Current: {lr.features}"
+        )
 
     # Evaluate on all domain cells
     for i_x, x in enumerate(tqdm(xs, desc="Progress:", position=0)):
