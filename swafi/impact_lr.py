@@ -33,6 +33,17 @@ class ImpactLogisticRegression(Impact):
         self.model = LogisticRegression(class_weight=self.class_weight, max_iter=1000)
         self.model.fit(self.x_train, self.y_train)
 
+    def set_model(self, model):
+        """
+        Set the model.
+
+        Parameters
+        ----------
+        model: LogisticRegression
+            The trained sklearn model.
+        """
+        self.model = model
+
     def save_model(self, dir_output, base_name):
         """
         Save the model.
@@ -49,8 +60,13 @@ class ImpactLogisticRegression(Impact):
 
         filename = f'{dir_output}/{base_name}_{self.options.run_name}.pkl'
 
+        payload = {'model': self.model}
+        if self._mean is not None:
+            payload['mean'] = self._mean
+            payload['std'] = self._std
+
         with open(filename, 'wb') as f:
-            pickle.dump(self.model, f)
+            pickle.dump(payload, f)
 
         logger.info("Model saved: %s", filename)
 
@@ -68,6 +84,14 @@ class ImpactLogisticRegression(Impact):
         filename = f'{dir_output}/{base_name}_{self.options.run_name}.pkl'
 
         with open(filename, 'rb') as f:
-            self.model = pickle.load(f)
+            payload = pickle.load(f)
+
+        if not isinstance(payload, dict):
+            raise ValueError("Invalid model file format: "
+                             "expected a dictionary with 'model' key")
+
+        self.model = payload['model']
+        self._mean = payload.get('mean', None)
+        self._std = payload.get('std', None)
 
         logger.info("Model loaded: %s", filename)
