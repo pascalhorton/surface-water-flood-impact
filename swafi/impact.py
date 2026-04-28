@@ -48,8 +48,8 @@ class Impact:
         self.features = []
         self.weights = None
         self.class_weight = None
-        self._mean = None
-        self._std = None
+        self.x_mean = None
+        self.x_std = None
 
         self.config = Config()
         self.tmp_dir = Path(self.config.get('TMP_DIR'))
@@ -478,13 +478,13 @@ class Impact:
         epsilon = 1e-8  # A small constant to avoid division by zero
 
         # Calculate mean and std only on the training data
-        self._mean = np.mean(self.x_train, axis=0)
-        self._std = np.std(self.x_train, axis=0) + epsilon
+        self.x_mean = np.mean(self.x_train, axis=0)
+        self.x_std = np.std(self.x_train, axis=0) + epsilon
 
         # Normalize all splits using training mean and std
-        self.x_train = (self.x_train - self._mean) / self._std
-        self.x_valid = (self.x_valid - self._mean) / self._std
-        self.x_test = (self.x_test - self._mean) / self._std
+        self.x_train = (self.x_train - self.x_mean) / self.x_std
+        self.x_valid = (self.x_valid - self.x_mean) / self.x_std
+        self.x_test = (self.x_test - self.x_mean) / self.x_std
 
     def compute_balanced_class_weights(self, factor_neg_reduction=1):
         """
