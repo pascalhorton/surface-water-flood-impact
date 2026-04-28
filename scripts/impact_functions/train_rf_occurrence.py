@@ -44,7 +44,8 @@ def main():
         rf.plot_feature_importance(tag='feature_importance_' + rf.options.run_name,
                                    dir_output=config.get('OUTPUT_DIR'))
         if SAVE_MODEL:
-            rf.save_model(dir_output=config.get('OUTPUT_DIR'), base_name='model_rf')
+            rf.save_model(dir_output=config.get('OUTPUT_DIR'),
+                          base_name=f'model_rf_{options.dataset}_{options.event_method}')
             logger.info("Model saved in %s", config.get('OUTPUT_DIR'))
 
     else:
