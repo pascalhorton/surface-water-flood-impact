@@ -60,7 +60,10 @@ class ImpactLogisticRegression(Impact):
 
         filename = f'{dir_output}/{base_name}_{self.options.run_name}.pkl'
 
-        payload = {'model': self.model}
+        payload = {
+            'model': self.model,
+            'features': self.features,
+        }
         if self.x_mean is not None:
             payload['mean'] = self.x_mean
             payload['std'] = self.x_std
@@ -91,6 +94,7 @@ class ImpactLogisticRegression(Impact):
                              "expected a dictionary with 'model' key")
 
         self.model = payload['model']
+        self.features = payload.get('features', [])
         self.x_mean = payload.get('mean', None)
         self.x_std = payload.get('std', None)
 
