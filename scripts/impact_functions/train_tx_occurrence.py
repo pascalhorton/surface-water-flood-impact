@@ -86,7 +86,7 @@ def _setup_model(options, events, precip_hf, precip_daily):
     if tx.options.use_static_attributes or tx.options.use_event_attributes:
         tx.select_features(tx.options.replace_simple_features)
         tx.load_features(tx.options.simple_feature_classes)
-    tx.split_sample()
+    tx.split_sample(valid_test_size=0.25, test_size=0)
     tx.reduce_negatives_for_training(tx.options.factor_neg_reduction)
     tx.compute_balanced_class_weights(tx.options.factor_neg_reduction)
     tx.compute_corrected_class_weights(

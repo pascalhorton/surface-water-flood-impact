@@ -57,7 +57,7 @@ def _setup_model(options, events):
     if rf.options.use_static_attributes or rf.options.use_event_attributes:
         rf.select_features(rf.options.replace_simple_features)
         rf.load_features(rf.options.simple_feature_classes)
-    rf.split_sample()
+    rf.split_sample(valid_test_size=0.25, test_size=0)
     rf.compute_balanced_class_weights()
     rf.compute_corrected_class_weights(
         weight_denominator=rf.options.weight_denominator)

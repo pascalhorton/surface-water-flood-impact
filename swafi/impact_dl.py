@@ -264,8 +264,9 @@ class ImpactDl(Impact):
         file_tag: str
             The tag to add to the file name.
         """
-        logger.info("Creating test data generator.")
-        self._create_data_generator_test()  # Implement this method in the child class
+        if self.events_test is not None and len(self.events_test) > 0:
+            logger.info("Creating test data generator.")
+            self._create_data_generator_test()  # Implement this method in the child class
 
         # Determine a good decision threshold from validation data if it's a classifier
         if self.target_type == 'occurrence' and self.dg_val is not None:
@@ -282,7 +283,8 @@ class ImpactDl(Impact):
         df_res = pd.DataFrame(columns=['split'])
         df_res = self._assess_model_dg(self.dg_train, 'train', df_res)
         df_res = self._assess_model_dg(self.dg_val, 'valid', df_res)
-        df_res = self._assess_model_dg(self.dg_test, 'test', df_res)
+        if self.dg_test is not None:
+            df_res = self._assess_model_dg(self.dg_test, 'test', df_res)
 
         if save_results:
             self._save_results_csv(df_res, file_tag)

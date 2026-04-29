@@ -64,7 +64,7 @@ def _setup_model(options, events):
     ann = ImpactCnn(options, events)
     ann.select_features(ann.options.replace_simple_features)
     ann.load_features(ann.options.simple_feature_classes)
-    ann.split_sample()
+    ann.split_sample(valid_test_size=0.25, test_size=0)
     ann.reduce_negatives_for_training(ann.options.factor_neg_reduction)
     ann.compute_balanced_class_weights(ann.options.factor_neg_reduction)
     ann.compute_corrected_class_weights(

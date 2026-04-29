@@ -31,7 +31,7 @@ def main():
     thr.tabular_features = {'event': ['i_max_q', 'p_sum_q']}
     thr.load_features(['event'])
 
-    thr.split_sample()
+    thr.split_sample(valid_test_size=0.25, test_size=0)
     thr.show_target_stats()
 
     logger.info("Threshold 2019 method (union):")

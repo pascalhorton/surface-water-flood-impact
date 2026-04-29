@@ -41,7 +41,7 @@ def main():
         lr.select_features(options.replace_simple_features)
         lr.load_features(options.simple_feature_classes)
 
-        lr.split_sample()
+        lr.split_sample(valid_test_size=0.25, test_size=0)
         lr.normalize_features()
         lr.compute_balanced_class_weights()
         lr.compute_corrected_class_weights(weight_denominator=weight_denominator)

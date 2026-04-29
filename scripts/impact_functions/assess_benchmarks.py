@@ -28,19 +28,19 @@ def main():
     logger.info("Benchmark model (always false):")
     bench = Impact(events, options)
     bench.create_benchmark_model('always_false')
-    bench.split_sample()
+    bench.split_sample(valid_test_size=0.25, test_size=0)
     bench.assess_model_on_all_periods(save_results=True, file_tag='bench_false')
 
     logger.info("Benchmark model (always true):")
     bench = Impact(events, options)
     bench.create_benchmark_model('always_true')
-    bench.split_sample()
+    bench.split_sample(valid_test_size=0.25, test_size=0)
     bench.assess_model_on_all_periods(save_results=True, file_tag='bench_true')
 
     logger.info("Benchmark model (random):")
     bench = Impact(events, options)
     bench.create_benchmark_model('random')
-    bench.split_sample()
+    bench.split_sample(valid_test_size=0.25, test_size=0)
     bench.assess_model_on_all_periods(save_results=True, file_tag='bench_rand')
 
 

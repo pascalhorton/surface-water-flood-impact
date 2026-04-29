@@ -268,7 +268,7 @@ class Impact:
         self.df = self.df[(self.df['nb_claims'] == 0) |
                           (self.df['nb_claims'] >= threshold)]
 
-    def split_sample(self, valid_test_size=0.4, test_size=0.375, ref_date='i_max_only', stratify=False, stratify_by='month'):
+    def split_sample(self, valid_test_size=0.25, test_size=0, ref_date='i_max_only', stratify=False, stratify_by='month'):
         """
         Split the sample into training, validation and test sets. The split is
         stratified on the target, i.e. the proportion of events with and without
@@ -277,10 +277,10 @@ class Impact:
         Parameters
         ----------
         valid_test_size: float
-            The size of the set for validation and testing (default: 0.4)
+            The size of the set for validation and testing (default: 0.25)
         test_size: float
             The size of the set for testing proportionally to the length of the
-            validation and testing split (default: 0.25)
+            validation and testing split (default: 0)
         ref_date: str
             The reference date to use for the precipitation extraction when claim dates are missing (no damage class).
             Options are:
@@ -363,19 +363,23 @@ class Impact:
                     random_state=self.random_state,
                     shuffle=True
                 )
-                val_dates, test_dates = train_test_split(
-                    temp_dates,
-                    test_size=test_size,
-                    stratify=date_label_df.loc[
-                        date_label_df['date'].isin(temp_dates), 'damage_class'],
-                    random_state=self.random_state,
-                    shuffle=True
-                )
+                if test_size == 0:
+                    val_df = df[df['date'].isin(temp_dates)]
+                    test_df = df.iloc[0:0]
+                else:
+                    val_dates, test_dates = train_test_split(
+                        temp_dates,
+                        test_size=test_size,
+                        stratify=date_label_df.loc[
+                            date_label_df['date'].isin(temp_dates), 'damage_class'],
+                        random_state=self.random_state,
+                        shuffle=True
+                    )
+                    val_df = df[df['date'].isin(val_dates)]
+                    test_df = df[df['date'].isin(test_dates)]
 
-                # Filter the original df to get train, validation, and test sets
+                # Filter training set
                 train_df = df[df['date'].isin(train_dates)]
-                val_df = df[df['date'].isin(val_dates)]
-                test_df = df[df['date'].isin(test_dates)]
 
             elif stratify_by == 'month':
                 # Compute the ratio of events with and without damages on an annual basis
@@ -395,18 +399,21 @@ class Impact:
                     shuffle=True,
                     stratify=events_month['ratio_class']
                 )
-                val_slct, test_slct = train_test_split(
-                    tmp_slct,
-                    test_size=test_size,
-                    random_state=self.random_state,
-                    shuffle=True,
-                    stratify=tmp_slct['ratio_class']
-                )
-
                 # Filter the original df to get train, validation, and test sets
                 train_df = df[pd.MultiIndex.from_arrays([df['year'], df['month']]).isin(train_slct.index)]
-                val_df = df[pd.MultiIndex.from_arrays([df['year'], df['month']]).isin(val_slct.index)]
-                test_df = df[pd.MultiIndex.from_arrays([df['year'], df['month']]).isin(test_slct.index)]
+                if test_size == 0:
+                    val_df = df[pd.MultiIndex.from_arrays([df['year'], df['month']]).isin(tmp_slct.index)]
+                    test_df = df.iloc[0:0]
+                else:
+                    val_slct, test_slct = train_test_split(
+                        tmp_slct,
+                        test_size=test_size,
+                        random_state=self.random_state,
+                        shuffle=True,
+                        stratify=tmp_slct['ratio_class']
+                    )
+                    val_df = df[pd.MultiIndex.from_arrays([df['year'], df['month']]).isin(val_slct.index)]
+                    test_df = df[pd.MultiIndex.from_arrays([df['year'], df['month']]).isin(test_slct.index)]
 
             else:
                 raise ValueError(f"Unknown stratification method: {stratify_by}. "
@@ -423,13 +430,16 @@ class Impact:
                 shuffle=False
             )
 
-            # Then split temp into validation and test
-            val_df, test_df = train_test_split(
-                temp_df,
-                test_size=test_size,
-                random_state=self.random_state,
-                shuffle=False
-            )
+            if test_size == 0:
+                val_df = temp_df
+                test_df = temp_df.iloc[0:0]
+            else:
+                val_df, test_df = train_test_split(
+                    temp_df,
+                    test_size=test_size,
+                    random_state=self.random_state,
+                    shuffle=False
+                )
 
         self.x_train = train_df[self.features].to_numpy()
         self.x_valid = val_df[self.features].to_numpy()
@@ -461,15 +471,24 @@ class Impact:
 
         # Print the percentage of events with and without damages
         self.show_target_stats()
-        logger.info("Theoretical split ratios: train=%.1f%%, valid=%.1f%%, test=%.1f%%",
-                    100 * (1 - valid_test_size),
-                    100 * valid_test_size * (1 - test_size),
-                    100 * valid_test_size * test_size)
-        y_len = len(self.y_train) + len(self.y_valid) + len(self.y_test)
-        logger.info("Actual split ratios: train=%.1f%%, valid=%.1f%%, test=%.1f%%",
-                    100 * len(self.y_train) / y_len,
-                    100 * len(self.y_valid) / y_len,
-                    100 * len(self.y_test) / y_len)
+        if test_size == 0:
+            logger.info("Theoretical split ratios: train=%.1f%%, valid=%.1f%%",
+                        100 * (1 - valid_test_size),
+                        100 * valid_test_size)
+            y_len = len(self.y_train) + len(self.y_valid)
+            logger.info("Actual split ratios: train=%.1f%%, valid=%.1f%%",
+                        100 * len(self.y_train) / y_len,
+                        100 * len(self.y_valid) / y_len)
+        else:
+            logger.info("Theoretical split ratios: train=%.1f%%, valid=%.1f%%, test=%.1f%%",
+                        100 * (1 - valid_test_size),
+                        100 * valid_test_size * (1 - test_size),
+                        100 * valid_test_size * test_size)
+            y_len = len(self.y_train) + len(self.y_valid) + len(self.y_test)
+            logger.info("Actual split ratios: train=%.1f%%, valid=%.1f%%, test=%.1f%%",
+                        100 * len(self.y_train) / y_len,
+                        100 * len(self.y_valid) / y_len,
+                        100 * len(self.y_test) / y_len)
 
     def normalize_features(self):
         """
@@ -586,7 +605,8 @@ class Impact:
         df_res = pd.DataFrame(columns=['split'])
         df_res = self._assess_model(self.x_train, self.y_train, 'train', df_res)
         df_res = self._assess_model(self.x_valid, self.y_valid, 'valid', df_res)
-        df_res = self._assess_model(self.x_test, self.y_test, 'test', df_res)
+        if self.y_test is not None and len(self.y_test) > 0:
+            df_res = self._assess_model(self.x_test, self.y_test, 'test', df_res)
 
         if save_results:
             self._save_results_csv(df_res, file_tag)
