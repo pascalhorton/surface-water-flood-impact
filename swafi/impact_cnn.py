@@ -284,9 +284,28 @@ class ImpactCnn(ImpactDl):
                              pixels_per_side,
                              self.dg_train.get_nb_channels()]
 
-        feature_class_sizes = [
-            len(v) for v in self.tabular_features.values() if v
-        ]
+        # Build per-class sizes that exactly match self.features ordering.
+        # tabular_features may contain classes not loaded into x_train, so we
+        # derive sizes from self.features directly rather than from tabular_features.
+        feature_to_class = {
+            f: cls
+            for cls, feats in self.tabular_features.items()
+            for f in feats
+        }
+        feature_class_sizes = []
+        current_cls = None
+        count = 0
+        for f in self.features:
+            cls = feature_to_class.get(f)
+            if cls != current_cls:
+                if count > 0:
+                    feature_class_sizes.append(count)
+                current_cls = cls
+                count = 1
+            else:
+                count += 1
+        if count > 0:
+            feature_class_sizes.append(count)
 
         self.model = ModelCnn(
             task=self.target_type,
