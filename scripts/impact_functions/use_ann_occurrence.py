@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 DO_ASSESS = True
 MODEL = R"C:\Users\phorton\Documents\SWF\outputs\model_ann_gvz_70.keras"
 DATASET = 'gvz'  # 'mobiliar' or 'gvz'
+EVENT_METHOD = 'classic'
 THRESHOLD = 0.5
 
 config = Config()
@@ -34,6 +35,7 @@ def main():
 
     options = ann_model.options
     options.dataset = DATASET
+    options.event_method = EVENT_METHOD
     options.print_options()
     assert options.is_ok()
     assert options.event_method in ['simple', 'classic'], "Invalid event method."
@@ -56,6 +58,8 @@ def main():
         Path(config.get('OUTPUT_DIR'))
         / f'pred_ann_{options.dataset}_{options.run_name}_{year_start}-{year_end}.nc'
     )
+
+    output_path = Path(config.get('OUTPUT_DIR')) / f'pred_ann_{options.dataset}_{options.event_method}_{options.run_name}_{year_start}-{year_end}.nc'
 
     if output_path.exists():
         if DO_ASSESS:
