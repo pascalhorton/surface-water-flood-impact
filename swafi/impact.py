@@ -540,6 +540,8 @@ class Impact:
             y = getattr(self, f'y_{split}')
             if y is None:
                 raise ValueError(f"Split {split} not defined")
+            if split == 'test' and len(y) == 0:
+                continue
             events_with_damages = y[y > 0]
             events_without_damages = y[y == 0]
             logger.info("Number of events with damages (%s): (%.3f%%)(%s)",
