@@ -44,6 +44,8 @@ def main():
         / f'pred_rf_{options.dataset}_{options.run_name}_{year_start}-{year_end}.nc'
     )
 
+    output_path = Path(config.get('OUTPUT_DIR')) / f'pred_rf_{options.dataset}_{options.event_method}_{year_start}-{year_end}.nc'
+
     if output_path.exists():
         if DO_ASSESS:
             assess(output_path, get_damages_xr(options.dataset, year_start, year_end),
@@ -85,6 +87,10 @@ def main():
             rf.set_exposure(exposure_cid)
             rf.df.dropna(subset=rf.features, inplace=True)
             x_input = rf.df[rf.features].to_numpy()
+            if len(x_input) == 0:
+                ds_pred['predict'][:, i_y, i_x] = np.nan
+                continue
+
             y_pred = rf.model.predict_proba(x_input)[:, 1]  # Probability of class 1
             assert len(y_pred) == len(rf.df)
 
