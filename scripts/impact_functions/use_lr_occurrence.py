@@ -13,8 +13,8 @@ from swafi.config import Config
 from swafi.domain import Domain
 from swafi.impact_basic_options import ImpactBasicOptions
 from swafi.impact_lr import ImpactLogisticRegression
-from swafi.precip_combiprecip import CombiPrecip
 from swafi.damages_mobiliar import DamagesMobiliar
+from swafi.utils.event_extraction import extract_events_parallel
 from swafi.damages_gvz import DamagesGvz
 from swafi.utils.verification import compute_confusion_matrix, print_classic_scores, prepare_full_domain_assessment
 from swafi.utils.logging_setup import setup_logging
@@ -95,11 +95,7 @@ def main():
 
     if not events_path.exists():
         logger.info("Extracting events and saving to %s...", events_path)
-        cpc = CombiPrecip(year_start, year_end)
-        cpc.open_files(config.get('DIR_PRECIP'))
-        logger.info("Applying smoothing...")
-        cpc.apply_smoothing(filter_size=3)
-        events = cpc.extract_events(method=options.event_method)
+        events = extract_events_parallel(year_start, year_end, options.event_method)
         events.to_pickle(events_path)
     else:
         events = pd.read_pickle(events_path)
