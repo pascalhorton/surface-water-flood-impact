@@ -308,6 +308,9 @@ class ImpactCnnOptions(ImpactDlOptions):
             self.pool_size_spatial = 1
             self.use_spatial_dropout = False
 
+        if not self.use_precip:
+            self._apply_ann_mode_defaults(args)
+
         if self.optimize_with_optuna:
             logger.info("Optimizing with Optuna; some options will be ignored.")
 
@@ -385,9 +388,12 @@ class ImpactCnnOptions(ImpactDlOptions):
                     'nb_dense_units_decreasing',
                     'inner_activation_dense',
                     'dropout_rate_dense',
+                    'use_batchnorm_dense',
+                    'use_layernorm_dense',
+                    'use_residual_dense',
                     'batch_size',
                     'learning_rate',
-                    'weight_denominator'
+                    'weight_denominator',
                 ]
 
         self._generate_for_optuna(trial, hp_to_optimize)

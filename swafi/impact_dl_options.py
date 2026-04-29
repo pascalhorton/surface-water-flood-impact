@@ -87,6 +87,8 @@ class ImpactDlOptions(ImpactBasicOptions):
         # Model options for the dense layers
         self.dropout_rate_dense = None
         self.use_batchnorm_dense = None
+        self.use_layernorm_dense = None
+        self.use_residual_dense = None
         self.nb_dense_layers = None
         self.nb_dense_units = None
         self.nb_dense_units_decreasing = None
@@ -198,6 +200,18 @@ class ImpactDlOptions(ImpactBasicOptions):
             help='Use batch normalization for the dense layers'
         )
         self.parser.add_argument(
+            '--use-layernorm-dense',
+            action=argparse.BooleanOptionalAction,
+            default=False,
+            help='Use layer normalization (per-sample) for the dense layers instead of batch norm'
+        )
+        self.parser.add_argument(
+            '--use-residual-dense',
+            action=argparse.BooleanOptionalAction,
+            default=False,
+            help='Add residual (skip) connections around each dense layer'
+        )
+        self.parser.add_argument(
             '--nb-dense-layers',
             type=int,
             default=4,
@@ -261,6 +275,8 @@ class ImpactDlOptions(ImpactBasicOptions):
         self.jit_compile = args.jit_compile
         self.dropout_rate_dense = args.dropout_rate_dense
         self.use_batchnorm_dense = args.use_batchnorm_dense
+        self.use_layernorm_dense = args.use_layernorm_dense
+        self.use_residual_dense = args.use_residual_dense
         self.nb_dense_layers = args.nb_dense_layers
         self.nb_dense_units = args.nb_dense_units
         self.steps_per_execution = args.steps_per_execution
@@ -268,6 +284,25 @@ class ImpactDlOptions(ImpactBasicOptions):
         self.inner_activation_dense = args.inner_activation_dense
         self.checkpoint_dir = args.checkpoint_dir
         self.resume_training = args.resume_training
+
+    def _apply_ann_mode_defaults(self, args):
+        """Apply ANN-friendly defaults for options still at their parser default.
+
+        Called by subclasses when use_precip=False so that dense-only networks
+        get sensible defaults without changing the CNN defaults.
+        """
+        overrides = {
+            'dropout_rate_dense': 0.1,
+            'nb_dense_units': 256,
+            'nb_dense_units_decreasing': False,
+            'weight_denominator': 1,
+            'use_batchnorm_dense': False,
+            'use_layernorm_dense': True,
+            'use_residual_dense': True,
+        }
+        for attr, ann_default in overrides.items():
+            if getattr(args, attr) == self.parser.get_default(attr):
+                setattr(self, attr, ann_default)
 
     def _generate_for_optuna(self, trial, hp_to_optimize):
         if not has_optuna:
@@ -304,6 +339,12 @@ class ImpactDlOptions(ImpactBasicOptions):
         if 'use_batchnorm_dense' in hp_to_optimize:
             self.use_batchnorm_dense = trial.suggest_categorical(
                 'use_batchnorm_dense', [True, False])
+        if 'use_layernorm_dense' in hp_to_optimize:
+            self.use_layernorm_dense = trial.suggest_categorical(
+                'use_layernorm_dense', [True, False])
+        if 'use_residual_dense' in hp_to_optimize:
+            self.use_residual_dense = trial.suggest_categorical(
+                'use_residual_dense', [True, False])
         if 'nb_dense_layers' in hp_to_optimize:
             self.nb_dense_layers = trial.suggest_int(
                 'nb_dense_layers', 1, 8)
@@ -348,6 +389,8 @@ class ImpactDlOptions(ImpactBasicOptions):
         logger.info("- lr_method:  %s", self.lr_method)
         logger.info("- dropout_rate_dense:  %s", self.dropout_rate_dense)
         logger.info("- use_batchnorm_dense:  %s", self.use_batchnorm_dense)
+        logger.info("- use_layernorm_dense:  %s", self.use_layernorm_dense)
+        logger.info("- use_residual_dense:  %s", self.use_residual_dense)
         logger.info("- nb_dense_layers:  %s", self.nb_dense_layers)
         logger.info("- nb_dense_units:  %s", self.nb_dense_units)
         logger.info("- nb_dense_units_decreasing:  %s", self.nb_dense_units_decreasing)
@@ -380,6 +423,8 @@ class ImpactDlOptions(ImpactBasicOptions):
         assert isinstance(self.jit_compile, bool), "jit_compile is not set"
         assert self.dropout_rate_dense is not None, "dropout_rate_dense is not set"
         assert isinstance(self.use_batchnorm_dense, bool), "use_batchnorm_dense is not set"
+        assert isinstance(self.use_layernorm_dense, bool), "use_layernorm_dense is not set"
+        assert isinstance(self.use_residual_dense, bool), "use_residual_dense is not set"
         assert self.nb_dense_layers is not None, "nb_dense_layers is not set"
         assert self.nb_dense_units is not None, "nb_dense_units is not set"
         assert isinstance(self.nb_dense_units_decreasing, bool), "nb_dense_units_decreasing is not set"

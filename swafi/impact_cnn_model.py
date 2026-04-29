@@ -287,13 +287,17 @@ class ModelCnn(keras.models.Model):
         for i in range(self.options.nb_dense_layers):
             if self.options.nb_dense_units_decreasing:
                 nb_units = self.options.nb_dense_units // (2 ** i)
-                # Keep at least 4 units
                 nb_units = max(nb_units, 4)
             else:
                 nb_units = self.options.nb_dense_units
+
+            x_skip = x  # save for residual
+
             x = keras.layers.Dense(nb_units, name=f'dense_{i}')(x)
 
-            if self.options.use_batchnorm_dense:
+            if getattr(self.options, 'use_layernorm_dense', False):
+                x = keras.layers.LayerNormalization(name=f'layernorm_dense_{i}')(x)
+            elif self.options.use_batchnorm_dense:
                 x = keras.layers.BatchNormalization(name=f'batchnorm_dense_{i}')(x)
 
             x = keras.layers.Activation(
@@ -303,6 +307,15 @@ class ModelCnn(keras.models.Model):
             if self.options.dropout_rate_dense > 0:
                 x = keras.layers.Dropout(rate=self.options.dropout_rate_dense,
                                    name=f'dropout_dense_{i}')(x)
+
+            if getattr(self.options, 'use_residual_dense', False):
+                if x_skip.shape[-1] == nb_units:
+                    x = keras.layers.Add(name=f'res_dense_{i}')([x, x_skip])
+                else:
+                    x_proj = keras.layers.Dense(
+                        nb_units, use_bias=False, name=f'res_proj_{i}'
+                    )(x_skip)
+                    x = keras.layers.Add(name=f'res_dense_{i}')([x, x_proj])
 
         # Last activation
         output = keras.layers.Dense(1, activation=self.last_activation,
