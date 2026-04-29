@@ -391,6 +391,8 @@ class ImpactCnnOptions(ImpactDlOptions):
                     'use_batchnorm_dense',
                     'use_layernorm_dense',
                     'use_residual_dense',
+                    'use_feature_class_embedding',
+                    'feature_class_embedding_size',
                     'batch_size',
                     'learning_rate',
                     'weight_denominator',

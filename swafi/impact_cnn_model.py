@@ -36,7 +36,7 @@ class ModelCnn(keras.models.Model):
         Additional arguments to pass to keras.models.Model.
     """
 
-    def __init__(self, trainable=True, dtype=None, task='classification', options=None, input_3d_size=None, input_1d_size=None, *args, **kwargs):
+    def __init__(self, trainable=True, dtype=None, task='classification', options=None, input_3d_size=None, input_1d_size=None, input_1d_splits=None, *args, **kwargs):
         super().__init__(trainable=trainable, dtype=dtype, *args, **kwargs)
         self.model = None
         self.task = task
@@ -51,6 +51,8 @@ class ModelCnn(keras.models.Model):
             self.input_1d_size = None
         else:
             self.input_1d_size = list(input_1d_size)
+
+        self.input_1d_splits = list(input_1d_splits) if input_1d_splits is not None else None
 
         self.last_activation = 'relu' if task == 'regression' else 'sigmoid'
 
@@ -107,6 +109,7 @@ class ModelCnn(keras.models.Model):
             "options": options_cfg,
             "input_3d_size": self.input_3d_size,
             "input_1d_size": self.input_1d_size,
+            "input_1d_splits": self.input_1d_splits,
             "build_config": self.get_build_config(),
             "mean_static": self._serialize_array(self.mean_static),
             "std_static": self._serialize_array(self.std_static),
@@ -143,6 +146,7 @@ class ModelCnn(keras.models.Model):
         instance.options = options
         instance.input_3d_size = config.get("input_3d_size", None)
         instance.input_1d_size = config.get("input_1d_size", None)
+        instance.input_1d_splits = config.get("input_1d_splits", None)
         instance.last_activation = 'relu' if instance.task == 'regression' else 'sigmoid'
 
         instance.mean_static = cls._deserialize_array(config.get("mean_static", None))
@@ -278,10 +282,30 @@ class ModelCnn(keras.models.Model):
 
         if self.input_1d_size is not None:
             input_1d = keras.layers.Input(shape=self.input_1d_size, name='input_1d')
-            if self.input_3d_size is not None:
-                x = keras.layers.concatenate([x, input_1d])
+
+            use_emb = (
+                getattr(self.options, 'use_feature_class_embedding', False)
+                and self.input_1d_splits is not None
+                and len(self.input_1d_splits) > 1
+                and self.input_3d_size is None  # embedding only in pure ANN mode
+            )
+
+            if use_emb:
+                emb_size = getattr(self.options, 'feature_class_embedding_size', 32)
+                sub_tensors = tf.split(input_1d, self.input_1d_splits, axis=-1)
+                embeddings = [
+                    keras.layers.Dense(emb_size, activation='relu',
+                                       name=f'emb_{i}')(sub)
+                    for i, sub in enumerate(sub_tensors)
+                ]
+                x1d = keras.layers.Concatenate(name='emb_concat')(embeddings)
             else:
-                x = input_1d
+                x1d = input_1d
+
+            if self.input_3d_size is not None:
+                x = keras.layers.concatenate([x, x1d])
+            else:
+                x = x1d
 
         # Fully connected
         for i in range(self.options.nb_dense_layers):

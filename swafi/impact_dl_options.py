@@ -89,6 +89,8 @@ class ImpactDlOptions(ImpactBasicOptions):
         self.use_batchnorm_dense = None
         self.use_layernorm_dense = None
         self.use_residual_dense = None
+        self.use_feature_class_embedding = None
+        self.feature_class_embedding_size = None
         self.nb_dense_layers = None
         self.nb_dense_units = None
         self.nb_dense_units_decreasing = None
@@ -212,6 +214,18 @@ class ImpactDlOptions(ImpactBasicOptions):
             help='Add residual (skip) connections around each dense layer'
         )
         self.parser.add_argument(
+            '--use-feature-class-embedding',
+            action=argparse.BooleanOptionalAction,
+            default=False,
+            help='Project each feature class through a separate dense layer before the shared block'
+        )
+        self.parser.add_argument(
+            '--feature-class-embedding-size',
+            type=int,
+            default=32,
+            help='Output size of each per-feature-class embedding Dense layer'
+        )
+        self.parser.add_argument(
             '--nb-dense-layers',
             type=int,
             default=4,
@@ -277,6 +291,8 @@ class ImpactDlOptions(ImpactBasicOptions):
         self.use_batchnorm_dense = args.use_batchnorm_dense
         self.use_layernorm_dense = args.use_layernorm_dense
         self.use_residual_dense = args.use_residual_dense
+        self.use_feature_class_embedding = args.use_feature_class_embedding
+        self.feature_class_embedding_size = args.feature_class_embedding_size
         self.nb_dense_layers = args.nb_dense_layers
         self.nb_dense_units = args.nb_dense_units
         self.steps_per_execution = args.steps_per_execution
@@ -299,6 +315,7 @@ class ImpactDlOptions(ImpactBasicOptions):
             'use_batchnorm_dense': False,
             'use_layernorm_dense': True,
             'use_residual_dense': True,
+            'use_feature_class_embedding': True,
         }
         for attr, ann_default in overrides.items():
             if getattr(args, attr) == self.parser.get_default(attr):
@@ -345,6 +362,12 @@ class ImpactDlOptions(ImpactBasicOptions):
         if 'use_residual_dense' in hp_to_optimize:
             self.use_residual_dense = trial.suggest_categorical(
                 'use_residual_dense', [True, False])
+        if 'use_feature_class_embedding' in hp_to_optimize:
+            self.use_feature_class_embedding = trial.suggest_categorical(
+                'use_feature_class_embedding', [True, False])
+        if 'feature_class_embedding_size' in hp_to_optimize:
+            self.feature_class_embedding_size = trial.suggest_categorical(
+                'feature_class_embedding_size', [16, 32, 64, 128])
         if 'nb_dense_layers' in hp_to_optimize:
             self.nb_dense_layers = trial.suggest_int(
                 'nb_dense_layers', 1, 8)
@@ -391,6 +414,8 @@ class ImpactDlOptions(ImpactBasicOptions):
         logger.info("- use_batchnorm_dense:  %s", self.use_batchnorm_dense)
         logger.info("- use_layernorm_dense:  %s", self.use_layernorm_dense)
         logger.info("- use_residual_dense:  %s", self.use_residual_dense)
+        logger.info("- use_feature_class_embedding:  %s", self.use_feature_class_embedding)
+        logger.info("- feature_class_embedding_size:  %s", self.feature_class_embedding_size)
         logger.info("- nb_dense_layers:  %s", self.nb_dense_layers)
         logger.info("- nb_dense_units:  %s", self.nb_dense_units)
         logger.info("- nb_dense_units_decreasing:  %s", self.nb_dense_units_decreasing)
@@ -425,6 +450,10 @@ class ImpactDlOptions(ImpactBasicOptions):
         assert isinstance(self.use_batchnorm_dense, bool), "use_batchnorm_dense is not set"
         assert isinstance(self.use_layernorm_dense, bool), "use_layernorm_dense is not set"
         assert isinstance(self.use_residual_dense, bool), "use_residual_dense is not set"
+        assert isinstance(self.use_feature_class_embedding, bool), \
+            "use_feature_class_embedding is not set"
+        assert self.feature_class_embedding_size is not None, \
+            "feature_class_embedding_size is not set"
         assert self.nb_dense_layers is not None, "nb_dense_layers is not set"
         assert self.nb_dense_units is not None, "nb_dense_units is not set"
         assert isinstance(self.nb_dense_units_decreasing, bool), "nb_dense_units_decreasing is not set"
