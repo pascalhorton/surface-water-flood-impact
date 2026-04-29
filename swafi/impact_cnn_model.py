@@ -292,8 +292,11 @@ class ModelCnn(keras.models.Model):
 
             if use_emb:
                 emb_size = getattr(self.options, 'feature_class_embedding_size', 32)
-                split_indices = list(np.cumsum(self.input_1d_splits[:-1]))
-                sub_tensors = keras.ops.split(input_1d, split_indices, axis=-1)
+                sub_tensors = FeatureSplit(
+                    split_sizes=self.input_1d_splits,
+                    axis=-1,
+                    name='feature_split'
+                )(input_1d)
                 embeddings = [
                     keras.layers.Dense(emb_size, activation='relu',
                                        name=f'emb_{i}')(sub)
@@ -464,4 +467,24 @@ class ModelCnn(keras.models.Model):
             )(residual)
         return keras.layers.Add(name=f'tcn_add_{i}')([x, residual])
 
+
+@keras.saving.register_keras_serializable(package="swafi")
+class FeatureSplit(keras.layers.Layer):
+    """Serializable wrapper around tf.split for feature-class embedding."""
+
+    def __init__(self, split_sizes, axis=-1, **kwargs):
+        super().__init__(**kwargs)
+        self.split_sizes = [int(s) for s in split_sizes]
+        self.axis = axis
+
+    def call(self, inputs):
+        return tf.split(inputs, num_or_size_splits=self.split_sizes, axis=self.axis)
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "split_sizes": self.split_sizes,
+            "axis": self.axis,
+        })
+        return config
 

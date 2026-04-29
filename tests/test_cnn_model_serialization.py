@@ -81,3 +81,40 @@ def test_model_cnn_serialization_roundtrip(tmp_path, pixels_per_side):
     assert preds.shape == (2, 1), f"Unexpected prediction shape: {preds.shape}"
     assert np.all((preds >= 0.0) & (preds <= 1.0)), "Predictions not in [0,1] for sigmoid output"
 
+
+def test_model_ann_embedding_serialization_roundtrip(tmp_path):
+    np.random.seed(0)
+
+    options = make_options(1)
+    options.use_feature_class_embedding = True
+    options.feature_class_embedding_size = 4
+
+    input_1d_size = [10]
+    input_1d_splits = [3, 2, 5]
+
+    model = ModelCnn(
+        task='classification',
+        options=options,
+        input_3d_size=None,
+        input_1d_size=input_1d_size,
+        input_1d_splits=input_1d_splits,
+    )
+    model.build_model()
+    model.compile(optimizer='adam', loss='binary_crossentropy')
+
+    # Dummy data (batch size 2)
+    x1d = np.random.rand(2, *input_1d_size).astype('float32')
+    y = np.array([0., 1.], dtype='float32')
+
+    model.fit(x1d, y, epochs=1, verbose=0)
+
+    save_path = tmp_path / 'model_ann_embedding.keras'
+    model.save(save_path, include_optimizer=False)
+
+    loaded = keras.models.load_model(save_path)
+    preds = loaded.predict(x1d, verbose=0)
+
+    assert preds.shape == (2, 1), f"Unexpected prediction shape: {preds.shape}"
+    assert np.all((preds >= 0.0) & (preds <= 1.0)), "Predictions not in [0,1] for sigmoid output"
+
+
