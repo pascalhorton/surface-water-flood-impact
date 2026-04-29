@@ -156,13 +156,13 @@ class ImpactCnnOptions(ImpactDlOptions):
         self.parser.add_argument(
             '--optimize-precip-spatial-extent',
             action=argparse.BooleanOptionalAction,
-            default=True,
+            default=False,
             help='Allow the precipitation spatial extent to be optimized'
         )
         self.parser.add_argument(
             '--optimize-precip-time-step',
             action=argparse.BooleanOptionalAction,
-            default=True,
+            default=False,
             help='Allow the precipitation time step to be optimized'
         )
         self.parser.add_argument(

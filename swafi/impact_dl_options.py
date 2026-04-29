@@ -116,7 +116,7 @@ class ImpactDlOptions(ImpactBasicOptions):
         self.parser.add_argument(
             '--weight-denominator',
             type=int,
-            default=10,
+            default=20,
             help='The weight denominator to reduce the negative class weights'
         )
         self.parser.add_argument(
@@ -192,31 +192,31 @@ class ImpactDlOptions(ImpactBasicOptions):
         self.parser.add_argument(
             '--dropout-rate-dense',
             type=float,
-            default=0.4,
+            default=0.1,
             help='The dropout rate for the dense layers'
         )
         self.parser.add_argument(
             '--use-batchnorm-dense',
             action=argparse.BooleanOptionalAction,
-            default=True,
+            default=False,
             help='Use batch normalization for the dense layers'
         )
         self.parser.add_argument(
             '--use-layernorm-dense',
             action=argparse.BooleanOptionalAction,
-            default=False,
+            default=True,
             help='Use layer normalization (per-sample) for the dense layers instead of batch norm'
         )
         self.parser.add_argument(
             '--use-residual-dense',
             action=argparse.BooleanOptionalAction,
-            default=False,
+            default=True,
             help='Add residual (skip) connections around each dense layer'
         )
         self.parser.add_argument(
             '--use-feature-class-embedding',
             action=argparse.BooleanOptionalAction,
-            default=False,
+            default=True,
             help='Project each feature class through a separate dense layer before the shared block'
         )
         self.parser.add_argument(
