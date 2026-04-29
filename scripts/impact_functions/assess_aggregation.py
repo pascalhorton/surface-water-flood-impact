@@ -15,9 +15,11 @@ from swafi.utils.logging_setup import setup_logging
 
 logger = logging.getLogger(__name__)
 
-AGGREGATION_ZIP = R"C:\Data\Data\GIS\Administration\CH_zip_codes\AMTOVZ_ZIP.shp"
-AGGREGATION_CATCH = R"C:\Data\Projects\2024 SWF\Data\GIS\Catchments\ezgg_40km2.shp"
-AGGREGATIONS = [None, AGGREGATION_ZIP, AGGREGATION_CATCH]
+AGGREGATIONS = [
+    None,
+    R"C:\Data\Data\GIS\Administration\CH_zip_codes\AMTOVZ_ZIP.shp",
+    R"C:\Data\Projects\2024 SWF\Data\GIS\Catchments\ezgg_40km2.shp"
+]
 
 DO_ASSESS = True
 DATASET = 'gvz'  # 'mobiliar' or 'gvz'
