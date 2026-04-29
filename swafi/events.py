@@ -362,15 +362,16 @@ class Events:
                 # If full-object unpickling fails, fall back to events-only file
                 pass
 
-        # Fallback: try to load the events-only gzipped pickle
-        if events_only_path.is_file():
-            self.events = pd.read_pickle(events_only_path, compression='gzip')
+        # Fallback: try to load the events-only pickle (bz2, with legacy gzip fallback)
+        loaded = _read_events_only_pickle(events_only_path)
+        if loaded is not None:
+            self.events = loaded
 
     def _dump_object(self, filename='events.pickle'):
         """
         Saves the object content to a pickle file. If pickling the whole object fails
         (commonly on Windows for very large objects), fall back to saving only the
-        events DataFrame compressed with gzip.
+        events DataFrame compressed with bz2.
         """
         if not self.use_dump:
             return
@@ -392,7 +393,14 @@ class Events:
         # Always persist a portable events-only file to avoid cross-version pickle issues
         if self.events is None:
             raise ValueError("Cannot dump events because self.events is None.")
-        self.events.to_pickle(events_only_path, compression='gzip')
+        try:
+            self.events.to_pickle(events_only_path, compression='bz2')
+        except Exception as e:
+            logger.warning(
+                "Could not save events-only pickle (%s: %s). "
+                "Computations will continue but the file was not saved.",
+                type(e).__name__, e,
+            )
 
     def _add_event_id(self):
         """
@@ -422,17 +430,19 @@ def load_events_from_pickle(filename='events.pickle'):
         try:
             events.events = _load_events_from_file(file_path)
         except _PICKLE_LOAD_EXCEPTIONS:
-            # Fallback to events-only gzipped pickle
-            if not events_only_path.is_file():
+            # Fallback to events-only pickle (bz2, with legacy gzip fallback)
+            loaded = _read_events_only_pickle(events_only_path)
+            if loaded is None:
                 raise Exception(
                     f"Failed to load {file_path}. Fallback file {events_only_path} "
                     f"does not exist or could not be unpickled."
                 )
-            events.events = pd.read_pickle(events_only_path, compression='gzip')
+            events.events = loaded
     else:
-        if not events_only_path.is_file():
+        loaded = _read_events_only_pickle(events_only_path)
+        if loaded is None:
             raise Exception(f"File {file_path} or {events_only_path} does not exist.")
-        events.events = pd.read_pickle(events_only_path, compression='gzip')
+        events.events = loaded
 
     # Check that there is no event without contract
     if 'nb_contracts' not in events.events.columns:
@@ -445,7 +455,17 @@ def load_events_from_pickle(filename='events.pickle'):
 
 def _events_only_pickle_path(pickles_dir, filename):
     """Return the portable events-only pickle path for a given filename."""
-    return Path(f'{pickles_dir}/{Path(filename).stem}_events.pkl.gz')
+    return Path(f'{pickles_dir}/{Path(filename).stem}_events.pkl.bz2')
+
+
+def _read_events_only_pickle(events_only_path):
+    """Read events-only pickle, falling back to legacy .pkl.gz if needed."""
+    if events_only_path.is_file():
+        return pd.read_pickle(events_only_path, compression='bz2')
+    legacy_path = events_only_path.with_suffix('').with_suffix('.pkl.gz')
+    if legacy_path.is_file():
+        return pd.read_pickle(legacy_path, compression='gzip')
+    return None
 
 
 def _extract_events_dataframe(loaded_value):
