@@ -284,11 +284,16 @@ class ImpactCnn(ImpactDl):
                              pixels_per_side,
                              self.dg_train.get_nb_channels()]
 
+        feature_class_sizes = [
+            len(v) for v in self.tabular_features.values() if v
+        ]
+
         self.model = ModelCnn(
             task=self.target_type,
             options=self.options,
             input_3d_size=input_3d_size,
-            input_1d_size=input_1d_size
+            input_1d_size=input_1d_size,
+            input_1d_splits=feature_class_sizes,
         )
         self.model.build_model()
 

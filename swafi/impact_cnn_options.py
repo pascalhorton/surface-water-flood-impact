@@ -156,13 +156,13 @@ class ImpactCnnOptions(ImpactDlOptions):
         self.parser.add_argument(
             '--optimize-precip-spatial-extent',
             action=argparse.BooleanOptionalAction,
-            default=True,
+            default=False,
             help='Allow the precipitation spatial extent to be optimized'
         )
         self.parser.add_argument(
             '--optimize-precip-time-step',
             action=argparse.BooleanOptionalAction,
-            default=True,
+            default=False,
             help='Allow the precipitation time step to be optimized'
         )
         self.parser.add_argument(
@@ -308,6 +308,9 @@ class ImpactCnnOptions(ImpactDlOptions):
             self.pool_size_spatial = 1
             self.use_spatial_dropout = False
 
+        if not self.use_precip:
+            self._apply_ann_mode_defaults(args)
+
         if self.optimize_with_optuna:
             logger.info("Optimizing with Optuna; some options will be ignored.")
 
@@ -385,9 +388,14 @@ class ImpactCnnOptions(ImpactDlOptions):
                     'nb_dense_units_decreasing',
                     'inner_activation_dense',
                     'dropout_rate_dense',
+                    'use_batchnorm_dense',
+                    'use_layernorm_dense',
+                    'use_residual_dense',
+                    'use_feature_class_embedding',
+                    'feature_class_embedding_size',
                     'batch_size',
                     'learning_rate',
-                    'weight_denominator'
+                    'weight_denominator',
                 ]
 
         self._generate_for_optuna(trial, hp_to_optimize)
