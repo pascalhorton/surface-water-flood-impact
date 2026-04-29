@@ -39,17 +39,12 @@ def main():
     year_end = config.get('YEAR_END_TEST')
     events = get_events(year_start, year_end, options.event_method)
 
-    output_path = (
-        Path(config.get('OUTPUT_DIR'))
-        / f'pred_rf_{options.dataset}_{options.run_name}_{year_start}-{year_end}.nc'
-    )
-
     output_path = Path(config.get('OUTPUT_DIR')) / f'pred_rf_{options.dataset}_{options.event_method}_{year_start}-{year_end}.nc'
 
     if output_path.exists():
         if DO_ASSESS:
             assess(output_path, get_damages_xr(options.dataset, year_start, year_end),
-                   ignore_removed=True, relax_days=True, prob_threshold=0.65)
+                   ignore_removed=True, relax_days=True, prob_threshold=0.5)
         return
 
     damages, _ = get_damages(options.dataset, year_start, year_end)
@@ -68,17 +63,17 @@ def main():
                 ds_pred['predict'][:, i_y, i_x] = np.nan
                 continue
 
+            exposure_cid = contracts_number[contracts_number['cid'] == cell_id]
+            if len(exposure_cid) == 0 or exposure_cid['nb_contracts'].values[0] == 0:
+                ds_pred['predict'][:, i_y, i_x] = np.nan
+                continue
+
             cell_events = events[events['cid'] == cell_id]
             if len(cell_events) == 0:
                 continue
 
             features_cid = features[features['cid'] == cell_id]
             if len(features_cid) == 0:
-                ds_pred['predict'][:, i_y, i_x] = np.nan
-                continue
-
-            exposure_cid = contracts_number[contracts_number['cid'] == cell_id]
-            if len(exposure_cid) == 0 or exposure_cid['nb_contracts'].values[0] == 0:
                 ds_pred['predict'][:, i_y, i_x] = np.nan
                 continue
 
@@ -108,7 +103,7 @@ def main():
 
     if DO_ASSESS:
         assess(output_path, get_damages_xr(options.dataset, year_start, year_end),
-               ignore_removed=True, relax_days=True, prob_threshold=0.65)
+               ignore_removed=True, relax_days=True, prob_threshold=0.5)
 
 
 if __name__ == '__main__':
