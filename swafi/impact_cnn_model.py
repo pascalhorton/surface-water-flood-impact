@@ -292,7 +292,8 @@ class ModelCnn(keras.models.Model):
 
             if use_emb:
                 emb_size = getattr(self.options, 'feature_class_embedding_size', 32)
-                sub_tensors = tf.split(input_1d, self.input_1d_splits, axis=-1)
+                split_indices = list(np.cumsum(self.input_1d_splits[:-1]))
+                sub_tensors = keras.ops.split(input_1d, split_indices, axis=-1)
                 embeddings = [
                     keras.layers.Dense(emb_size, activation='relu',
                                        name=f'emb_{i}')(sub)

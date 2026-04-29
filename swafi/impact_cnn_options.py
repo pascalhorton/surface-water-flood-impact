@@ -186,7 +186,7 @@ class ImpactCnnOptions(ImpactDlOptions):
         self.parser.add_argument(
             '--precip-days-before',
             type=int,
-            default=7,
+            default=2,
             help='The number of days before the claim/event to use for the precipitation'
         )
         self.parser.add_argument(
