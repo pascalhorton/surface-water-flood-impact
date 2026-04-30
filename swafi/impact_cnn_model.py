@@ -273,12 +273,21 @@ class ModelCnn(keras.models.Model):
                                     filters=self.options.tcn_filters,
                                     kernel_size=self.options.tcn_kernel_size, i=i)
 
-            # Attention pooling
-            weights = keras.layers.Dense(1)(x)  # (batch, T, 1)
-            weights = keras.layers.Softmax(axis=1)(weights)
-
-            x = keras.layers.Multiply()([x, weights])
-            x = keras.layers.Lambda(lambda t: tf.reduce_sum(t, axis=1))(x)
+            # Temporal pooling
+            pooling = getattr(self.options, 'tcn_pooling', 'max')
+            if pooling == 'mean':
+                x = keras.layers.GlobalAveragePooling1D(name='temporal_mean')(x)
+            elif pooling == 'last':
+                x = keras.layers.Lambda(
+                    lambda t: t[:, -1, :], name='temporal_last')(x)
+            elif pooling == 'attention':
+                weights = keras.layers.Dense(1, name='attn_w')(x)
+                weights = keras.layers.Softmax(axis=1, name='attn_softmax')(weights)
+                x = keras.layers.Multiply(name='attn_mul')([x, weights])
+                x = keras.layers.Lambda(
+                    lambda t: tf.reduce_sum(t, axis=1), name='attn_sum')(x)
+            else:  # 'max' (default)
+                x = keras.layers.GlobalMaxPooling1D(name='temporal_max')(x)
 
         if self.input_1d_size is not None:
             input_1d = keras.layers.Input(shape=self.input_1d_size, name='input_1d')

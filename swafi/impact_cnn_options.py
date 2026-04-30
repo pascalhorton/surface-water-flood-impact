@@ -90,6 +90,7 @@ class ImpactCnnOptions(ImpactDlOptions):
         self.tcn_kernel_size = None
         self.tcn_nb_layers = None
         self.dropout_rate_tcn = None
+        self.tcn_pooling = None
 
         # Data loading options
         self.preload_precip = False
@@ -268,6 +269,13 @@ class ImpactCnnOptions(ImpactDlOptions):
             help='Dropout rate after each TCN layer'
         )
         self.parser.add_argument(
+            '--tcn-pooling',
+            type=str,
+            default='max',
+            choices=['mean', 'max', 'last', 'attention'],
+            help='Temporal pooling strategy after TCN: max (default), mean, last timestep, or learned attention'
+        )
+        self.parser.add_argument(
             '--preload-precip',
             action='store_true',
             default=False,
@@ -301,6 +309,7 @@ class ImpactCnnOptions(ImpactDlOptions):
         self.tcn_kernel_size = args.tcn_kernel_size
         self.tcn_nb_layers = args.tcn_nb_layers
         self.dropout_rate_tcn = args.dropout_rate_tcn
+        self.tcn_pooling = args.tcn_pooling
         self.preload_precip = args.preload_precip
 
         if self.precip_window_size == 1:
@@ -332,7 +341,7 @@ class ImpactCnnOptions(ImpactDlOptions):
             nb_filters, pool_size_spatial, nb_conv_blocks, nb_dense_layers,
             nb_dense_units, nb_dense_units_decreasing, inner_activation_dense,
             inner_activation_cnn, tcn_filters, tcn_kernel_size, tcn_nb_layers,
-            dropout_rate_tcn,
+            dropout_rate_tcn, tcn_pooling,
 
         Returns
         -------
@@ -467,6 +476,9 @@ class ImpactCnnOptions(ImpactDlOptions):
         if 'dropout_rate_tcn' in hp_to_optimize:
             self.dropout_rate_tcn = trial.suggest_float(
                 'dropout_rate_tcn', 0.0, 0.3)
+        if 'tcn_pooling' in hp_to_optimize:
+            self.tcn_pooling = trial.suggest_categorical(
+                'tcn_pooling', ['mean', 'max', 'last', 'attention'])
 
         return True
 
