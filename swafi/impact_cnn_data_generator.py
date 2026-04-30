@@ -20,7 +20,7 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
                  mean_precip=None, std_precip=None, min_static=None,
                  max_static=None, q99_precip=None,
                  mean_dem=None, std_dem=None, min_dem=None, max_dem=None,
-                 debug=False):
+                 batch_pos_ratio=None, debug=False):
         """
         event_props: np.array
             The event properties (2D; dates and coordinates).
@@ -92,6 +92,7 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
                          std_static=std_static,
                          min_static=min_static,
                          max_static=max_static,
+                         batch_pos_ratio=batch_pos_ratio,
                          debug=debug)
         self.time_dim_size = None
         self.precip_window_size = precip_window_size
@@ -206,9 +207,7 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
 
     def __getitem__(self, i):
         """Generate one batch of data"""
-        idxs = self.idxs[i * self.batch_size:(i + 1) * self.batch_size]
-
-        return self._generate_batch(idxs)
+        return self._generate_batch(self._get_batch_idxs(i))
 
     def _generate_batch(self, idxs):
         # Select the events

@@ -17,7 +17,7 @@ class ImpactDlDataGenerator(keras.utils.Sequence):
                  tmp_dir=None, transform_static='standardize',
                  transform_precip='normalize', log_transform_precip=True,
                  mean_static=None, std_static=None, min_static=None,
-                 max_static=None, debug=False):
+                 max_static=None, batch_pos_ratio=None, debug=False):
         """
         Data generator class.
         Template from:
@@ -80,6 +80,18 @@ class ImpactDlDataGenerator(keras.utils.Sequence):
 
         self.n_samples = self.X_static.shape[0]
         self.idxs = np.arange(self.n_samples)
+
+        # Stratified batch sampling: guarantee positives in every batch
+        self.batch_pos_ratio = batch_pos_ratio
+        self._idxs_pos = None
+        self._idxs_neg = None
+        if batch_pos_ratio is not None:
+            self._idxs_pos = np.where(self.y > 0)[0]
+            self._idxs_neg = np.where(self.y == 0)[0]
+            np.random.shuffle(self._idxs_neg)
+            logger.info(
+                "Stratified batching enabled: pos_ratio=%.3f, %d positives, %d negatives",
+                batch_pos_ratio, len(self._idxs_pos), len(self._idxs_neg))
 
     def reduce_negatives(self, factor):
         """
@@ -220,13 +232,40 @@ class ImpactDlDataGenerator(keras.utils.Sequence):
             raise ValueError("Too many issues with precipitation data.")
 
     def __len__(self):
-        """Denotes the number of batches per epoch"""
+        """Denotes the number of batches per epoch."""
+        if self.batch_pos_ratio is not None:
+            n_pos_per_batch = max(1, int(self.batch_size * self.batch_pos_ratio))
+            n_neg_per_batch = self.batch_size - n_pos_per_batch
+            return max(1, len(self._idxs_neg) // n_neg_per_batch)
         return int(np.floor(self.n_samples / self.batch_size))
 
+    def _get_batch_idxs(self, i):
+        """Return sample indices for batch i.
+
+        In stratified mode: draws positives with replacement and slices through
+        all negatives sequentially, guaranteeing at least one positive per batch.
+        In standard mode: sequential slice of the (optionally shuffled) index array.
+        """
+        if self.batch_pos_ratio is None:
+            return self.idxs[i * self.batch_size:(i + 1) * self.batch_size]
+
+        n_pos_per_batch = max(1, int(self.batch_size * self.batch_pos_ratio))
+        n_neg_per_batch = self.batch_size - n_pos_per_batch
+
+        pos_idxs = np.random.choice(self._idxs_pos, size=n_pos_per_batch, replace=True)
+        start = i * n_neg_per_batch
+        neg_idxs = self._idxs_neg[start:start + n_neg_per_batch]
+
+        combined = np.concatenate([pos_idxs, neg_idxs])
+        np.random.shuffle(combined)
+        return combined
+
     def on_epoch_end(self):
-        """Updates indexes after each epoch and reset the warning counter."""
+        """Updates indexes after each epoch and resets the warning counter."""
         self.warning_counter = 0
-        if self.shuffle:
+        if self.batch_pos_ratio is not None:
+            np.random.shuffle(self._idxs_neg)
+        elif self.shuffle:
             np.random.shuffle(self.idxs)
 
     def __getitem__(self, index):

@@ -18,7 +18,8 @@ class ImpactTxDataGenerator(ImpactDlDataGenerator):
                  log_transform_precip=True, mean_static=None, std_static=None,
                  mean_precip_hf=None, std_precip_hf=None, mean_precip_daily=None,
                  std_precip_daily=None, min_static=None, max_static=None,
-                 q99_precip_hf=None, q99_precip_daily=None, debug=False):
+                 q99_precip_hf=None, q99_precip_daily=None,
+                 batch_pos_ratio=None, debug=False):
         """
         Data generator class.
 
@@ -90,6 +91,7 @@ class ImpactTxDataGenerator(ImpactDlDataGenerator):
                          std_static=std_static,
                          min_static=min_static,
                          max_static=max_static,
+                         batch_pos_ratio=batch_pos_ratio,
                          debug=debug)
         self.precip_hf_dim_size = None
         self.precip_daily_dim_size = None
@@ -202,9 +204,7 @@ class ImpactTxDataGenerator(ImpactDlDataGenerator):
 
     def __getitem__(self, i):
         """Generate one batch of data"""
-        idxs = self.idxs[i * self.batch_size:(i + 1) * self.batch_size]
-
-        return self._generate_batch(idxs)
+        return self._generate_batch(self._get_batch_idxs(i))
 
     def _generate_batch(self, idxs):
         # Select the events

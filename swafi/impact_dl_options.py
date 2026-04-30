@@ -85,6 +85,7 @@ class ImpactDlOptions(ImpactBasicOptions):
 
         # Training options
         self.batch_size = None
+        self.batch_pos_ratio = None
         self.epochs = None
         self.learning_rate = None
         self.optimizer_name = None
@@ -160,6 +161,13 @@ class ImpactDlOptions(ImpactBasicOptions):
             help='The batch size'
         )
         self.parser.add_argument(
+            '--batch-pos-ratio',
+            type=float,
+            default=0.1,
+            help='Fraction of positives per batch for stratified sampling '
+                 '(e.g. 0.1 = 10%%). None disables stratification.'
+        )
+        self.parser.add_argument(
             '--epochs',
             type=int,
             default=200,
@@ -168,7 +176,7 @@ class ImpactDlOptions(ImpactBasicOptions):
         self.parser.add_argument(
             '--learning-rate',
             type=float,
-            default=0.001,
+            default=0.0003,
             help='The learning rate'
         )
         self.parser.add_argument(
@@ -312,6 +320,7 @@ class ImpactDlOptions(ImpactBasicOptions):
         self.transform_precip = args.transform_precip
         self.transform_static = args.transform_static
         self.batch_size = args.batch_size
+        self.batch_pos_ratio = args.batch_pos_ratio
         self.epochs = args.epochs
         self.learning_rate = args.learning_rate
         self.optimizer_name = args.optimizer_name
@@ -440,6 +449,7 @@ class ImpactDlOptions(ImpactBasicOptions):
         logger.info("- loss_function:  %s", self.loss_function)
         logger.info("- jit_compile:  %s", self.jit_compile)
         logger.info("- batch_size:  %s", self.batch_size)
+        logger.info("- batch_pos_ratio:  %s", self.batch_pos_ratio)
         logger.info("- epochs:  %s", self.epochs)
         logger.info("- learning_rate:  %s", self.learning_rate)
         logger.info("- optimizer_name:  %s", self.optimizer_name)

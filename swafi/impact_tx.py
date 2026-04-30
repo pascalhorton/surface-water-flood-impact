@@ -69,7 +69,8 @@ class ImpactTransformer(ImpactDl):
             transform_static=self.options.transform_static,
             transform_precip=self.options.transform_precip,
             log_transform_precip=self.options.log_transform_precip,
-            debug=DEBUG
+            batch_pos_ratio=self.options.batch_pos_ratio,
+            debug=DEBUG,
         )
 
         if self.options.use_precip and self.precipitation_hf is not None:
