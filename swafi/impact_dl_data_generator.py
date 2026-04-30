@@ -134,7 +134,7 @@ class ImpactDlDataGenerator(keras.utils.Sequence):
         n_neg = len(self._all_idxs_neg)
         n_neg_per_epoch = int(n_neg / factor)
         logger.info(
-            "Negative subsampling enabled: factor=%d, %d → %d negatives per epoch "
+            "Negative subsampling enabled: factor=%d, %d -> %d negatives per epoch "
             "(subset reshuffled each epoch; all negatives seen over ~%d epochs)",
             factor, n_neg, n_neg_per_epoch, factor)
         self._resample_negatives()
