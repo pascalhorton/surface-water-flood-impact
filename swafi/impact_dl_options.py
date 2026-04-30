@@ -92,6 +92,7 @@ class ImpactDlOptions(ImpactBasicOptions):
         self.weight_decay = None
         self.lr_method = None
         self.lr_warmup_epochs = None
+        self.early_stopping_metric = None
         self.loss_function = None
         self.jit_compile = False
 
@@ -205,6 +206,13 @@ class ImpactDlOptions(ImpactBasicOptions):
             type=int,
             default=3,
             help='Number of linear warmup epochs for cosine_decay_warmup schedule'
+        )
+        self.parser.add_argument(
+            '--early-stopping-metric',
+            type=str,
+            default='val_csi',
+            choices=['val_csi', 'val_ROC_AUC'],
+            help='Metric to monitor for early stopping (default: val_csi)'
         )
         self.parser.add_argument(
             '--loss-function',
@@ -327,6 +335,7 @@ class ImpactDlOptions(ImpactBasicOptions):
         self.weight_decay = args.weight_decay
         self.lr_method = args.lr_method
         self.lr_warmup_epochs = args.lr_warmup_epochs
+        self.early_stopping_metric = args.early_stopping_metric
         self.loss_function = args.loss_function
         self.jit_compile = args.jit_compile
         self.dropout_rate_dense = args.dropout_rate_dense
@@ -458,6 +467,7 @@ class ImpactDlOptions(ImpactBasicOptions):
         logger.info("- lr_method:  %s", self.lr_method)
         if self.lr_method == 'cosine_decay_warmup':
             logger.info("- lr_warmup_epochs:  %s", self.lr_warmup_epochs)
+        logger.info("- early_stopping_metric:  %s", self.early_stopping_metric)
         logger.info("- dropout_rate_dense:  %s", self.dropout_rate_dense)
         logger.info("- use_batchnorm_dense:  %s", self.use_batchnorm_dense)
         logger.info("- use_layernorm_dense:  %s", self.use_layernorm_dense)
@@ -495,6 +505,8 @@ class ImpactDlOptions(ImpactBasicOptions):
         assert self.lr_method in ['constant', 'cosine_decay', 'cosine_decay_warmup', 'reduce_on_plateau'], \
             "lr_method must be 'constant', 'cosine_decay', 'cosine_decay_warmup', or 'reduce_on_plateau'"
         assert self.optimizer_name in ['adam', 'adamw'], "optimizer_name must be 'adam' or 'adamw'"
+        assert self.early_stopping_metric in ['val_csi', 'val_ROC_AUC'], \
+            "early_stopping_metric must be 'val_csi' or 'val_ROC_AUC'"
         assert isinstance(self.jit_compile, bool), "jit_compile is not set"
         assert self.dropout_rate_dense is not None, "dropout_rate_dense is not set"
         assert isinstance(self.use_batchnorm_dense, bool), "use_batchnorm_dense is not set"

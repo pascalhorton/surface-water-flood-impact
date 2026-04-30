@@ -162,8 +162,9 @@ class ImpactDl(Impact):
             logger.warning("Could not time first training batch materialization: %s", exc)
 
         # Early stopping callbacks — ResumableEarlyStopping restores best/wait on resume
-        early_stopping_csi = ResumableEarlyStopping(
-            monitor='val_csi', patience=40, verbose=1,
+        es_monitor = self.options.early_stopping_metric
+        early_stopping_main = ResumableEarlyStopping(
+            monitor=es_monitor, patience=40, verbose=1,
             restore_best_weights=True, mode='max',
             initial_best=initial_best_val_csi if resuming else None,
             initial_wait=resume_meta['early_stopping_wait'] if resuming else 0)
@@ -173,13 +174,13 @@ class ImpactDl(Impact):
         if resuming:
             early_stopping_no_skill.wait = resume_meta['no_skill_wait']
 
-        callbacks = [early_stopping_csi, early_stopping_no_skill]
+        callbacks = [early_stopping_main, early_stopping_no_skill]
         if debug:
             callbacks.append(BatchHeartbeat(every_n_batches=100))
         if ckpt_mgr is not None:
             callbacks.append(EpochCheckpointCallback(
                 checkpoint_manager=ckpt_mgr,
-                early_stopping_csi_cb=early_stopping_csi,
+                early_stopping_csi_cb=early_stopping_main,
                 early_stopping_no_skill_cb=early_stopping_no_skill,
                 initial_best_val_csi=initial_best_val_csi,
                 initial_best_epoch=initial_best_epoch,
