@@ -275,6 +275,8 @@ class ImpactCnn(ImpactDl):
         Define the model.
         """
         input_1d_size = self.x_train.shape[1:]
+        if input_1d_size == (0,):
+            input_1d_size = None
         input_3d_size = None
         pixels_per_side = (self.options.precip_window_size //
                            self.options.precip_resolution)
