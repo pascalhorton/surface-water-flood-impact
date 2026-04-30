@@ -185,13 +185,11 @@ class ImpactDl(Impact):
                 initial_best_epoch=initial_best_epoch,
             ))
 
+        callbacks += self._get_lr_callbacks()
+
         if not resuming:
             # Define the optimizer
-            optimizer = self._define_optimizer(
-                n_samples=len(self.dg_train),
-                lr_method=self.options.lr_method,
-                lr=self.options.learning_rate,
-                init_lr=self.options.learning_rate)
+            optimizer = self._define_optimizer(n_samples=len(self.dg_train))
 
             # Get loss function
             loss_fn = self._get_loss_function()
@@ -491,36 +489,57 @@ class ImpactDl(Impact):
 
         return loss_fn
 
-    def _define_optimizer(self, n_samples, lr_method='constant', lr=.001, init_lr=0.01):
+    def _define_optimizer(self, n_samples):
         """
-        Define the optimizer.
+        Define the optimizer and its learning rate schedule.
 
         Parameters
         ----------
         n_samples: int
-            The number of samples. Used for the option 'cosine_decay'.
-        lr_method: str
-            The learning rate method. Options are: 'cosine_decay', 'constant'
-        lr: float
-            The learning rate. Used for the option 'constant'.
-        init_lr: float
-            The initial learning rate. Used for the option 'cosine_decay'.
+            Number of training samples (used to compute steps for schedule-based LRs).
 
         Returns
         -------
-        The optimizer.
+        The compiled Keras optimizer.
         """
+        lr = self.options.learning_rate
+        lr_method = self.options.lr_method
+        steps_per_epoch = n_samples / self.options.batch_size
+
         if lr_method == 'cosine_decay':
-            decay_steps = self.options.epochs * (n_samples / self.options.batch_size)
-            lr_decayed_fn = keras.optimizers.schedules.CosineDecay(
-                init_lr, decay_steps)
-            optimizer = keras.optimizers.Adam(lr_decayed_fn)
-        elif lr_method == 'constant':
-            optimizer = keras.optimizers.Adam(learning_rate=lr)
+            decay_steps = int(self.options.epochs * steps_per_epoch)
+            schedule = keras.optimizers.schedules.CosineDecay(lr, decay_steps)
+        elif lr_method == 'cosine_decay_warmup':
+            total_steps = int(self.options.epochs * steps_per_epoch)
+            warmup_steps = int(self.options.lr_warmup_epochs * steps_per_epoch)
+            schedule = WarmupCosineDecay(lr, total_steps, warmup_steps)
+        else:  # 'constant' or 'reduce_on_plateau' (callback drives LR reduction)
+            schedule = lr
+
+        if self.options.optimizer_name == 'adamw':
+            optimizer = keras.optimizers.AdamW(
+                learning_rate=schedule,
+                weight_decay=self.options.weight_decay)
         else:
-            raise ValueError('learning rate schedule not well defined.')
+            optimizer = keras.optimizers.Adam(learning_rate=schedule)
 
         return optimizer
+
+    def _get_lr_callbacks(self):
+        """Return learning-rate callbacks for the active lr_method.
+
+        Returns an empty list for schedule-based methods (handled inside the
+        optimizer) and a ReduceLROnPlateau callback for 'reduce_on_plateau'.
+        """
+        if self.options.lr_method != 'reduce_on_plateau':
+            return []
+        return [keras.callbacks.ReduceLROnPlateau(
+            monitor='val_loss',
+            factor=0.5,
+            patience=5,
+            min_lr=1e-6,
+            verbose=1,
+        )]
 
     @staticmethod
     def _plot_training_history(hist, dir_plots, show_plots, tag=None):
@@ -770,6 +789,31 @@ class EpochCheckpointCallback(keras.callbacks.Callback):
             best_val_csi=self._best_val_csi,
             best_epoch=self._best_epoch,
         )
+
+
+class WarmupCosineDecay(keras.optimizers.schedules.LearningRateSchedule):
+    """Linear warmup for `warmup_steps` steps, then cosine decay to `alpha * peak_lr`."""
+
+    def __init__(self, peak_lr, total_steps, warmup_steps, alpha=0.01):
+        super().__init__()
+        self.peak_lr = float(peak_lr)
+        self.total_steps = int(total_steps)
+        self.warmup_steps = int(warmup_steps)
+        self.alpha = float(alpha)
+
+    def __call__(self, step):
+        step = tf.cast(step, tf.float32)
+        warmup_steps = tf.cast(self.warmup_steps, tf.float32)
+        cosine_steps = tf.cast(self.total_steps - self.warmup_steps, tf.float32)
+        warmup_lr = self.peak_lr * (step / tf.maximum(warmup_steps, 1.0))
+        cosine_step = tf.maximum(step - warmup_steps, 0.0)
+        cosine_lr = (self.alpha + (1.0 - self.alpha) * 0.5 *
+                     (1.0 + tf.cos(np.pi * cosine_step / tf.maximum(cosine_steps, 1.0)))) * self.peak_lr
+        return tf.where(step < warmup_steps, warmup_lr, cosine_lr)
+
+    def get_config(self):
+        return dict(peak_lr=self.peak_lr, total_steps=self.total_steps,
+                    warmup_steps=self.warmup_steps, alpha=self.alpha)
 
 
 # Define a custom early stopping callback to stop when the CSI is almost 0

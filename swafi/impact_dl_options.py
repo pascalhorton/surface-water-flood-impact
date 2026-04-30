@@ -45,8 +45,15 @@ class ImpactDlOptions(ImpactBasicOptions):
         The number of epochs.
     learning_rate: float
         The learning rate.
+    optimizer_name: str
+        The optimizer. Options are: 'adam', 'adamw'.
+    weight_decay: float
+        The weight decay for AdamW (ignored when optimizer_name is 'adam').
     lr_method: str
-        The learning rate schedule. Options are: 'constant', 'cosine_decay'.
+        The learning rate schedule. Options are: 'constant', 'cosine_decay',
+        'cosine_decay_warmup', 'reduce_on_plateau'.
+    lr_warmup_epochs: int
+        Number of warmup epochs for 'cosine_decay_warmup'.
     jit_compile: bool
         Whether to enable XLA JIT compilation in Keras model.compile.
     dropout_rate_dense: float
@@ -80,7 +87,10 @@ class ImpactDlOptions(ImpactBasicOptions):
         self.batch_size = None
         self.epochs = None
         self.learning_rate = None
+        self.optimizer_name = None
+        self.weight_decay = None
         self.lr_method = None
+        self.lr_warmup_epochs = None
         self.loss_function = None
         self.jit_compile = False
 
@@ -162,11 +172,31 @@ class ImpactDlOptions(ImpactBasicOptions):
             help='The learning rate'
         )
         self.parser.add_argument(
+            '--optimizer-name',
+            type=str,
+            default='adamw',
+            choices=['adam', 'adamw'],
+            help='Optimizer: adam or adamw (AdamW adds decoupled weight decay)'
+        )
+        self.parser.add_argument(
+            '--weight-decay',
+            type=float,
+            default=1e-4,
+            help='Weight decay coefficient for AdamW (ignored when --optimizer-name adam)'
+        )
+        self.parser.add_argument(
             '--lr-method',
             type=str,
             default='constant',
-            choices=['constant', 'cosine_decay'],
-            help='Learning rate schedule: constant or cosine_decay'
+            choices=['constant', 'cosine_decay', 'cosine_decay_warmup', 'reduce_on_plateau'],
+            help='Learning rate schedule: constant, cosine_decay, cosine_decay_warmup, '
+                 'or reduce_on_plateau (ReduceLROnPlateau callback on val_loss)'
+        )
+        self.parser.add_argument(
+            '--lr-warmup-epochs',
+            type=int,
+            default=3,
+            help='Number of linear warmup epochs for cosine_decay_warmup schedule'
         )
         self.parser.add_argument(
             '--loss-function',
@@ -284,7 +314,10 @@ class ImpactDlOptions(ImpactBasicOptions):
         self.batch_size = args.batch_size
         self.epochs = args.epochs
         self.learning_rate = args.learning_rate
+        self.optimizer_name = args.optimizer_name
+        self.weight_decay = args.weight_decay
         self.lr_method = args.lr_method
+        self.lr_warmup_epochs = args.lr_warmup_epochs
         self.loss_function = args.loss_function
         self.jit_compile = args.jit_compile
         self.dropout_rate_dense = args.dropout_rate_dense
@@ -409,7 +442,12 @@ class ImpactDlOptions(ImpactBasicOptions):
         logger.info("- batch_size:  %s", self.batch_size)
         logger.info("- epochs:  %s", self.epochs)
         logger.info("- learning_rate:  %s", self.learning_rate)
+        logger.info("- optimizer_name:  %s", self.optimizer_name)
+        if self.optimizer_name == 'adamw':
+            logger.info("- weight_decay:  %s", self.weight_decay)
         logger.info("- lr_method:  %s", self.lr_method)
+        if self.lr_method == 'cosine_decay_warmup':
+            logger.info("- lr_warmup_epochs:  %s", self.lr_warmup_epochs)
         logger.info("- dropout_rate_dense:  %s", self.dropout_rate_dense)
         logger.info("- use_batchnorm_dense:  %s", self.use_batchnorm_dense)
         logger.info("- use_layernorm_dense:  %s", self.use_layernorm_dense)
@@ -444,7 +482,9 @@ class ImpactDlOptions(ImpactBasicOptions):
         assert self.batch_size is not None, "batch_size is not set"
         assert self.epochs is not None, "epochs is not set"
         assert self.learning_rate is not None, "learning_rate is not set"
-        assert self.lr_method in ['constant', 'cosine_decay'], "lr_method must be 'constant' or 'cosine_decay'"
+        assert self.lr_method in ['constant', 'cosine_decay', 'cosine_decay_warmup', 'reduce_on_plateau'], \
+            "lr_method must be 'constant', 'cosine_decay', 'cosine_decay_warmup', or 'reduce_on_plateau'"
+        assert self.optimizer_name in ['adam', 'adamw'], "optimizer_name must be 'adam' or 'adamw'"
         assert isinstance(self.jit_compile, bool), "jit_compile is not set"
         assert self.dropout_rate_dense is not None, "dropout_rate_dense is not set"
         assert isinstance(self.use_batchnorm_dense, bool), "use_batchnorm_dense is not set"
