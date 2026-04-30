@@ -138,7 +138,7 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
 
         time_dim_size = 0
         if self.X_precip is not None:
-            time_dim_size += self.precip_days_after + self.precip_days_before
+            time_dim_size += self.precip_days_after + self.precip_days_before + 1
             time_dim_size *= int(24 / self.precip_time_step)  # Time step
             time_dim_size += 1  # Because the 1st and last time steps are included.
         self.time_dim_size = time_dim_size
@@ -264,7 +264,7 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
 
         # Temporal selection
         t_start = event[0] - np.timedelta64(self.precip_days_before, 'D')
-        t_end = event[0] + np.timedelta64(self.precip_days_after, 'D')
+        t_end = event[0] + np.timedelta64(self.precip_days_after + 1, 'D')  # +1 for the day itself.
 
         # Spatial domain
         x_start = event[1] - precip_window_size_m / 2

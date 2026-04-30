@@ -21,9 +21,11 @@ from swafi.utils.use_common import (
 logger = logging.getLogger(__name__)
 
 DO_ASSESS = True
-MODEL = R"C:\Users\phorton\Documents\SWF\outputs\model_ann_gvz_70.keras"
 DATASET = 'gvz'  # 'mobiliar' or 'gvz'
-EVENT_METHOD = 'classic'
+RUN_ID = '126'
+MODEL = fR"C:\Users\phorton\Documents\SWF\outputs\model_ann_{DATASET}_{RUN_ID}.keras"
+RUN_NAME = RUN_ID
+EVENT_METHOD = 'simple'
 THRESHOLD = 0.5
 
 config = Config()
@@ -36,6 +38,7 @@ def main():
     options = ann_model.options
     options.dataset = DATASET
     options.event_method = EVENT_METHOD
+    options.run_name = RUN_NAME
     options.print_options()
     assert options.is_ok()
     assert options.event_method in ['simple', 'classic'], "Invalid event method."
@@ -91,20 +94,20 @@ def main():
             if len(exposure_cid) == 0 or exposure_cid['nb_contracts'].values[0] == 0:
                 continue
 
-            cell_events = events[events['cid'] == cell_id]
-            if len(cell_events) == 0:
-                continue
-
             ds_pred['predict'][:, i_y, i_x] = 0
 
             x_input, _ = dg.get_batch_for_cid(cell_id)
-            y_pred = ann.model.predict(x_input, verbose=0).squeeze()
-            assert len(y_pred) == len(cell_events)
+            if len(x_input) == 0:
+                continue
 
-            for i, (_, event) in enumerate(cell_events.iterrows()):
+            event_dates = dg.get_event_dates_for_cid(cell_id)
+
+            y_pred = ann.model.predict(x_input, verbose=0).squeeze()
+
+            for i in range(len(event_dates)):
                 if y_pred[i] == 0:
                     continue
-                ref_date = pd.to_datetime(event['i_max_date']).replace(hour=0, minute=0)
+                ref_date = pd.to_datetime(event_dates[i]).replace(hour=0, minute=0)
                 ds_pred['predict'].loc[dict(time=ref_date, y=y, x=x)] = y_pred[i]
 
     ds_pred.to_netcdf(output_path)
