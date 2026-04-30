@@ -268,7 +268,7 @@ class Impact:
         self.df = self.df[(self.df['nb_claims'] == 0) |
                           (self.df['nb_claims'] >= threshold)]
 
-    def split_sample(self, valid_test_size=0.25, test_size=0, ref_date='i_max_only', stratify=False, stratify_by='month'):
+    def split_sample(self, valid_test_size=0.3, test_size=0, ref_date='i_max_only', stratify=True, stratify_by='day'):
         """
         Split the sample into training, validation and test sets. The split is
         stratified on the target, i.e. the proportion of events with and without
