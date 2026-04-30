@@ -245,7 +245,7 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
                 # Single precipitation channel → (batch, T, H, W, 1)
                 x_3d = np.expand_dims(x_3d, axis=-1)
 
-            if self.X_static is None:
+            if self.X_static is None or self.X_static.shape[1] == 0:
                 return x_3d, y
 
         # Select the static data
