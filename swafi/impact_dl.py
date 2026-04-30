@@ -520,9 +520,10 @@ class ImpactDl(Impact):
         if self.options.optimizer_name == 'adamw':
             optimizer = keras.optimizers.AdamW(
                 learning_rate=schedule,
-                weight_decay=self.options.weight_decay)
+                weight_decay=self.options.weight_decay,
+                clipnorm=1.0)
         else:
-            optimizer = keras.optimizers.Adam(learning_rate=schedule)
+            optimizer = keras.optimizers.Adam(learning_rate=schedule, clipnorm=1.0)
 
         return optimizer
 
@@ -535,7 +536,8 @@ class ImpactDl(Impact):
         if self.options.lr_method != 'reduce_on_plateau':
             return []
         return [keras.callbacks.ReduceLROnPlateau(
-            monitor='val_loss',
+            monitor='val_csi',
+            mode='max',
             factor=0.5,
             patience=5,
             min_lr=1e-6,
@@ -1043,10 +1045,9 @@ class BCEDiceLoss(keras.losses.Loss):
     def call(self, y_true, y_pred):
         bce = self.bce(y_true, y_pred)
 
-        # Dice part
-        probs = tf.nn.sigmoid(y_pred)
+        # Dice part (y_pred is already sigmoid probability — no second sigmoid)
         y_true_f = tf.reshape(tf.cast(y_true, tf.float32), [-1])
-        probs_f = tf.reshape(probs, [-1])
+        probs_f = tf.reshape(tf.cast(y_pred, tf.float32), [-1])
 
         intersection = tf.reduce_sum(probs_f * y_true_f)
         union = tf.reduce_sum(probs_f) + tf.reduce_sum(y_true_f)
@@ -1083,9 +1084,9 @@ class BCEJaccardLoss(keras.losses.Loss):
     def call(self, y_true, y_pred):
         bce = self.bce(y_true, y_pred)
 
-        probs = tf.nn.sigmoid(y_pred)
+        # y_pred is already sigmoid probability — no second sigmoid
         y_true_f = tf.reshape(tf.cast(y_true, tf.float32), [-1])
-        probs_f = tf.reshape(probs, [-1])
+        probs_f = tf.reshape(tf.cast(y_pred, tf.float32), [-1])
 
         intersection = tf.reduce_sum(probs_f * y_true_f)
         union = tf.reduce_sum(probs_f) + tf.reduce_sum(y_true_f) - intersection

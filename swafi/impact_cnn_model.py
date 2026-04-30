@@ -306,8 +306,9 @@ class ModelCnn(keras.models.Model):
                     axis=-1,
                     name='feature_split'
                 )(input_1d)
+                emb_act = getattr(self.options, 'inner_activation_dense', 'relu')
                 embeddings = [
-                    keras.layers.Dense(emb_size, activation='relu',
+                    keras.layers.Dense(emb_size, activation=emb_act,
                                        name=f'emb_{i}')(sub)
                     for i, sub in enumerate(sub_tensors)
                 ]
