@@ -89,9 +89,20 @@ class ImpactDlDataGenerator(keras.utils.Sequence):
             self._idxs_pos = np.where(self.y > 0)[0]
             self._idxs_neg = np.where(self.y == 0)[0]
             np.random.shuffle(self._idxs_neg)
+            n_pos_per_batch = max(1, int(self.batch_size * batch_pos_ratio))
+            n_neg_per_batch = self.batch_size - n_pos_per_batch
+            n_batches = max(1, len(self._idxs_neg) // n_neg_per_batch)
+            oversampling = (n_pos_per_batch * n_batches) / max(1, len(self._idxs_pos))
             logger.info(
-                "Stratified batching enabled: pos_ratio=%.3f, %d positives, %d negatives",
-                batch_pos_ratio, len(self._idxs_pos), len(self._idxs_neg))
+                "Stratified batching: pos_ratio=%.3f, %d pos, %d neg, "
+                "%d pos/batch, ~%d batches/epoch, oversampling=%.1f×",
+                batch_pos_ratio, len(self._idxs_pos), len(self._idxs_neg),
+                n_pos_per_batch, n_batches, oversampling)
+            if oversampling > 5:
+                logger.warning(
+                    "Positive oversampling factor %.1f× is high (target: 1–3×). "
+                    "Consider lowering --batch-pos-ratio to avoid memorization.",
+                    oversampling)
 
     def reduce_negatives(self, factor):
         """

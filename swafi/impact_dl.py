@@ -190,7 +190,7 @@ class ImpactDl(Impact):
 
         if not resuming:
             # Define the optimizer
-            optimizer = self._define_optimizer(n_samples=len(self.dg_train))
+            optimizer = self._define_optimizer(n_batches=len(self.dg_train))
 
             # Get loss function
             loss_fn = self._get_loss_function()
@@ -490,14 +490,14 @@ class ImpactDl(Impact):
 
         return loss_fn
 
-    def _define_optimizer(self, n_samples):
+    def _define_optimizer(self, n_batches):
         """
         Define the optimizer and its learning rate schedule.
 
         Parameters
         ----------
-        n_samples: int
-            Number of training samples (used to compute steps for schedule-based LRs).
+        n_batches: int
+            Number of optimizer steps (batches) per epoch.
 
         Returns
         -------
@@ -505,7 +505,7 @@ class ImpactDl(Impact):
         """
         lr = self.options.learning_rate
         lr_method = self.options.lr_method
-        steps_per_epoch = n_samples / self.options.batch_size
+        steps_per_epoch = n_batches
 
         if lr_method == 'cosine_decay':
             decay_steps = int(self.options.epochs * steps_per_epoch)

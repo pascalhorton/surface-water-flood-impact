@@ -164,9 +164,10 @@ class ImpactDlOptions(ImpactBasicOptions):
         self.parser.add_argument(
             '--batch-pos-ratio',
             type=float,
-            default=0.1,
+            default=0.005,
             help='Fraction of positives per batch for stratified sampling '
-                 '(e.g. 0.1 = 10%%). None disables stratification.'
+                 '(e.g. 0.005 = ~2 positives per batch for 512 batch size). '
+                 'Keep the oversampling factor (logged at startup) below ~3×.'
         )
         self.parser.add_argument(
             '--epochs',
