@@ -527,12 +527,39 @@ class Impact:
     def compute_corrected_class_weights(self, weight_denominator):
         """
         Compute the corrected class weights.
+
+        When batch_pos_ratio is set, the denominator is automatically scaled so
+        that the gradient contributions of positives and negatives are balanced at
+        the batch level. `weight_denominator` then acts as a fine-tuning multiplier
+        around that balanced point (1 = perfectly balanced, >1 = favour negatives).
         """
         if self.target_type != 'occurrence':
             raise NotImplemented("Class weights are only available for occurrence")
 
+        batch_pos_ratio = getattr(self.options, 'batch_pos_ratio', None)
+
+        if batch_pos_ratio is not None:
+            # d_balanced = (p_neg/p_pos) * batch_pos_ratio / (1 - batch_pos_ratio)
+            # gives gradient ratio pos:neg == 1:1 for the given batch composition.
+            n_pos = np.sum(self.y_train > 0)
+            n_neg = np.sum(self.y_train == 0)
+            p_pos = n_pos / len(self.y_train)
+            p_neg = n_neg / len(self.y_train)
+            d_balanced = (p_neg / p_pos) * (batch_pos_ratio / (1.0 - batch_pos_ratio))
+            effective_denom = d_balanced * weight_denominator
+            logger.info(
+                "batch_pos_ratio=%.3f: balanced denominator=%.1f, "
+                "weight_denominator=%.1f -> effective denominator=%.1f",
+                batch_pos_ratio, d_balanced, weight_denominator, effective_denom)
+        else:
+            effective_denom = weight_denominator
+
         self.class_weight = {0: self.weights[0],
-                             1: self.weights[1] / weight_denominator}
+                             1: self.weights[1] / effective_denom}
+        logger.info(
+            "Class weights: neg=%.4f, pos=%.4f (ratio pos/neg=%.2f)",
+            self.class_weight[0], self.class_weight[1],
+            self.class_weight[1] / self.class_weight[0])
 
     def show_target_stats(self):
         # Count the number of events with and without damages
