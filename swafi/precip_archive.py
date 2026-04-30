@@ -117,11 +117,11 @@ class PrecipitationArchive(Precipitation):
             try:
                 with open(f, 'rb') as file:
                     data = pickle.load(file)
-                    data = data.chunk({'time': -1, self.x_axis: 'auto',
-                                       self.y_axis: 'auto'})  # Chunk the data
+                    data = data.chunk({'time': -1, self.x_axis_dim: 'auto',
+                                       self.y_axis_dim: 'auto'})  # Chunk the data
                     dat = data.sel(
-                        {self.x_axis: slice(x - dx * dpx, x + dx * dpx),
-                         self.y_axis: slice(y + dy * dpx, y - dy * dpx)
+                        {self.x_axis_dim: slice(x - dx * dpx, x + dx * dpx),
+                         self.y_axis_dim: slice(y + dy * dpx, y - dy * dpx)
                          }).compute()  # Compute only the selected data
 
                     ts.append(dat)
@@ -133,8 +133,8 @@ class PrecipitationArchive(Precipitation):
         if len(ts) == 0:
             raise ValueError(f"No data found for CID {cid}")
 
-        ts = xr.concat(ts, dim=self.time_axis)
-        ts = ts.sel({self.time_axis: slice(start, end)})
+        ts = xr.concat(ts, dim=self.time_axis_dim)
+        ts = ts.sel({self.time_axis_dim: slice(start, end)})
 
         if as_xr:
             return ts
@@ -142,7 +142,7 @@ class PrecipitationArchive(Precipitation):
         if size == 1:
             return ts[self.precip_var].to_numpy()
 
-        return ts[self.precip_var].mean(dim=[self.x_axis, self.y_axis]).to_numpy()
+        return ts[self.precip_var].mean(dim=[self.x_axis_dim, self.y_axis_dim]).to_numpy()
 
     def preload_all_cid_data(self, cids):
         """
@@ -182,7 +182,7 @@ class PrecipitationArchive(Precipitation):
                     for x, y in locations:
                         try:
                             dat = data[self.precip_var].sel(
-                                {self.x_axis: x, self.y_axis: y}
+                                {self.x_axis_dim: x, self.y_axis_dim: y}
                             )
                         except ValueError as e:
                             logger.warning("%s", e)
@@ -196,7 +196,7 @@ class PrecipitationArchive(Precipitation):
                         self.cid_time_series = ts_xr
                     else:
                         self.cid_time_series = xr.concat([self.cid_time_series, ts_xr],
-                                                         dim=self.time_axis)
+                                                         dim=self.time_axis_dim)
 
             except EOFError:
                 raise EOFError(f"Error: {f} is empty or corrupted.")
@@ -275,12 +275,12 @@ class PrecipitationArchive(Precipitation):
             try:
                 with open(original_file, 'rb') as f_in:
                     data = pickle.load(f_in)
-                    data = data.sel({self.x_axis: x_axis, self.y_axis: y_axis})
+                    data = data.sel({self.x_axis_dim: x_axis, self.y_axis_dim: y_axis})
 
                     # If the array is smaller than the expected size, fill with NaN
                     if data[self.precip_var].shape[1:] != (len(y_axis), len(x_axis)):
                         expected_shape = (
-                            len(data[self.time_axis]),
+                            len(data[self.time_axis_dim]),
                             len(y_axis),
                             len(x_axis)
                         )
@@ -294,8 +294,8 @@ class PrecipitationArchive(Precipitation):
                         filled_data = np.full(expected_shape, np.nan, dtype='float32')
 
                         # Get the available x and y coordinates in the data
-                        data_x = data[self.x_axis].values
-                        data_y = data[self.y_axis].values
+                        data_x = data[self.x_axis_dim].values
+                        data_y = data[self.y_axis_dim].values
 
                         # Find the intersection indices for x and y
                         x_idx = [i for i, x in enumerate(x_axis) if x in data_x]

@@ -29,9 +29,9 @@ class Precipitation:
         self.data = None
         self.dataset_name = None
         self.data_path = None
-        self.x_axis = 'x'
-        self.y_axis = 'y'
-        self.time_axis = 'time'
+        self.x_axis_dim = 'x'
+        self.y_axis_dim = 'y'
+        self.time_axis_dim = 'time'
         self.precip_var = 'precip'
 
         self.domain = Domain(cid_file)
