@@ -81,6 +81,10 @@ class ImpactDlDataGenerator(keras.utils.Sequence):
         self.n_samples = self.X_static.shape[0]
         self.idxs = np.arange(self.n_samples)
 
+        # Epoch-reshuffled negative subsampling (factor_neg_reduction > 1)
+        self._factor_neg_reduction = 1
+        self._all_idxs_neg = None
+
         # Stratified batch sampling: guarantee positives in every batch
         self.batch_pos_ratio = batch_pos_ratio
         self._idxs_pos = None
@@ -117,23 +121,32 @@ class ImpactDlDataGenerator(keras.utils.Sequence):
         if factor == 1:
             return
 
-        # Select the indices of the negative events
-        idxs_neg = np.where(self.y == 0)[0]
-        n_neg = idxs_neg.shape[0]
-        n_neg_new = int(n_neg / factor)
-        idxs_neg_new = np.random.choice(idxs_neg, size=n_neg_new, replace=False)
+        if self.batch_pos_ratio is not None:
+            logger.warning(
+                "reduce_negatives(factor=%d) has no effect when batch_pos_ratio is set: "
+                "the stratified generator uses self._idxs_neg (all negatives), not self.idxs. "
+                "Use batch_pos_ratio alone to control training speed and class balance.",
+                factor)
+            return
 
-        # Select the indices of the positive events
+        self._factor_neg_reduction = factor
+        self._all_idxs_neg = np.where(self.y == 0)[0]
+        n_neg = len(self._all_idxs_neg)
+        n_neg_per_epoch = int(n_neg / factor)
+        logger.info(
+            "Negative subsampling enabled: factor=%d, %d → %d negatives per epoch "
+            "(subset reshuffled each epoch; all negatives seen over ~%d epochs)",
+            factor, n_neg, n_neg_per_epoch, factor)
+        self._resample_negatives()
+
+    def _resample_negatives(self):
+        """Draw a fresh random subset of negatives. Called at init and each epoch end."""
+        n_neg_new = int(len(self._all_idxs_neg) / self._factor_neg_reduction)
+        idxs_neg_new = np.random.choice(
+            self._all_idxs_neg, size=n_neg_new, replace=False)
         idxs_pos = np.where(self.y > 0)[0]
-
-        # Concatenate the indices
         self.idxs = np.concatenate([idxs_neg_new, idxs_pos])
         self.n_samples = self.idxs.shape[0]
-
-        logger.info("Reduced the number of negative events from %s to %s", n_neg, n_neg_new)
-        logger.info("Number of positive events: %s", idxs_pos.shape[0])
-
-        # Shuffle
         np.random.shuffle(self.idxs)
 
     def get_number_of_batches_for_full_dataset(self):
@@ -276,6 +289,8 @@ class ImpactDlDataGenerator(keras.utils.Sequence):
         self.warning_counter = 0
         if self.batch_pos_ratio is not None:
             np.random.shuffle(self._idxs_neg)
+        elif self._factor_neg_reduction > 1:
+            self._resample_negatives()
         elif self.shuffle:
             np.random.shuffle(self.idxs)
 
