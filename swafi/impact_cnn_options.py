@@ -422,7 +422,7 @@ class ImpactCnnOptions(ImpactDlOptions):
                 'precip_days_after', 1, 2)
         if 'dropout_rate_cnn' in hp_to_optimize:
             self.dropout_rate_cnn = trial.suggest_float(
-                'dropout_rate_cnn', 0.2, 0.5)
+                'dropout_rate_cnn', 0.0, 0.4)
         if 'use_spatial_dropout' in hp_to_optimize:
             self.use_spatial_dropout = trial.suggest_categorical(
                 'use_spatial_dropout', [True, False])

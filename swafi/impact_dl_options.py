@@ -352,7 +352,7 @@ class ImpactDlOptions(ImpactBasicOptions):
                 'learning_rate', 5e-4, 3e-3, log=True)
         if 'dropout_rate_dense' in hp_to_optimize:
             self.dropout_rate_dense = trial.suggest_float(
-                'dropout_rate_dense', 0.2, 0.5)
+                'dropout_rate_dense', 0.0, 0.3)
         if 'use_batchnorm_dense' in hp_to_optimize:
             self.use_batchnorm_dense = trial.suggest_categorical(
                 'use_batchnorm_dense', [True, False])

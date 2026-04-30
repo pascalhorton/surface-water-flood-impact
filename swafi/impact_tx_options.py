@@ -261,7 +261,7 @@ class ImpactTransformerOptions(ImpactDlOptions):
                 "ff_dim", [16, 32, 64, 128])
         if 'dropout_rate' in hp_to_optimize:
             self.dropout_rate = trial.suggest_uniform(
-                "dropout_rate", 0.1, 0.5)
+                "dropout_rate", 0.0, 0.4)
 
         return True
 
