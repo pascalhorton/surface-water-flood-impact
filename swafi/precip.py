@@ -100,7 +100,7 @@ class Precipitation:
         if method == 'classic':  # Bernet et al. (2019) method
 
             # Calculate the Antecedent Precipitation Index (API) using a convolution
-            time_series["api"] = self.compute_api(
+            time_series["api"] = self._compute_api(
                 time_series.precip.values, self.time_step, api_days_nb, api_reg)
 
             # Group events by period of at least 8 hour without precipitation larger than 0.1mm/h and return group IDs
@@ -164,13 +164,12 @@ class Precipitation:
             exceed_times = time_series.loc[time_series['precip'] >= threshold, 'time']
 
             # Event dates:
-            # - day of exceedance
-            # - day of exceedance shifted by +12h (captures days within 12h prior to start and 12h after start)
-            events = pd.concat([
-                exceed_times.dt.floor('D'),
-                (exceed_times + pd.Timedelta(hours=-12)).dt.floor('D'),
-                (exceed_times + pd.Timedelta(hours=12)).dt.floor('D')
-            ]).drop_duplicates().sort_values().to_frame(name='e_date').reset_index(drop=True)
+            # - if time between 0:00 and 2:00: selects the day itself and the previous
+            #   one (if max int. is the next day)
+            # - if time between 2:00 and 16:00: selects the day itself only
+            # - if time between 16:00 and 0:00: selects the day itself and the next
+            #   one (if max int. is the previous day)
+            events = self._build_simple_event_dates(exceed_times)
 
             # Pre-compute rolling precipitation sums for each accumulation window
             window_hours = [1, 2, 4, 6, 12, 24, 48, 72]
@@ -183,8 +182,8 @@ class Precipitation:
             # Get the date and time of the maximum precipitation intensity
             for idx, row in events.iterrows():
                 day_series = time_series[
-                    (time_series['time'] >= row['e_date'] + pd.Timedelta(hours=-12)) &
-                    (time_series['time'] <= row['e_date'] + pd.Timedelta(hours=36))
+                    (time_series['time'] >= row['e_date'] + pd.Timedelta(hours=-8)) &
+                    (time_series['time'] <= row['e_date'] + pd.Timedelta(hours=26))
                 ]
                 i_max_date = day_series.loc[day_series['precip'].idxmax(), 'time']
                 events.at[idx, 'i_max'] = day_series['precip'].max()
@@ -214,7 +213,7 @@ class Precipitation:
             })
 
             # Compute API on the daily series
-            daily_series['api'] = self.compute_api(
+            daily_series['api'] = self._compute_api(
                 daily_series['precip'].values, 24, api_days_nb, api_reg
             )
             daily_series['api_q'] = daily_series['api'].rank(pct=True)
@@ -242,7 +241,33 @@ class Precipitation:
 
         return events
 
-    def compute_api(self, precip, time_step, days_nb=30, reg=0.8):
+    @staticmethod
+    def _build_simple_event_dates(exceed_times):
+        """Build unique event days from exceedance timestamps.
+
+        Rules:
+        - 00:00 <= t < 02:00 -> day itself and previous day
+        - 02:00 <= t < 16:00 -> day itself
+        - 16:00 <= t < 24:00 -> day itself and next day
+        """
+        day = exceed_times.dt.floor('D')
+        time_of_day = exceed_times - day
+
+        early_mask = time_of_day < pd.Timedelta(hours=2)
+        late_mask = time_of_day >= pd.Timedelta(hours=16)
+
+        candidate_days = pd.concat([
+            day,
+            day[early_mask] - pd.Timedelta(days=1),
+            day[late_mask] + pd.Timedelta(days=1),
+        ], ignore_index=True)
+        event_days = pd.Series(pd.to_datetime(candidate_days.to_numpy()))
+        event_days = event_days.drop_duplicates().sort_values().reset_index(drop=True)
+
+        return event_days.to_frame(name='e_date')
+
+    @staticmethod
+    def _compute_api(precip, time_step, days_nb=30, reg=0.8):
         """
         Compute the Antecedent Precipitation Index (API) for a given time series.
 
