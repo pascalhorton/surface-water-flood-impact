@@ -8,6 +8,7 @@ from .impact_cnn_data_generator import ImpactCnnDataGenerator
 
 import copy
 import logging
+import numpy as np
 import pandas as pd
 
 has_optuna = False
@@ -310,12 +311,17 @@ class ImpactCnn(ImpactDl):
         if count > 0:
             feature_class_sizes.append(count)
 
+        n_pos = np.sum(self.y_train > 0)
+        n_neg = np.sum(self.y_train == 0)
+        output_bias_init = float(np.log(n_pos / n_neg))
+
         self.model = ModelCnn(
             task=self.target_type,
             options=self.options,
             input_3d_size=input_3d_size,
             input_1d_size=input_1d_size,
             input_1d_splits=feature_class_sizes,
+            output_bias_init=output_bias_init,
         )
         self.model.build_model()
 

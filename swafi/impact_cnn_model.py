@@ -36,7 +36,7 @@ class ModelCnn(keras.models.Model):
         Additional arguments to pass to keras.models.Model.
     """
 
-    def __init__(self, trainable=True, dtype=None, task='classification', options=None, input_3d_size=None, input_1d_size=None, input_1d_splits=None, *args, **kwargs):
+    def __init__(self, trainable=True, dtype=None, task='classification', options=None, input_3d_size=None, input_1d_size=None, input_1d_splits=None, output_bias_init=0.0, *args, **kwargs):
         super().__init__(trainable=trainable, dtype=dtype, *args, **kwargs)
         self.model = None
         self.task = task
@@ -53,6 +53,7 @@ class ModelCnn(keras.models.Model):
             self.input_1d_size = list(input_1d_size)
 
         self.input_1d_splits = list(input_1d_splits) if input_1d_splits is not None else None
+        self.output_bias_init = float(output_bias_init)
 
         self.last_activation = 'relu' if task == 'regression' else 'sigmoid'
 
@@ -110,6 +111,7 @@ class ModelCnn(keras.models.Model):
             "input_3d_size": self.input_3d_size,
             "input_1d_size": self.input_1d_size,
             "input_1d_splits": self.input_1d_splits,
+            "output_bias_init": self.output_bias_init,
             "build_config": self.get_build_config(),
             "mean_static": self._serialize_array(self.mean_static),
             "std_static": self._serialize_array(self.std_static),
@@ -148,6 +150,7 @@ class ModelCnn(keras.models.Model):
         instance.input_1d_size = config.get("input_1d_size", None)
         instance.input_1d_splits = config.get("input_1d_splits", None)
         instance.last_activation = 'relu' if instance.task == 'regression' else 'sigmoid'
+        instance.output_bias_init = config.get("output_bias_init", 0.0)
 
         instance.mean_static = cls._deserialize_array(config.get("mean_static", None))
         instance.std_static = cls._deserialize_array(config.get("std_static", None))
@@ -355,9 +358,13 @@ class ModelCnn(keras.models.Model):
                     )(x_skip)
                     x = keras.layers.Add(name=f'res_dense_{i}')([x, x_proj])
 
-        # Last activation
-        output = keras.layers.Dense(1, activation=self.last_activation,
-                              name=f'dense_last')(x)
+        # Last activation — bias initialized to log-odds of class prior for faster convergence
+        output = keras.layers.Dense(
+            1,
+            activation=self.last_activation,
+            bias_initializer=keras.initializers.Constant(self.output_bias_init),
+            name='dense_last'
+        )(x)
 
         # Build model
         if self.input_3d_size is not None and self.input_1d_size is not None:

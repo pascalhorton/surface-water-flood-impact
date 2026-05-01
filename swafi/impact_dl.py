@@ -184,6 +184,7 @@ class ImpactDl(Impact):
                 early_stopping_no_skill_cb=early_stopping_no_skill,
                 initial_best_val_csi=initial_best_val_csi,
                 initial_best_epoch=initial_best_epoch,
+                es_monitor=es_monitor,
             ))
 
         callbacks += self._get_lr_callbacks()
@@ -199,13 +200,18 @@ class ImpactDl(Impact):
             roc_auc = keras.metrics.AUC(name='ROC_AUC', curve='ROC')
             pr_auc = keras.metrics.AUC(name='PR_AUC', curve='PR')
 
+            # Use class-prior-based CSI threshold so that early learning is visible
+            n_pos_train = int(np.sum(self.y_train > 0))
+            n_neg_train = int(np.sum(self.y_train == 0))
+            csi_threshold = (n_pos_train / (n_pos_train + n_neg_train)) * 10
+
             logger.info("Compiling model with jit_compile=%s", self.options.jit_compile)
 
             # Compile the model
             self.model.compile(
                 loss=loss_fn,
                 optimizer=optimizer,
-                metrics=[CriticalSuccessIndex(), F1Score(), roc_auc, pr_auc],
+                metrics=[CriticalSuccessIndex(threshold=csi_threshold), F1Score(), roc_auc, pr_auc],
                 run_eagerly=DEBUG,  # Set to True for debugging purposes
                 steps_per_execution=self.options.steps_per_execution,
                 jit_compile=self.options.jit_compile,
@@ -711,11 +717,14 @@ class TrainingCheckpointManager:
         next_slot = 1 - meta.get('active_slot', 0)
 
         model.save(str(self._slot_path(next_slot)))
+        logger.debug("Rolling checkpoint saved (epoch=%d, slot=%d)", epoch + 1, next_slot)
 
         if val_csi > best_val_csi:
             model.save(str(self.best_path))
             best_val_csi = val_csi
             best_epoch = epoch
+            logger.info("Best checkpoint updated (epoch=%d, val_csi=%.5f)",
+                        epoch + 1, float(val_csi))
 
         new_meta = {
             'current_epoch': epoch + 1,
@@ -729,8 +738,6 @@ class TrainingCheckpointManager:
         tmp.write_text(json.dumps(new_meta, indent=2))
         tmp.replace(self._meta_path)
 
-        logger.info("Checkpoint saved (epoch=%d, val_csi=%.5f, slot=%d)",
-                    epoch + 1, float(val_csi), next_slot)
         return best_val_csi, best_epoch
 
     def cleanup(self):
@@ -771,16 +778,17 @@ class EpochCheckpointCallback(keras.callbacks.Callback):
 
     def __init__(self, checkpoint_manager, early_stopping_csi_cb,
                  early_stopping_no_skill_cb, initial_best_val_csi,
-                 initial_best_epoch):
+                 initial_best_epoch, es_monitor='val_csi'):
         super().__init__()
         self._mgr = checkpoint_manager
         self._es_csi = early_stopping_csi_cb
         self._es_no_skill = early_stopping_no_skill_cb
         self._best_val_csi = initial_best_val_csi
         self._best_epoch = initial_best_epoch
+        self._es_monitor = es_monitor
 
     def on_epoch_end(self, epoch, logs=None):
-        val_csi = float((logs or {}).get('val_csi', -np.inf))
+        val_csi = float((logs or {}).get(self._es_monitor, -np.inf))
         es_wait = int(getattr(self._es_csi, 'wait', 0))
         no_skill_wait = int(getattr(self._es_no_skill, 'wait', 0))
         self._best_val_csi, self._best_epoch = self._mgr.save(

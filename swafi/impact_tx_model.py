@@ -27,7 +27,7 @@ class ModelTransformer(models.Model):
     """
 
     def __init__(self, task, options, input_daily_prec_size, input_high_freq_prec_size,
-                 input_attributes_size):
+                 input_attributes_size, output_bias_init=0.0):
         super().__init__()
         self.model = None
         self.task = task
@@ -35,6 +35,7 @@ class ModelTransformer(models.Model):
         self.input_daily_prec_size = input_daily_prec_size
         self.input_high_freq_prec_size = input_high_freq_prec_size
         self.input_attributes_size = input_attributes_size
+        self.output_bias_init = float(output_bias_init)
 
         self.last_activation = 'relu' if task == 'regression' else 'sigmoid'
 
@@ -222,9 +223,13 @@ class ModelTransformer(models.Model):
                 x = layers.Dropout(rate=self.options.dropout_rate_dense,
                                    name=f'dropout_dense_{i}')(x)
 
-        # Last activation
-        output = layers.Dense(1, activation=self.last_activation,
-                              name=f'dense_last')(x)
+        # Last activation — bias initialized to log-odds of class prior for faster convergence
+        output = layers.Dense(
+            1,
+            activation=self.last_activation,
+            bias_initializer=keras.initializers.Constant(self.output_bias_init),
+            name='dense_last'
+        )(x)
 
         # Build model
         self.model = models.Model(

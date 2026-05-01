@@ -8,6 +8,7 @@ from .impact_tx_data_generator import ImpactTxDataGenerator
 
 import copy
 import logging
+import numpy as np
 import pandas as pd
 
 has_optuna = False
@@ -158,12 +159,17 @@ class ImpactTransformer(ImpactDl):
             input_high_freq_prec_size = self.dg_train.get_precip_hf_length()
             input_daily_prec_size = self.dg_train.get_precip_daily_length()
 
+        n_pos = np.sum(self.y_train > 0)
+        n_neg = np.sum(self.y_train == 0)
+        output_bias_init = float(np.log(n_pos / n_neg))
+
         self.model = ModelTransformer(
             task=self.target_type,
             options=self.options,
             input_daily_prec_size=input_daily_prec_size,
             input_high_freq_prec_size=input_high_freq_prec_size,
             input_attributes_size=input_attributes_size,
+            output_bias_init=output_bias_init,
         )
 
     def set_precipitation_hf(self, precipitation):
