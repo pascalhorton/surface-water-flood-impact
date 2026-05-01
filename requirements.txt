@@ -5,6 +5,7 @@ rasterio
 tqdm
 pyarrow
 scikit-learn
+lightgbm
 tensorflow[and-cuda]
 keras
 xarray
