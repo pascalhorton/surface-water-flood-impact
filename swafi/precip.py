@@ -190,17 +190,10 @@ class Precipitation:
                 events.at[idx, 'i_max_q'] = day_series['precip_q'].max()
                 events.at[idx, 'i_max_date'] = i_max_date
 
-                # Max rolling sum for each window, constrained to windows ending within
-                # the day of i_max_date (right edge in (day_start, day_end])
-                day_start = i_max_date.normalize()
-                day_end = day_start + pd.Timedelta(hours=24)
-                day_mask = (
-                    (time_series['time'] > day_start) &
-                    (time_series['time'] <= day_end)
-                )
+                # Max rolling sum for each window
                 for W in window_hours:
-                    events.at[idx, f'p_{W}h'] = time_series.loc[day_mask, f'p_{W}h'].max()
-                    events.at[idx, f'p_{W}h_q'] = time_series.loc[day_mask, f'p_{W}h_q'].max()
+                    events.at[idx, f'p_{W}h'] = day_series[f'p_{W}h'].max()
+                    events.at[idx, f'p_{W}h_q'] = day_series[f'p_{W}h_q'].max()
 
             events = events.astype({
                 **{f'p_{W}h': 'float32' for W in window_hours},
