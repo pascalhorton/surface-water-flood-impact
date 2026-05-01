@@ -15,6 +15,6 @@ if __name__ == "__main__":
     logger = logging.getLogger(__name__)
 
     output_path = f"events_cpc_model_domain_3x3_{Y_START}_{Y_END}_{METHOD}.parquet"
-    run_parallel_extraction(Y_START, Y_END, METHOD,
+    run_parallel_extraction(Y_START, Y_END, METHOD, filter_size=None,
                             output_dir="event_parts_main",
                             output_path=output_path)

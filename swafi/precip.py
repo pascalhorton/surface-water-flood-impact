@@ -65,6 +65,9 @@ class Precipitation:
         if self.data is None:
             raise ValueError("No data loaded. Please load the data first.")
 
+        if filter_size is None:
+            return
+
         self.data = self.data.fillna(0)
         self.data[self.precip_var].values = uniform_filter(
             self.data[self.precip_var],
