@@ -109,6 +109,9 @@ class ImpactDl(Impact):
             Whether to run in debug mode or not (print more messages).
         """
         os.environ.setdefault('TF_GPU_ALLOCATOR', 'cuda_malloc_async')
+        if getattr(self.options, 'use_mixed_precision', False):
+            keras.mixed_precision.set_global_policy('mixed_float16')
+            logger.info("Mixed precision enabled: float16 compute, float32 weights.")
         self._set_random_state()
         self._create_data_generator_train()
         self._create_data_generator_valid()

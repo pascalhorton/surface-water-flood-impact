@@ -56,6 +56,8 @@ class ImpactDlOptions(ImpactBasicOptions):
         Number of warmup epochs for 'cosine_decay_warmup'.
     jit_compile: bool
         Whether to enable XLA JIT compilation in Keras model.compile.
+    use_mixed_precision: bool
+        Whether to enable float16 mixed-precision training.
     dropout_rate_dense: float
         The dropout rate for the dense layers.
     use_batchnorm_dense: bool
@@ -95,6 +97,7 @@ class ImpactDlOptions(ImpactBasicOptions):
         self.early_stopping_metric = None
         self.loss_function = None
         self.jit_compile = False
+        self.use_mixed_precision = False
 
         # Model options for the dense layers
         self.dropout_rate_dense = None
@@ -237,6 +240,12 @@ class ImpactDlOptions(ImpactBasicOptions):
             help='Enable XLA JIT compilation in Keras model.compile. Disabled by default because some GPU CNN conv kernels fail to autotune under XLA.'
         )
         self.parser.add_argument(
+            '--use-mixed-precision',
+            action=argparse.BooleanOptionalAction,
+            default=False,
+            help='Enable float16 mixed-precision training (recommended on Ampere/Turing/Volta GPUs).'
+        )
+        self.parser.add_argument(
             '--dropout-rate-dense',
             type=float,
             default=0.1,
@@ -339,6 +348,7 @@ class ImpactDlOptions(ImpactBasicOptions):
         self.early_stopping_metric = args.early_stopping_metric
         self.loss_function = args.loss_function
         self.jit_compile = args.jit_compile
+        self.use_mixed_precision = args.use_mixed_precision
         self.dropout_rate_dense = args.dropout_rate_dense
         self.use_batchnorm_dense = args.use_batchnorm_dense
         self.use_layernorm_dense = args.use_layernorm_dense
@@ -458,6 +468,7 @@ class ImpactDlOptions(ImpactBasicOptions):
 
         logger.info("- loss_function:  %s", self.loss_function)
         logger.info("- jit_compile:  %s", self.jit_compile)
+        logger.info("- use_mixed_precision:  %s", self.use_mixed_precision)
         logger.info("- batch_size:  %s", self.batch_size)
         logger.info("- batch_pos_ratio:  %s", self.batch_pos_ratio)
         logger.info("- epochs:  %s", self.epochs)
@@ -509,6 +520,7 @@ class ImpactDlOptions(ImpactBasicOptions):
         assert self.early_stopping_metric in ['val_csi', 'val_ROC_AUC', 'val_PR_AUC'], \
             "early_stopping_metric must be 'val_csi', 'val_ROC_AUC', or 'val_PR_AUC'"
         assert isinstance(self.jit_compile, bool), "jit_compile is not set"
+        assert isinstance(self.use_mixed_precision, bool), "use_mixed_precision is not set"
         assert self.dropout_rate_dense is not None, "dropout_rate_dense is not set"
         assert isinstance(self.use_batchnorm_dense, bool), "use_batchnorm_dense is not set"
         assert isinstance(self.use_layernorm_dense, bool), "use_layernorm_dense is not set"
