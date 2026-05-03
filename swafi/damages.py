@@ -675,11 +675,11 @@ class Damages:
                 return best_events.iloc[0]
 
             # If multiple events have the same i_max, keep the claim date
-            best_event = pot_events[pot_events.e_date == claim.date_claim.floor('D')]
+            best_event = best_events[best_events.e_date == claim.date_claim.floor('D')]
             if best_event.empty:
                 # Return the closest event to the claim date
-                pot_events['date_diff'] = (pot_events.e_date - claim.date_claim).abs()
-                best_event = pot_events.loc[pot_events.date_diff.idxmin()]
+                best_events['date_diff'] = (best_events.e_date - claim.date_claim).abs()
+                best_event = best_events.loc[best_events.date_diff.idxmin()]
                 return best_event
 
             return best_event.iloc[0]
