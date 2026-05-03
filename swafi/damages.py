@@ -666,23 +666,7 @@ class Damages:
         if len(pot_events) == 1:
             return pot_events.iloc[0]
 
-        elif len(pot_events) == 2:
-            if pot_events.i_max_date.nunique() == 1:
-                # If the 2 potential events have the same i_max_date, keep the claim date
-                best_event = pot_events[pot_events.e_date == claim.date_claim.floor('D')]
-                if best_event.empty:
-                    # Return the closest event to the claim date
-                    pot_events['date_diff'] = (pot_events.e_date - claim.date_claim).abs()
-                    best_event = pot_events.loc[pot_events.date_diff.idxmin()]
-                    return best_event
-                return best_event.iloc[0]
-
-            else:
-                # Select the event with the highest i_max
-                best_idx = pot_events.i_max.idxmax()
-                return pot_events.loc[best_idx]
-            
-        else:  # More than 2 potential events
+        else:  # 2 or more potential events
             # Select the event(s) with the highest i_max
             best_idx = pot_events.i_max.idxmax()
             best_events = pot_events[pot_events.i_max == pot_events.loc[best_idx].i_max]
@@ -696,6 +680,7 @@ class Damages:
                 pot_events['date_diff'] = (pot_events.e_date - claim.date_claim).abs()
                 best_event = pot_events.loc[pot_events.date_diff.idxmin()]
                 return best_event
+
             return best_event.iloc[0]
 
     def _record_best_event(self, best_matches, i_claim):
@@ -820,10 +805,10 @@ class Damages:
         date_claim = claim['date_claim']
 
         # Define the starting and ending dates of the temporal window
-        date_window_start = date_claim - timedelta(hours=12)
-        date_window_end = date_claim + timedelta(hours=36)
+        date_window_start = date_claim - timedelta(hours=8)
+        date_window_end = date_claim + timedelta(hours=26)
 
-        # Select all events in the longest temporal window
+        # Select all events in the temporal window
         potential_events = events.events[
             (events.events['cid'] == cid) &
             (events.events['i_max_date'] <= date_window_end) &
