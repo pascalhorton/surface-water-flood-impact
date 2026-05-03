@@ -340,12 +340,23 @@ class ImpactLstm(ImpactDl):
         n_neg = np.sum(self.y_train == 0)
         output_bias_init = float(np.log(n_pos / n_neg))
 
+        api_init_idx = -1
+        if (self.options.use_api_init and input_1d_size is not None
+                and 'api_q' in self.features):
+            api_init_idx = list(self.features).index('api_q')
+            logger.info("API init: using api_q at feature index %d as LSTM "
+                        "initial state.", api_init_idx)
+        elif self.options.use_api_init:
+            logger.warning("use_api_init=True but api_q is not in features; "
+                           "falling back to zero initial state.")
+
         self.model = ModelLstm(
             task=self.target_type,
             options=self.options,
             input_3d_size=input_3d_size,
             input_1d_size=input_1d_size,
             output_bias_init=output_bias_init,
+            api_init_idx=api_init_idx,
         )
         self.model.build_model()
 

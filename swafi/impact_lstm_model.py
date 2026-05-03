@@ -44,7 +44,7 @@ class ModelLstm(keras.models.Model):
 
     def __init__(self, trainable=True, dtype=None, task='classification',
                  options=None, input_3d_size=None, input_1d_size=None,
-                 output_bias_init=0.0, *args, **kwargs):
+                 output_bias_init=0.0, api_init_idx=-1, *args, **kwargs):
         super().__init__(trainable=trainable, dtype=dtype, *args, **kwargs)
         self.model = None
         self.task = task
@@ -52,6 +52,7 @@ class ModelLstm(keras.models.Model):
         self.input_3d_size = list(input_3d_size) if input_3d_size is not None else None
         self.input_1d_size = list(input_1d_size) if input_1d_size is not None else None
         self.output_bias_init = float(output_bias_init)
+        self.api_init_idx = int(api_init_idx)
         self.last_activation = 'relu' if task == 'regression' else 'sigmoid'
 
         # Training-set statistics stored for inference-time consistency.
@@ -104,6 +105,7 @@ class ModelLstm(keras.models.Model):
             "input_3d_size": self.input_3d_size,
             "input_1d_size": self.input_1d_size,
             "output_bias_init": self.output_bias_init,
+            "api_init_idx": self.api_init_idx,
             "build_config": self.get_build_config(),
             "mean_static": self._serialize_array(self.mean_static),
             "std_static": self._serialize_array(self.std_static),
@@ -135,6 +137,7 @@ class ModelLstm(keras.models.Model):
         instance.input_1d_size = config.get("input_1d_size", None)
         instance.last_activation = 'relu' if instance.task == 'regression' else 'sigmoid'
         instance.output_bias_init = config.get("output_bias_init", 0.0)
+        instance.api_init_idx = config.get("api_init_idx", -1)
 
         instance.mean_static = cls._deserialize_array(config.get("mean_static", None))
         instance.std_static = cls._deserialize_array(config.get("std_static", None))
@@ -175,6 +178,11 @@ class ModelLstm(keras.models.Model):
 
         x = None
 
+        # Create the static-features input early so it can be used for LSTM init.
+        input_1d = None
+        if self.input_1d_size is not None:
+            input_1d = keras.layers.Input(shape=self.input_1d_size, name='input_1d')
+
         if self.input_3d_size is not None:
             # Input shape: (T, 1, 1, C)
             t_len = self.input_3d_size[0]
@@ -190,11 +198,23 @@ class ModelLstm(keras.models.Model):
 
             # Stacked LSTM layers — forward-only (causal)
             for i in range(self.options.lstm_nb_layers):
+                # First layer only: optionally initialise h0/c0 from api_q so the
+                # LSTM starts in the right soil-moisture state before seeing precip.
+                initial_state = None
+                if i == 0 and self.api_init_idx >= 0 and input_1d is not None:
+                    api_val = input_1d[:, self.api_init_idx:self.api_init_idx + 1]
+                    h0 = keras.layers.Dense(
+                        self.options.lstm_units, activation='tanh', name='api_to_h0'
+                    )(api_val)
+                    c0 = keras.layers.Dense(
+                        self.options.lstm_units, activation='tanh', name='api_to_c0'
+                    )(api_val)
+                    initial_state = [h0, c0]
                 x = keras.layers.LSTM(
                     self.options.lstm_units,
                     return_sequences=True,
                     name=f'lstm_{i}'
-                )(x)
+                )(x, initial_state=initial_state)
                 if self.options.dropout_rate_lstm > 0:
                     x = keras.layers.Dropout(
                         self.options.dropout_rate_lstm, name=f'lstm_drop_{i}'
@@ -212,9 +232,7 @@ class ModelLstm(keras.models.Model):
             # Pool temporal dimension → (lstm_units,)
             x = keras.layers.GlobalAveragePooling1D(name='temporal_avg')(x)
 
-        if self.input_1d_size is not None:
-            input_1d = keras.layers.Input(shape=self.input_1d_size, name='input_1d')
-
+        if input_1d is not None:
             if self.input_3d_size is not None:
                 x = keras.layers.Concatenate(name='concat_1d')([x, input_1d])
             else:
@@ -261,7 +279,7 @@ class ModelLstm(keras.models.Model):
             name='dense_last'
         )(x)
 
-        if self.input_3d_size is not None and self.input_1d_size is not None:
+        if self.input_3d_size is not None and input_1d is not None:
             self.model = keras.models.Model(inputs=[input_3d, input_1d], outputs=output)
         elif self.input_3d_size is None:
             self.model = keras.models.Model(inputs=input_1d, outputs=output)

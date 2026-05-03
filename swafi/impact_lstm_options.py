@@ -46,6 +46,7 @@ class ImpactLstmOptions(ImpactDlOptions):
         self._set_parser_arguments()
 
         self.use_dem = None
+        self.use_api_init = None
         self.precip_time_step = None
         self.precip_days_before = None
         self.precip_days_after = None
@@ -91,6 +92,12 @@ class ImpactLstmOptions(ImpactDlOptions):
             action=argparse.BooleanOptionalAction,
             default=False,
             help='Include the local DEM value as a second input channel'
+        )
+        self.parser.add_argument(
+            '--use-api-init',
+            action=argparse.BooleanOptionalAction,
+            default=True,
+            help='Initialize the first LSTM layer hidden/cell state from api_q'
         )
         self.parser.add_argument(
             '--precip-time-step',
@@ -146,6 +153,7 @@ class ImpactLstmOptions(ImpactDlOptions):
         self._parse_dl_args(args)
 
         self.use_dem = args.use_dem
+        self.use_api_init = args.use_api_init
         self.precip_time_step = args.precip_time_step
         self.precip_days_before = args.precip_days_before
         self.precip_days_after = args.precip_days_after
@@ -222,6 +230,7 @@ class ImpactLstmOptions(ImpactDlOptions):
         self._print_shared_options(show_optuna_params)
         logger.info("LSTM-specific options:")
         logger.info("- use_dem:  %s", self.use_dem)
+        logger.info("- use_api_init:  %s", self.use_api_init)
         if self.use_precip:
             logger.info("- precip_time_step:  %s", self.precip_time_step)
             logger.info("- precip_days_before:  %s", self.precip_days_before)
