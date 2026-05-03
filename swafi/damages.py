@@ -20,6 +20,7 @@ except ImportError:
 
 from .config import Config
 from .domain import Domain
+from .precip import SIMPLE_EVENT_HOURS_BEFORE, SIMPLE_EVENT_HOURS_AFTER
 
 config = Config()
 
@@ -805,8 +806,8 @@ class Damages:
         date_claim = claim['date_claim']
 
         # Define the starting and ending dates of the temporal window
-        date_window_start = date_claim - timedelta(hours=8)
-        date_window_end = date_claim + timedelta(hours=26)
+        date_window_start = date_claim - timedelta(hours=SIMPLE_EVENT_HOURS_BEFORE)
+        date_window_end = date_claim + timedelta(hours=SIMPLE_EVENT_HOURS_AFTER)
 
         # Select all events in the temporal window
         potential_events = events.events[

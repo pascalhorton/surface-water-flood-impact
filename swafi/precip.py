@@ -12,6 +12,10 @@ from .domain import Domain
 
 config = Config()
 
+# Temporal window for simple-event extraction (hours relative to D-day at 0 h)
+SIMPLE_EVENT_HOURS_BEFORE = 8
+SIMPLE_EVENT_HOURS_AFTER = 26
+
 
 class Precipitation:
     def __init__(self, cid_file=None):
@@ -182,8 +186,8 @@ class Precipitation:
             # Get the date and time of the maximum precipitation intensity
             for idx, row in events.iterrows():
                 day_series = time_series[
-                    (time_series['time'] >= row['e_date'] + pd.Timedelta(hours=-8)) &
-                    (time_series['time'] <= row['e_date'] + pd.Timedelta(hours=26))
+                    (time_series['time'] >= row['e_date'] - pd.Timedelta(hours=SIMPLE_EVENT_HOURS_BEFORE)) &
+                    (time_series['time'] <= row['e_date'] + pd.Timedelta(hours=SIMPLE_EVENT_HOURS_AFTER))
                 ]
                 i_max_date = day_series.loc[day_series['precip'].idxmax(), 'time']
                 events.at[idx, 'i_max'] = day_series['precip'].max()
