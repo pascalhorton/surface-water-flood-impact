@@ -28,6 +28,7 @@ def process_part(i, part, config, y_start, y_end, method, simple_strict_mode, fi
     )
     if filter_size is not None:
         cpc.apply_smoothing(filter_size=filter_size)
+    cpc.data = cpc.data.compute()
     list_of_events = [cpc.extract_events(row, method, simple_strict_mode) for _, row in part.iterrows()]
     events = pd.concat(list_of_events, axis=0).reset_index(drop=True)
     events.to_parquet(Path(output_dir) / f"part_{i}.parquet")
