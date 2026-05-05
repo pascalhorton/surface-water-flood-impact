@@ -184,20 +184,35 @@ class Precipitation:
                 time_series[f'p_{W}h_q'] = time_series[f'p_{W}h'].rank(pct=True)
 
             # Get the date and time of the maximum precipitation intensity
-            for idx, row in events.iterrows():
-                day_series = time_series[
-                    (time_series['time'] >= row['e_date'] - pd.Timedelta(hours=SIMPLE_EVENT_HOURS_BEFORE)) &
-                    (time_series['time'] <= row['e_date'] + pd.Timedelta(hours=SIMPLE_EVENT_HOURS_AFTER))
-                ]
-                i_max_date = day_series.loc[day_series['precip'].idxmax(), 'time']
-                events.at[idx, 'i_max'] = day_series['precip'].max()
-                events.at[idx, 'i_max_q'] = day_series['precip_q'].max()
-                events.at[idx, 'i_max_date'] = i_max_date
-
-                # Max rolling sum for each window
-                for W in window_hours:
-                    events.at[idx, f'p_{W}h'] = day_series[f'p_{W}h'].max()
-                    events.at[idx, f'p_{W}h_q'] = day_series[f'p_{W}h_q'].max()
+            # Use searchsorted on a time-indexed series for O(log n) window lookup
+            # instead of O(n) boolean masking, and collect results in a list to
+            # avoid repeated pandas column reallocations inside the loop.
+            ts_indexed = time_series.set_index('time')
+            time_idx = ts_indexed.index
+            records = []
+            for _, row in events.iterrows():
+                start = row['e_date'] - pd.Timedelta(hours=SIMPLE_EVENT_HOURS_BEFORE)
+                end = row['e_date'] + pd.Timedelta(hours=SIMPLE_EVENT_HOURS_AFTER)
+                i0 = time_idx.searchsorted(start, side='left')
+                i1 = time_idx.searchsorted(end, side='right')
+                window = ts_indexed.iloc[i0:i1]
+                if window.empty:
+                    rec = {'i_max': np.nan, 'i_max_q': np.nan, 'i_max_date': pd.NaT}
+                    rec.update({f'p_{W}h': np.nan for W in window_hours})
+                    rec.update({f'p_{W}h_q': np.nan for W in window_hours})
+                else:
+                    rec = {
+                        'i_max': window['precip'].max(),
+                        'i_max_q': window['precip_q'].max(),
+                        'i_max_date': window['precip'].idxmax(),
+                    }
+                    for W in window_hours:
+                        rec[f'p_{W}h'] = window[f'p_{W}h'].max()
+                        rec[f'p_{W}h_q'] = window[f'p_{W}h_q'].max()
+                records.append(rec)
+            events = pd.concat(
+                [events, pd.DataFrame(records, index=events.index)], axis=1
+            )
 
             events = events.astype({
                 **{f'p_{W}h': 'float32' for W in window_hours},
