@@ -78,21 +78,21 @@ class Precipitation:
             size=(0, filter_size, filter_size)
         )
 
-    def extract_events(self, coords_row=None, method='simple', api_days_nb=30, api_reg=0.8):
+    def extract_events(self, coords_row=None, method='simple', simple_strict_mode=False, api_days_nb=30, api_reg=0.8):
         # Select timeseries and convert it into a DataFrame
         if coords_row is not None:
-            return self._extract_events(coords_row, method, api_days_nb, api_reg)
+            return self._extract_events(coords_row, method, simple_strict_mode, api_days_nb, api_reg)
 
         list_of_events = []
         coords_df = self.domain.get_coordinates_df()
         for _, coords_row in tqdm(coords_df.iterrows(), total=len(coords_df), desc="Extracting events"):
-            events = self._extract_events(coords_row, method, api_days_nb, api_reg)
+            events = self._extract_events(coords_row, method, simple_strict_mode, api_days_nb, api_reg)
             if events is not None:
                 list_of_events.append(events)
 
         return pd.concat(list_of_events, axis=0).reset_index(drop=True)
 
-    def _extract_events(self, coords_row, method='simple', api_days_nb=30, api_reg=0.8):
+    def _extract_events(self, coords_row, method='simple', simple_strict_mode=False, api_days_nb=30, api_reg=0.8):
         time_series = self.data.sel(
             x=coords_row.x,
             y=coords_row.y
@@ -167,13 +167,8 @@ class Precipitation:
             # All exceedance timestamps
             exceed_times = time_series.loc[time_series['precip'] >= threshold, 'time']
 
-            # Event dates:
-            # - if time between 0:00 and 2:00: selects the day itself and the previous
-            #   one (if max int. is the next day)
-            # - if time between 2:00 and 16:00: selects the day itself only
-            # - if time between 16:00 and 0:00: selects the day itself and the next
-            #   one (if max int. is the previous day)
-            events = self._build_simple_event_dates(exceed_times)
+            # Event dates
+            events = self._build_simple_event_dates(exceed_times, simple_strict_mode)
 
             # Pre-compute rolling precipitation sums for each accumulation window
             window_hours = [1, 2, 4, 6, 12, 24, 48, 72]
@@ -191,8 +186,12 @@ class Precipitation:
             time_idx = ts_indexed.index
             records = []
             for _, row in events.iterrows():
-                start = row['e_date'] - pd.Timedelta(hours=SIMPLE_EVENT_HOURS_BEFORE)
-                end = row['e_date'] + pd.Timedelta(hours=SIMPLE_EVENT_HOURS_AFTER)
+                if simple_strict_mode:
+                    start = row['e_date']
+                    end = row['e_date'] + pd.Timedelta(hours=24)
+                else:
+                    start = row['e_date'] - pd.Timedelta(hours=SIMPLE_EVENT_HOURS_BEFORE)
+                    end = row['e_date'] + pd.Timedelta(hours=SIMPLE_EVENT_HOURS_AFTER)
                 i0 = time_idx.searchsorted(start, side='left')
                 i1 = time_idx.searchsorted(end, side='right')
                 window = ts_indexed.iloc[i0:i1]
@@ -254,7 +253,7 @@ class Precipitation:
         return events
 
     @staticmethod
-    def _build_simple_event_dates(exceed_times):
+    def _build_simple_event_dates(exceed_times, strict_mode):
         """Build unique event days from exceedance timestamps.
 
         Rules:
@@ -263,16 +262,20 @@ class Precipitation:
         - 16:00 <= t < 24:00 -> day itself and next day
         """
         day = exceed_times.dt.floor('D')
-        time_of_day = exceed_times - day
+        if not strict_mode:
+            time_of_day = exceed_times - day
 
-        early_mask = time_of_day < pd.Timedelta(hours=2)
-        late_mask = time_of_day >= pd.Timedelta(hours=16)
+            early_mask = time_of_day < pd.Timedelta(hours=2)
+            late_mask = time_of_day >= pd.Timedelta(hours=16)
 
-        candidate_days = pd.concat([
-            day,
-            day[early_mask] - pd.Timedelta(days=1),
-            day[late_mask] + pd.Timedelta(days=1),
-        ], ignore_index=True)
+            candidate_days = pd.concat([
+                day,
+                day[early_mask] - pd.Timedelta(days=1),
+                day[late_mask] + pd.Timedelta(days=1),
+            ], ignore_index=True)
+        else:
+            candidate_days = day
+
         event_days = pd.Series(pd.to_datetime(candidate_days.to_numpy()))
         event_days = event_days.drop_duplicates().sort_values().reset_index(drop=True)
 

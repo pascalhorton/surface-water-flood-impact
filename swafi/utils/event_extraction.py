@@ -15,10 +15,11 @@ from swafi.precip_combiprecip import CombiPrecip
 
 logger = logging.getLogger(__name__)
 
-_n_parts = max(1, int(multiprocessing.cpu_count() * 0.5))
+_n_parts = max(1, int(multiprocessing.cpu_count() * 0.9))
 
-
-def process_part(i, part, config, y_start, y_end, method, filter_size, output_dir):
+def process_part(i, part, config, y_start, y_end, method, simple_strict_mode, filter_size, output_dir):
+    if simple_strict_mode:
+        output_dir += '_strict'
     cpc = CombiPrecip(y_start, y_end)
     cpc.open_files(config.get('DIR_PRECIP'))
     cpc.data = cpc.data.sel(
@@ -27,7 +28,7 @@ def process_part(i, part, config, y_start, y_end, method, filter_size, output_di
     )
     if filter_size is not None:
         cpc.apply_smoothing(filter_size=filter_size)
-    list_of_events = [cpc.extract_events(row, method) for _, row in part.iterrows()]
+    list_of_events = [cpc.extract_events(row, method, simple_strict_mode) for _, row in part.iterrows()]
     events = pd.concat(list_of_events, axis=0).reset_index(drop=True)
     events.to_parquet(Path(output_dir) / f"part_{i}.parquet")
     return True
@@ -40,10 +41,10 @@ def _split_coords(config):
     return [coords_df.iloc[idx] for idx in indices]
 
 
-def _run_workers(parts, config, y_start, y_end, method, filter_size, output_dir):
+def _run_workers(parts, config, y_start, y_end, method, simple_strict_mode, filter_size, output_dir):
     with concurrent.futures.ProcessPoolExecutor() as executor:
         futures = [
-            executor.submit(process_part, i, part, config, y_start, y_end, method, filter_size, output_dir)
+            executor.submit(process_part, i, part, config, y_start, y_end, method, simple_strict_mode, filter_size, output_dir)
             for i, part in enumerate(parts)
         ]
         results = [
@@ -54,31 +55,34 @@ def _run_workers(parts, config, y_start, y_end, method, filter_size, output_dir)
     assert all(results), "Some parts failed to process."
 
 
-def _merge_parts(output_dir, n_parts):
+def _merge_parts(output_dir, n_parts, simple_strict_mode):
+    if simple_strict_mode:
+        output_dir += '_strict'
     return pd.concat(
         [pd.read_parquet(Path(output_dir) / f"part_{i}.parquet") for i in range(n_parts)],
         ignore_index=True,
     )
 
 
-def extract_events_parallel(y_start, y_end, method, filter_size=None):
+def extract_events_parallel(y_start, y_end, method, simple_strict_mode=False, filter_size=None):
     """Extract events for all domain cells in parallel and return a DataFrame."""
     config = Config()
     parts = _split_coords(config)
     with tempfile.TemporaryDirectory() as tmp_dir:
-        _run_workers(parts, config, y_start, y_end, method, filter_size, tmp_dir)
-        events = _merge_parts(tmp_dir, len(parts))
+        _run_workers(parts, config, y_start, y_end, method, simple_strict_mode, filter_size, tmp_dir)
+        events = _merge_parts(tmp_dir, len(parts), simple_strict_mode)
     logger.info("Extracted %d events for %d-%d.", len(events), y_start, y_end)
     return events
 
 
-def run_parallel_extraction(y_start, y_end, method, filter_size = None, output_dir="event_parts", output_path='.'):
+def run_parallel_extraction(y_start, y_end, method, simple_strict_mode=False, filter_size=None,
+                            output_dir="event_parts", output_path='.'):
     """Extract events in parallel, saving intermediate parts to output_dir and merging to output_path."""
     config = Config()
     parts = _split_coords(config)
     os.makedirs(output_dir, exist_ok=True)
-    _run_workers(parts, config, y_start, y_end, method, filter_size, output_dir)
+    _run_workers(parts, config, y_start, y_end, method, simple_strict_mode, filter_size, output_dir)
     logger.info("All parts processed. Saved in '%s'.", output_dir)
-    events = _merge_parts(output_dir, len(parts))
+    events = _merge_parts(output_dir, len(parts), simple_strict_mode)
     events.to_parquet(output_path)
     logger.info("Merged into '%s'.", output_path)

@@ -104,7 +104,7 @@ def create_prediction_dataset(year_start, year_end, fill_value=0.0):
     return domain, xs, ys, ds_pred
 
 
-def get_events(year_start, year_end, event_method, filter_size=None):
+def get_events(year_start, year_end, event_method, simple_strict_mode=False, filter_size=None):
     """Return events DataFrame, loading from pickle cache or extracting in parallel."""
     events_path = (
         Path(config.get('TMP_DIR'))
@@ -112,7 +112,7 @@ def get_events(year_start, year_end, event_method, filter_size=None):
     )
     if not events_path.exists():
         logger.info("Extracting events and saving to %s...", events_path)
-        events = extract_events_parallel(year_start, year_end, event_method, filter_size)
+        events = extract_events_parallel(year_start, year_end, event_method, simple_strict_mode, filter_size)
         events.to_pickle(events_path)
     else:
         events = pd.read_pickle(events_path)
