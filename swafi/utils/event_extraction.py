@@ -18,8 +18,11 @@ logger = logging.getLogger(__name__)
 _n_parts = max(1, int(multiprocessing.cpu_count() * 0.9))
 
 def process_part(i, part, config, y_start, y_end, method, simple_strict_mode, filter_size, output_dir):
-    if simple_strict_mode:
-        output_dir += '_strict'
+    output_file = Path(output_dir) / f"part_{i}.parquet"
+    if output_file.exists():
+        logger.info(f"Output file '{output_file}' already exists.")
+        return True
+
     cpc = CombiPrecip(y_start, y_end)
     cpc.open_files(config.get('DIR_PRECIP'))
     cpc.data = cpc.data.sel(
@@ -31,7 +34,7 @@ def process_part(i, part, config, y_start, y_end, method, simple_strict_mode, fi
     cpc.data = cpc.data.compute()
     list_of_events = [cpc.extract_events(row, method, simple_strict_mode) for _, row in part.iterrows()]
     events = pd.concat(list_of_events, axis=0).reset_index(drop=True)
-    events.to_parquet(Path(output_dir) / f"part_{i}.parquet")
+    events.to_parquet(output_file)
     return True
 
 
@@ -56,9 +59,7 @@ def _run_workers(parts, config, y_start, y_end, method, simple_strict_mode, filt
     assert all(results), "Some parts failed to process."
 
 
-def _merge_parts(output_dir, n_parts, simple_strict_mode):
-    if simple_strict_mode:
-        output_dir += '_strict'
+def _merge_parts(output_dir, n_parts):
     return pd.concat(
         [pd.read_parquet(Path(output_dir) / f"part_{i}.parquet") for i in range(n_parts)],
         ignore_index=True,
@@ -71,7 +72,7 @@ def extract_events_parallel(y_start, y_end, method, simple_strict_mode=False, fi
     parts = _split_coords(config)
     with tempfile.TemporaryDirectory() as tmp_dir:
         _run_workers(parts, config, y_start, y_end, method, simple_strict_mode, filter_size, tmp_dir)
-        events = _merge_parts(tmp_dir, len(parts), simple_strict_mode)
+        events = _merge_parts(tmp_dir, len(parts))
     logger.info("Extracted %d events for %d-%d.", len(events), y_start, y_end)
     return events
 
@@ -84,6 +85,6 @@ def run_parallel_extraction(y_start, y_end, method, simple_strict_mode=False, fi
     os.makedirs(output_dir, exist_ok=True)
     _run_workers(parts, config, y_start, y_end, method, simple_strict_mode, filter_size, output_dir)
     logger.info("All parts processed. Saved in '%s'.", output_dir)
-    events = _merge_parts(output_dir, len(parts), simple_strict_mode)
+    events = _merge_parts(output_dir, len(parts))
     events.to_parquet(output_path)
     logger.info("Merged into '%s'.", output_path)

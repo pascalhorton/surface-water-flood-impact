@@ -16,9 +16,12 @@ if __name__ == "__main__":
     logger = logging.getLogger(__name__)
 
     output_path = f"events_cpc_model_domain_{Y_START}_{Y_END}_{METHOD}"
-    if STRICT:
-        output_path += "_strict"
     output_path += ".parquet"
-    run_parallel_extraction(Y_START, Y_END, METHOD, simple_strict_mode=STRICT, filter_size=None,
-                            output_dir="event_parts_main",
-                            output_path=output_path)
+    run_parallel_extraction(
+        Y_START,
+        Y_END,
+        METHOD,
+        simple_strict_mode=STRICT,
+        filter_size=None,
+        output_path=output_path
+    )
