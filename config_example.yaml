@@ -23,8 +23,11 @@ DIR_CLAIMS_GVZ: ''
 # Path to the events parquet file
 EVENTS_PATH: 'path/to/prec_events_2005-2023_no_smoothing.parquet'
 
-# Path to the precipitation directory
+# Path to the precipitation directory (hourly CombiPrecip netCDF files)
 DIR_PRECIP: ''
+
+# Path to the 5-minute CombiPrecip (CPCH) directory (<YEAR>/<DOY>/CPCH*.zip)
+DIR_PRECIP_5MIN: ''
 
 # DEMs (with different resolutions)
 DEM_PATH: 'path/to/dem_cids.tif'

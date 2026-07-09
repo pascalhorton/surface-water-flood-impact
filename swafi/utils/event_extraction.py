@@ -12,19 +12,33 @@ from tqdm import tqdm
 from swafi.config import Config
 from swafi.domain import Domain
 from swafi.precip_combiprecip import CombiPrecip
+from swafi.precip_combiprecip_5min import CombiPrecip5min
 
 logger = logging.getLogger(__name__)
 
 _n_parts = max(1, int(multiprocessing.cpu_count() * 0.9))
 
-def process_part(i, part, config, y_start, y_end, method, simple_strict_mode, filter_size, output_dir):
+
+def _get_precipitation(precip_dataset, y_start, y_end, config):
+    """Instantiate and open the precipitation source for the given dataset name."""
+    if precip_dataset == 'hourly':
+        cpc = CombiPrecip(y_start, y_end)
+        cpc.open_files(config.get('DIR_PRECIP'))
+    elif precip_dataset == '5min':
+        cpc = CombiPrecip5min(y_start, y_end)
+        cpc.open_files(config.get('DIR_PRECIP_5MIN'))
+    else:
+        raise ValueError(f"Unknown precipitation dataset: {precip_dataset}")
+    return cpc
+
+
+def process_part(i, part, config, y_start, y_end, method, simple_strict_mode, filter_size, output_dir, precip_dataset='hourly'):
     output_file = Path(output_dir) / f"part_{i}.parquet"
     if output_file.exists():
         logger.info(f"Output file '{output_file}' already exists.")
         return True
 
-    cpc = CombiPrecip(y_start, y_end)
-    cpc.open_files(config.get('DIR_PRECIP'))
+    cpc = _get_precipitation(precip_dataset, y_start, y_end, config)
     cpc.data = cpc.data.sel(
         x=slice(part.x.min() - 5000, part.x.max() + 5000),
         y=slice(part.y.max() + 5000, part.y.min() - 5000),
@@ -45,10 +59,10 @@ def _split_coords(config):
     return [coords_df.iloc[idx] for idx in indices]
 
 
-def _run_workers(parts, config, y_start, y_end, method, simple_strict_mode, filter_size, output_dir):
+def _run_workers(parts, config, y_start, y_end, method, simple_strict_mode, filter_size, output_dir, precip_dataset='hourly'):
     with concurrent.futures.ProcessPoolExecutor() as executor:
         futures = [
-            executor.submit(process_part, i, part, config, y_start, y_end, method, simple_strict_mode, filter_size, output_dir)
+            executor.submit(process_part, i, part, config, y_start, y_end, method, simple_strict_mode, filter_size, output_dir, precip_dataset)
             for i, part in enumerate(parts)
         ]
         results = [
@@ -66,24 +80,25 @@ def _merge_parts(output_dir, n_parts):
     )
 
 
-def extract_events_parallel(y_start, y_end, method, simple_strict_mode=False, filter_size=None):
+def extract_events_parallel(y_start, y_end, method, simple_strict_mode=False, filter_size=None,
+                            precip_dataset='hourly'):
     """Extract events for all domain cells in parallel and return a DataFrame."""
     config = Config()
     parts = _split_coords(config)
     with tempfile.TemporaryDirectory() as tmp_dir:
-        _run_workers(parts, config, y_start, y_end, method, simple_strict_mode, filter_size, tmp_dir)
+        _run_workers(parts, config, y_start, y_end, method, simple_strict_mode, filter_size, tmp_dir, precip_dataset)
         events = _merge_parts(tmp_dir, len(parts))
     logger.info("Extracted %d events for %d-%d.", len(events), y_start, y_end)
     return events
 
 
 def run_parallel_extraction(y_start, y_end, method, simple_strict_mode=False, filter_size=None,
-                            output_dir="event_parts", output_path='.'):
+                            output_dir="event_parts", output_path='.', precip_dataset='hourly'):
     """Extract events in parallel, saving intermediate parts to output_dir and merging to output_path."""
     config = Config()
     parts = _split_coords(config)
     os.makedirs(output_dir, exist_ok=True)
-    _run_workers(parts, config, y_start, y_end, method, simple_strict_mode, filter_size, output_dir)
+    _run_workers(parts, config, y_start, y_end, method, simple_strict_mode, filter_size, output_dir, precip_dataset)
     logger.info("All parts processed. Saved in '%s'.", output_dir)
     events = _merge_parts(output_dir, len(parts))
     events.to_parquet(output_path)

@@ -50,6 +50,7 @@ class PrecipitationArchive(Precipitation):
         self.pickle_files = []
         self.cid_time_series = None
         self.full_grid_data = None
+        self.native_time_step = 1  # Native time step of the source [h]
         self.mem_nb_pixels = 64  # Number of pixels to process at once (per spatial dimension; e.g. 100x100)
 
     def reset(self):
@@ -729,7 +730,9 @@ class PrecipitationArchive(Precipitation):
 
             end_time = (t + pd.offsets.MonthEnd(0)).replace(
                 hour=23, minute=59, second=59)
-            subset = self.data.sel(time=slice(t, end_time)).compute()
+            # Keep the selection lazy so that resampling (e.g. native 5-min -> hourly)
+            # is computed in chunks by dask rather than materialising the whole month.
+            subset = self.data.sel(time=slice(t, end_time))
             subset = self._remove_duplicate_timestamps(subset)
             subset = self._fill_missing_values(subset)
             subset = self._resample(subset)
@@ -759,8 +762,10 @@ class PrecipitationArchive(Precipitation):
                     boundary='trim'
                 ).mean()
 
-            # Aggregate the precipitation at the desired time step
-            if self.time_step != 1:
+            # Aggregate the precipitation at the desired time step. Resample whenever
+            # the target step differs from the native step of the source (e.g. native
+            # 5-min -> hourly). The hourly product (native == target == 1h) is a no-op.
+            if self.time_step is not None and self.time_step != self.native_time_step:
                 data = data.resample(
                     time=f'{self.time_step}h',
                 ).sum(dim='time')
@@ -778,14 +783,17 @@ class PrecipitationArchive(Precipitation):
 
         return data
 
-    @staticmethod
-    def _fill_missing_values(data):
-        # Create a complete time series index with hourly frequency
+    def _fill_missing_values(self, data):
+        # Create a complete time series index at the native frequency of the source
+        freq_minutes = int(round(self.native_time_step * 60))
+        freq = f'{freq_minutes}min'
         data_start = data.time.values[0]
-        data_start = pd.Timestamp(data_start).replace(day=1, hour=0)
-        data_end = (data_start + pd.offsets.MonthEnd(0)).replace(hour=23)
+        data_start = pd.Timestamp(data_start).replace(
+            day=1, hour=0, minute=0, second=0)
+        month_end = (data_start + pd.offsets.MonthEnd(0)).normalize()
+        data_end = month_end + pd.Timedelta(days=1) - pd.Timedelta(minutes=freq_minutes)
         complete_time_index = pd.date_range(
-            start=data_start, end=data_end, freq='h')
+            start=data_start, end=data_end, freq=freq)
 
         if len(complete_time_index) != len(data.time):
             with dask.config.set(**{'array.slicing.split_large_chunks': True}):
