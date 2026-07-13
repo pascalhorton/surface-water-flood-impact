@@ -728,13 +728,21 @@ class PrecipitationArchive(Precipitation):
             if tmp_filename.exists():
                 continue
 
-            end_time = (t + pd.offsets.MonthEnd(0)).replace(
-                hour=23, minute=59, second=59)
+            # Timestamps label the END of the accumulation interval, so the month's
+            # first aggregated step (labelled at 00:00 of day 1) needs a lookback of
+            # (target - native) into the previous month, and steps after the last
+            # aggregated label belong to the next month.
+            freq_minutes = int(round(self.native_time_step * 60))
+            target_step = self.time_step if self.time_step else self.native_time_step
+            start_time = (t - pd.Timedelta(hours=target_step)
+                          + pd.Timedelta(minutes=freq_minutes))
+            end_time = (t + pd.offsets.MonthEnd(0) + pd.Timedelta(days=1)
+                        - pd.Timedelta(hours=target_step))
             # Keep the selection lazy so that resampling (e.g. native 5-min -> hourly)
             # is computed in chunks by dask rather than materialising the whole month.
-            subset = self.data.sel(time=slice(t, end_time))
+            subset = self.data.sel(time=slice(start_time, end_time))
             subset = self._remove_duplicate_timestamps(subset)
-            subset = self._fill_missing_values(subset)
+            subset = self._fill_missing_values(subset, start_time, end_time)
             subset = self._resample(subset)
             subset = subset.compute()
 
@@ -765,9 +773,15 @@ class PrecipitationArchive(Precipitation):
             # Aggregate the precipitation at the desired time step. Resample whenever
             # the target step differs from the native step of the source (e.g. native
             # 5-min -> hourly). The hourly product (native == target == 1h) is a no-op.
+            # Timestamps label the END of the accumulation interval (both in the
+            # native 5-min files and in the hourly netCDF product), so the bins must
+            # be right-closed and right-labelled: the step labelled T sums the native
+            # steps over (T - target, T].
             if self.time_step is not None and self.time_step != self.native_time_step:
                 data = data.resample(
                     time=f'{self.time_step}h',
+                    closed='right',
+                    label='right',
                 ).sum(dim='time')
 
         return data
@@ -783,17 +797,12 @@ class PrecipitationArchive(Precipitation):
 
         return data
 
-    def _fill_missing_values(self, data):
+    def _fill_missing_values(self, data, start_time, end_time):
         # Create a complete time series index at the native frequency of the source
         freq_minutes = int(round(self.native_time_step * 60))
         freq = f'{freq_minutes}min'
-        data_start = data.time.values[0]
-        data_start = pd.Timestamp(data_start).replace(
-            day=1, hour=0, minute=0, second=0)
-        month_end = (data_start + pd.offsets.MonthEnd(0)).normalize()
-        data_end = month_end + pd.Timedelta(days=1) - pd.Timedelta(minutes=freq_minutes)
         complete_time_index = pd.date_range(
-            start=data_start, end=data_end, freq=freq)
+            start=start_time, end=end_time, freq=freq)
 
         if len(complete_time_index) != len(data.time):
             with dask.config.set(**{'array.slicing.split_large_chunks': True}):

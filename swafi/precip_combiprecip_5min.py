@@ -3,6 +3,7 @@ Class to handle the 5-minute precipitation data from CombiPrecip (CPCH).
 """
 
 import io
+import re
 import zipfile
 from pathlib import Path
 
@@ -32,6 +33,15 @@ STEPS_PER_DAY = 288
 NATIVE_TIME_STEP = 5 / 60  # hours
 RATE_TO_STEP = 5.0 / 60.0  # mm/h rate -> mm accumulated over the 5-min step
 
+# 5-min accumulation files inside the daily zips, e.g. CPC2400100054_00005.001.h5.
+# The name encodes the timestamp as <YY><DOY><HH><MM> followed by a quality digit;
+# the version suffix varies with the product version (.000 / .801 / .001). The
+# timestamp labels the END of the 5-min accumulation interval (same convention as
+# the hourly netCDF product). The HDF5 'what' date/time attributes must NOT be
+# used: they are rounded up (to the hour before 2024, to 10 min in 2024).
+FILENAME_PATTERN = re.compile(
+    r'CPC(\d{2})(\d{3})(\d{2})(\d{2})\d_00005\.\d{3}\.h5$')
+
 
 def _read_day_zip(zip_path, date):
     """
@@ -57,29 +67,29 @@ def _read_day_zip(zip_path, date):
     with zipfile.ZipFile(zip_path) as zf:
         for member in zf.namelist():
             # Keep only the 5-min accumulation files, ignore 60-min, daily, etc.
-            if not member.endswith('_00005.001.h5'):
+            match = FILENAME_PATTERN.search(member)
+            if not match:
+                continue
+
+            # Parse the timestamp from the file name (the HDF5 attributes are
+            # rounded and unusable, see FILENAME_PATTERN).
+            yy, doy, hh, mm = (int(g) for g in match.groups())
+            ts = pd.Timestamp(year=2000 + yy, month=1, day=1) + pd.Timedelta(
+                days=doy - 1, hours=hh, minutes=mm)
+
+            idx = pos.get(ts)
+            if idx is None:
                 continue
 
             with zf.open(member) as fh:
                 buf = io.BytesIO(fh.read())
 
             with h5py.File(buf, 'r') as h5:
-                what = h5['what'].attrs
-                d = what['date']
-                tm = what['time']
-                d = d.decode() if isinstance(d, bytes) else str(d)
-                tm = tm.decode() if isinstance(tm, bytes) else str(tm)
-                ts = pd.to_datetime(d + tm, format='%Y%m%d%H%M%S')
-
                 raw = h5['dataset1/data1/data'][:]
 
             # undetect is encoded as +inf (no rain) -> 0; nodata stays NaN.
             raw = np.where(np.isposinf(raw), 0.0, raw)
-            arr = (raw * RATE_TO_STEP).astype('float32')
-
-            idx = pos.get(ts)
-            if idx is not None:
-                out[idx] = arr
+            out[idx] = (raw * RATE_TO_STEP).astype('float32')
 
     return out
 
@@ -199,7 +209,15 @@ class CombiPrecip5min(PrecipitationArchive):
                 zips = sorted(doy_dir.glob('CPCH*.zip'))
                 if not zips:
                     continue
-                # The DOY folder is named <YY><DOY>, e.g. '24001'.
+                # The DOY folder is named <YY><DOY>, e.g. '24001'. Some folders
+                # contain stray zips from another day (e.g. 2023/23001 also holds
+                # CPCHhdf513001.zip), so pick the one matching the folder name.
+                if len(zips) > 1:
+                    zips = [z for z in zips
+                            if z.name == f'CPCHhdf5{doy_dir.name}.zip']
+                    if len(zips) != 1:
+                        raise ValueError(
+                            f"Cannot identify the CPCH zip for {doy_dir}")
                 doy = int(doy_dir.name[2:])
                 date = pd.Timestamp(year=year, month=1, day=1) + pd.Timedelta(
                     days=doy - 1)
