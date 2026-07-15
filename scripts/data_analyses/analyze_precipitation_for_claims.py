@@ -68,7 +68,7 @@ def generate_csv():
 
     # Load CombiPrecip files
     precip = CombiPrecip(year_start, year_end)
-    precip.prepare_data(config.get('DIR_PRECIP'))
+    precip.prepare_data()  # Base zarr store from PATH_PRECIP_HOURLY_ZARR
     logger.info("Preloading all daily precipitation data.")
     precip.preload_all_cid_data(cids)
 

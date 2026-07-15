@@ -57,11 +57,9 @@ def main():
     precip_hf = None
     precip_daily = None
     if options.use_precip:
-        # Load CombiPrecip files
+        # Precipitation from the zarr store (config key PATH_PRECIP_HOURLY_ZARR)
         precip_hf = CombiPrecip(year_start, year_end)
-        precip_hf.set_data_path(config.get('DIR_PRECIP'))
         precip_daily = CombiPrecip(year_start, year_end)
-        precip_daily.set_data_path(config.get('DIR_PRECIP'))
 
     if not options.optimize_with_optuna:
         tx = _setup_model(options, events, precip_hf, precip_daily)

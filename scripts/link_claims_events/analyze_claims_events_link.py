@@ -103,7 +103,7 @@ def main():
 
         # Precipitation data
         precip = CombiPrecip(config.get('YEAR_START'), config.get('YEAR_END'))
-        precip.prepare_data(config.get('DIR_PRECIP'))
+        precip.prepare_data()  # Base zarr store from PATH_PRECIP_HOURLY_ZARR
         logger.info("Preloading all daily precipitation data.")
         precip.preload_all_cid_data(cids)
 

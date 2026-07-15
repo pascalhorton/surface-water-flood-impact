@@ -225,11 +225,11 @@ class ImpactTransformer(ImpactDl):
         if self.precipitation_hf is not None:
             x_axis = self.precipitation_hf.get_x_axis_for_bounds(x_min, x_max)
             y_axis = self.precipitation_hf.get_y_axis_for_bounds(y_min, y_max)
-            self.precipitation_hf.generate_pickles_for_subdomain(x_axis, y_axis)
+            self.precipitation_hf.select_subdomain(x_axis, y_axis)
         if self.precipitation_daily is not None:
             x_axis = self.precipitation_daily.get_x_axis_for_bounds(x_min, x_max)
             y_axis = self.precipitation_daily.get_y_axis_for_bounds(y_min, y_max)
-            self.precipitation_daily.generate_pickles_for_subdomain(x_axis, y_axis)
+            self.precipitation_daily.select_subdomain(x_axis, y_axis)
 
     def remove_events_without_precipitation_data(self):
         """

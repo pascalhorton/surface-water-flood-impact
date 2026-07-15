@@ -20,7 +20,7 @@ def main():
     logger = logging.getLogger(__name__)
     # Load CombiPrecip files
     precip = CombiPrecip(year_start=year_start, year_end=year_end)
-    precip.prepare_data(config.get('DIR_PRECIP'))
+    precip.prepare_data()  # Base zarr store from PATH_PRECIP_HOURLY_ZARR
 
     # Compute statistics on the original data (full domain)
     mean, std = precip.compute_mean_and_std_per_pixel()

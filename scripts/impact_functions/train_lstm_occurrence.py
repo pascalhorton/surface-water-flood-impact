@@ -63,8 +63,8 @@ def main():
                 warnings.filterwarnings("ignore", category=UserWarning)  # pyproj
                 dem = rxr.open_rasterio(config.get('DEM_PATH'), masked=True).squeeze()
 
+        # Precipitation from the zarr store (config key PATH_PRECIP_HOURLY_ZARR)
         precip = CombiPrecip(year_start, year_end)
-        precip.set_data_path(config.get('DIR_PRECIP'))
 
     if not options.optimize_with_optuna:
         lstm = _setup_model(options, events, precip, dem)

@@ -57,9 +57,8 @@ def main():
     year_end = config.get('YEAR_END_TEST')
     events = get_events(year_start, year_end, options.event_method)
 
-    # Precipitation data for CNN input
+    # Precipitation for CNN input, from the zarr store (PATH_PRECIP_HOURLY_ZARR)
     cpc = CombiPrecip(year_start, year_end)
-    cpc.set_data_path(config.get('DIR_PRECIP'))
 
     output_path = (
         Path(config.get('OUTPUT_DIR'))

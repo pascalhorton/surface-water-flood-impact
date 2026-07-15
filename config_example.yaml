@@ -26,6 +26,10 @@ EVENTS_PATH: 'path/to/prec_events_2005-2023_no_smoothing.parquet'
 # Path to the precipitation directory (hourly CombiPrecip netCDF files)
 DIR_PRECIP: ''
 
+# Path to the hourly CombiPrecip zarr store (built once from DIR_PRECIP by
+# scripts/data_preparation/build_precip_hourly_zarr.py; needs ~10-15 GB of disk)
+PATH_PRECIP_HOURLY_ZARR: ''
+
 # Path to the 5-minute CombiPrecip (CPCH) directory (<YEAR>/<DOY>/CPCH*.zip)
 DIR_PRECIP_5MIN: ''
 

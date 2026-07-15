@@ -19,6 +19,8 @@ from tqdm import tqdm
 
 from .config import Config
 from .precip_archive import PrecipitationArchive
+from .utils.zarr_store import (ensure_zarr_store, finalize_zarr_store,
+                               init_zarr_template, write_time_region)
 
 config = Config()
 
@@ -104,19 +106,8 @@ def _init_zarr_template(zarr_path, time_coord, y_coord, x_coord, chunk_size):
     Write the metadata of an empty zarr store (no chunk data): unwritten chunks
     read back as NaN. The actual data is filled per day with _write_day_to_zarr.
     """
-    template = xr.Dataset(
-        {'precip': (
-            ('time', 'y', 'x'),
-            da.full((len(time_coord), len(y_coord), len(x_coord)),
-                    np.nan, dtype='float32',
-                    chunks=(STEPS_PER_DAY, chunk_size, chunk_size))
-        )},
-        coords={'time': time_coord, 'y': y_coord, 'x': x_coord}
-    )
-    # consolidated=False: consolidated metadata is not part of the zarr v3 spec
-    # and only triggers warnings; the store holds a single array anyway.
-    template.to_zarr(zarr_path, compute=False, consolidated=False,
-                     encoding={'precip': {'_FillValue': np.float32(np.nan)}})
+    init_zarr_template(zarr_path, time_coord, y_coord, x_coord,
+                       (STEPS_PER_DAY, chunk_size, chunk_size))
 
 
 def _write_day_to_zarr(zarr_path, zip_path, date, day_idx, y_start, y_end,
@@ -142,11 +133,7 @@ def _write_day_to_zarr(zarr_path, zip_path, date, day_idx, y_start, y_end,
     arr = _read_day_zip(zip_path, date)
     arr = arr[:, y_start:y_end, x_start:x_end]
 
-    # No coordinate variables: only the 'precip' region is written.
-    day = xr.Dataset({'precip': (('time', 'y', 'x'), arr)})
-    t0 = day_idx * STEPS_PER_DAY
-    day.to_zarr(zarr_path, region={'time': slice(t0, t0 + STEPS_PER_DAY)},
-                consolidated=False)
+    write_time_region(zarr_path, arr, day_idx * STEPS_PER_DAY)
 
     Path(marker_path).touch()
 
@@ -243,21 +230,15 @@ class CombiPrecip5min(PrecipitationArchive):
             config entry.
         """
         if not zarr_path:
-            zarr_path = config.get('PATH_PRECIP_5MIN_ZARR')
-        if not zarr_path or not Path(zarr_path).exists():
+            zarr_path = config.get('PATH_PRECIP_5MIN_ZARR', do_raise=False)
+        if not zarr_path or not (Path(zarr_path) / 'zarr.json').exists():
+            where = f"'{zarr_path}'" if zarr_path else "(PATH_PRECIP_5MIN_ZARR not set)"
             raise FileNotFoundError(
-                f"The zarr store '{zarr_path}' does not exist. Build it first with "
-                f"scripts/data_preparation/build_precip_5min_zarr.py.")
+                f"The 5-min zarr store {where} does not exist. Build it first "
+                f"with scripts/data_preparation/build_precip_5min_zarr.py "
+                f"(config key PATH_PRECIP_5MIN_ZARR).")
 
-        self.data = xr.open_zarr(zarr_path, consolidated=False)
-        self.resolution = 1
-        self.time_step = NATIVE_TIME_STEP
-
-        # Select the data for the given years (mirrors open_files)
-        if self.year_start:
-            self.data = self.data.sel(time=slice(f'{self.year_start}-01-01', None))
-        if self.year_end:
-            self.data = self.data.sel(time=slice(None, f'{self.year_end}-12-31'))
+        super().open_zarr(zarr_path)
 
     def build_zarr_store(self, zarr_path, data_path=None, n_workers=4,
                          chunk_size=64, margin=5000):
@@ -269,7 +250,9 @@ class CombiPrecip5min(PrecipitationArchive):
         period without materialising the full grid.
 
         The build is resumable: days already written (tracked with marker files in
-        '<zarr_path>.done/') are skipped.
+        '<zarr_path>.done/') are skipped. The marker directory is removed once
+        the build completes; its absence marks a completed store and makes
+        rerunning the build a no-op.
 
         Parameters
         ----------
@@ -318,34 +301,10 @@ class CombiPrecip5min(PrecipitationArchive):
 
         zarr_path = Path(zarr_path)
         done_dir = Path(str(zarr_path) + '.done')
-        done_dir.mkdir(exist_ok=True)
-
-        # The store is initialized iff its metadata file exists: a bare directory
-        # (created manually or by an aborted run) must still get the template.
-        if (zarr_path / 'zarr.json').exists():
-            existing = xr.open_zarr(zarr_path, consolidated=False)
-            store_start = pd.Timestamp(existing['time'].values[0])
-            store_steps = existing.sizes['time']
-            existing.close()
-            if store_steps != len(time_coord) or store_start != time_coord[0]:
-                raise ValueError(
-                    f"The existing zarr store '{zarr_path}' covers a different "
-                    f"calendar (starts {store_start}, {store_steps} steps) than "
-                    f"requested ({time_coord[0]}, {len(time_coord)} steps): the "
-                    f"day-to-region mapping would corrupt it. Delete the store "
-                    f"and '{done_dir}' or adjust year_start/year_end.")
-        else:
-            stale_markers = list(done_dir.iterdir())
-            if stale_markers:
-                logger.warning("Removing %d stale day markers from '%s' "
-                               "(no initialized store found).",
-                               len(stale_markers), done_dir)
-                for marker in stale_markers:
-                    marker.unlink()
-            _init_zarr_template(zarr_path, time_coord, y_axis[y_start:y_end],
-                                x_axis[x_start:x_end], chunk_size)
-            logger.info("Initialized zarr store '%s' (%d days, %d x %d cells).",
-                        zarr_path, n_days, y_end - y_start, x_end - x_start)
+        if ensure_zarr_store(zarr_path, time_coord, y_axis[y_start:y_end],
+                             x_axis[x_start:x_end],
+                             (STEPS_PER_DAY, chunk_size, chunk_size), done_dir):
+            return
 
         todo = [(date, zip_path) for date, zip_path in day_list
                 if not (done_dir / date.strftime('%Y-%m-%d')).exists()]
@@ -370,24 +329,27 @@ class CombiPrecip5min(PrecipitationArchive):
         if n_missing > 0:
             logger.warning("%d calendar days have no source zip and stay NaN.",
                            n_missing)
-        logger.info("Zarr store '%s' complete.", zarr_path)
+        finalize_zarr_store(zarr_path, done_dir)
 
     def prepare_data(self, data_path=None, resolution=1, time_step=1):
         """
-        Load the precipitation data and generate the monthly pickle files.
+        Open the 5-min precipitation data from the base zarr store (see
+        build_zarr_store) and switch to the derived store for the requested
+        resolution/time step (materialized once, then reused).
 
         Parameters
         ----------
         data_path: str|None
-            The path to the data files
+            The path to the base zarr store (defaults to the
+            PATH_PRECIP_5MIN_ZARR config entry)
         resolution: int
             The spatial resolution [km] of the precipitation data (default: 1)
         time_step: int
             The target time step [h] of the precipitation data (default: 1). The
             native 5-min data is aggregated (summed) to this step.
         """
-        self.open_files(data_path, resolution, time_step)
-        self._generate_pickle_files()
+        self.open_zarr(data_path)
+        self._use_derived_store(resolution, time_step)
 
     def _list_daily_zips(self):
         """

@@ -360,7 +360,7 @@ class ImpactCnn(ImpactDl):
         # Check the shape of the precipitation and the DEM
         if self.dem is not None:
             # Select the same domain as the DEM
-            precipitation.generate_pickles_for_subdomain(self.dem.x, self.dem.y)
+            precipitation.select_subdomain(self.dem.x, self.dem.y)
 
         self.precipitation_hf = precipitation
 
@@ -409,7 +409,7 @@ class ImpactCnn(ImpactDl):
         if self.precipitation_hf is not None:
             x_axis = self.precipitation_hf.get_x_axis_for_bounds(x_min, x_max)
             y_axis = self.precipitation_hf.get_y_axis_for_bounds(y_min, y_max)
-            self.precipitation_hf.generate_pickles_for_subdomain(x_axis, y_axis)
+            self.precipitation_hf.select_subdomain(x_axis, y_axis)
         if self.dem is not None:
             self.dem = self.dem.sel(
                 x=slice(x_min, x_max),

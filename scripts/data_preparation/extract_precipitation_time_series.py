@@ -20,7 +20,7 @@ def main(args):
     logger = logging.getLogger(__name__)
     # Load CombiPrecip files
     precip = CombiPrecip(year_start=year_start, year_end=year_end)
-    precip.prepare_data(config.get('DIR_PRECIP'))
+    precip.prepare_data()  # Base zarr store from PATH_PRECIP_HOURLY_ZARR
 
     cids = np.unique(precip.domain.cids['ids_map'])
     cids = cids[cids != 0]
