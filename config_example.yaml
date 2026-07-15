@@ -29,6 +29,10 @@ DIR_PRECIP: ''
 # Path to the 5-minute CombiPrecip (CPCH) directory (<YEAR>/<DOY>/CPCH*.zip)
 DIR_PRECIP_5MIN: ''
 
+# Path to the 5-minute CombiPrecip zarr store (built once from DIR_PRECIP_5MIN by
+# scripts/data_preparation/build_precip_5min_zarr.py; needs ~20-30 GB of disk)
+PATH_PRECIP_5MIN_ZARR: ''
+
 # DEMs (with different resolutions)
 DEM_PATH: 'path/to/dem_cids.tif'
 DEM_PATHS:

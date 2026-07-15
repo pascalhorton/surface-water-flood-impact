@@ -98,6 +98,13 @@ class Precipitation:
             y=coords_row.y
         ).to_dataframe().reset_index()
 
+        # Time step [h] of the loaded data
+        dt = (time_series['time'].iloc[1] - time_series['time'].iloc[0]).total_seconds() / 3600
+
+        # Sub-hourly accumulation windows are only meaningful when the data
+        # resolves them (e.g. 5-min data); skip windows shorter than the time step.
+        window_minutes = [W for W in (5, 10, 20, 30) if W >= dt * 60]
+
         # Transform the precipitation data to percentiles
         time_series['precip_q'] = time_series['precip'].rank(pct=True)
 
@@ -106,6 +113,11 @@ class Precipitation:
             # Calculate the Antecedent Precipitation Index (API) using a convolution
             time_series["api"] = self._compute_api(
                 time_series.precip.values, self.time_step, api_days_nb, api_reg)
+
+            # Pre-compute rolling precipitation sums for short-duration windows
+            for W in window_minutes:
+                n_steps = max(1, int(round(W / 60 / dt)))
+                time_series[f'p_{W}min'] = time_series['precip'].rolling(n_steps).sum()
 
             # Group events by period of at least 8 hour without precipitation larger than 0.1mm/h and return group IDs
             time_series_th = time_series[time_series.precip >= 0.1]
@@ -127,12 +139,20 @@ class Precipitation:
             )
 
             # Calculate all precipitation characteristics
-            events = pd.concat([
+            short_window_cols = [f'p_{W}min' for W in window_minutes]
+            short_window_aggs = {col: 'max' for col in short_window_cols}
+
+            pieces = [
                 event_groups.time.agg(["first", "last", "size"]),
                 event_groups.precip.agg(["sum", "max", "mean", "std"]),
+            ]
+            if short_window_cols:
+                pieces.append(event_groups[short_window_cols].agg(short_window_aggs))
+            pieces += [
                 event_groups.api.first(),
                 i_max_date.rename("i_max_date")
-            ], axis=1)
+            ]
+            events = pd.concat(pieces, axis=1)
             events = events.rename(columns={
                 "first": "e_start",
                 "last": "e_end",
@@ -144,19 +164,26 @@ class Precipitation:
                 "api": "api",
                 "i_max_date": "i_max_date"
             })
+
+            # Express intensities as mm/h regardless of the native time step
+            # (the source values are accumulations per step, i.e. mm/step)
+            events[["i_max", "i_mean", "i_sd"]] /= dt
+
             events = events.astype({
                 "duration": "int16",
                 "i_sd": "float32",
-                "api": "float32"
+                "api": "float32",
+                **{f'p_{W}min': 'float32' for W in window_minutes},
             })
 
             # Drop events that do not fulfill the condition of minimal precipitation
             events = events[events.p_sum >= 10].reset_index(drop=True)
 
             # Calculate percentiles of score for each event characteristics
-            ranks = events.iloc[:, 2:-1].rank(pct=True)
-            ranks.columns = ["duration_q", "p_sum_q", "i_max_q", "i_mean_q", "i_sd_q",
-                             "api_q"]
+            # Include short-duration windows in the quantile computation
+            quantile_cols = ["duration", "p_sum", "i_max", "i_mean", "i_sd", "api"] + [f'p_{W}min' for W in window_minutes]
+            ranks = events[quantile_cols].rank(pct=True)
+            ranks.columns = ["duration_q", "p_sum_q", "i_max_q", "i_mean_q", "i_sd_q", "api_q"] + [f'p_{W}min_q' for W in window_minutes]
             events = pd.concat([events, ranks], axis=1)
 
         elif method == 'simple':  # New simple method based on the precipitation intensity
@@ -172,11 +199,18 @@ class Precipitation:
 
             # Pre-compute rolling precipitation sums for each accumulation window
             window_hours = [1, 2, 4, 6, 12, 24, 48, 72]
-            dt = (time_series['time'].iloc[1] - time_series['time'].iloc[0]).total_seconds() / 3600
+
+            # Hour-based windows
             for W in window_hours:
                 n_steps = max(1, int(round(W / dt)))
                 time_series[f'p_{W}h'] = time_series['precip'].rolling(n_steps).sum()
                 time_series[f'p_{W}h_q'] = time_series[f'p_{W}h'].rank(pct=True)
+            
+            # Minute-based windows
+            for W in window_minutes:
+                n_steps = max(1, int(round(W / 60 / dt)))
+                time_series[f'p_{W}min'] = time_series['precip'].rolling(n_steps).sum()
+                time_series[f'p_{W}min_q'] = time_series[f'p_{W}min'].rank(pct=True)
 
             # Get the date and time of the maximum precipitation intensity
             # Use searchsorted on a time-indexed series for O(log n) window lookup
@@ -199,15 +233,21 @@ class Precipitation:
                     rec = {'i_max': np.nan, 'i_max_q': np.nan, 'i_max_date': pd.NaT}
                     rec.update({f'p_{W}h': np.nan for W in window_hours})
                     rec.update({f'p_{W}h_q': np.nan for W in window_hours})
+                    rec.update({f'p_{W}min': np.nan for W in window_minutes})
+                    rec.update({f'p_{W}min_q': np.nan for W in window_minutes})
                 else:
                     rec = {
-                        'i_max': window['precip'].max(),
+                        # Intensity as mm/h regardless of the native time step
+                        'i_max': window['precip'].max() / dt,
                         'i_max_q': window['precip_q'].max(),
                         'i_max_date': window['precip'].idxmax(),
                     }
                     for W in window_hours:
                         rec[f'p_{W}h'] = window[f'p_{W}h'].max()
                         rec[f'p_{W}h_q'] = window[f'p_{W}h_q'].max()
+                    for W in window_minutes:
+                        rec[f'p_{W}min'] = window[f'p_{W}min'].max()
+                        rec[f'p_{W}min_q'] = window[f'p_{W}min_q'].max()
                 records.append(rec)
             events = pd.concat(
                 [events, pd.DataFrame(records, index=events.index)], axis=1
@@ -216,6 +256,8 @@ class Precipitation:
             events = events.astype({
                 **{f'p_{W}h': 'float32' for W in window_hours},
                 **{f'p_{W}h_q': 'float32' for W in window_hours},
+                **{f'p_{W}min': 'float32' for W in window_minutes},
+                **{f'p_{W}min_q': 'float32' for W in window_minutes},
             })
 
             # Aggregate time series at daily time step
@@ -256,7 +298,7 @@ class Precipitation:
     def _build_simple_event_dates(exceed_times, strict_mode):
         """Build unique event days from exceedance timestamps.
 
-        Rules:
+        Rules for non strict mode:
         - 00:00 <= t < 02:00 -> day itself and previous day
         - 02:00 <= t < 16:00 -> day itself
         - 16:00 <= t < 24:00 -> day itself and next day

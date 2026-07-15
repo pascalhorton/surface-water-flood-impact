@@ -17,7 +17,7 @@ def test_build_simple_event_dates_respects_time_of_day_rules():
         )
     )
 
-    events = Precipitation._build_simple_event_dates(exceed_times)
+    events = Precipitation._build_simple_event_dates(exceed_times, strict_mode=False)
 
     expected = pd.to_datetime(
         [
@@ -41,7 +41,7 @@ def test_build_simple_event_dates_deduplicates_and_sorts_days():
         )
     )
 
-    events = Precipitation._build_simple_event_dates(exceed_times)
+    events = Precipitation._build_simple_event_dates(exceed_times, strict_mode=False)
 
     expected = pd.to_datetime(
         [
