@@ -317,14 +317,35 @@ class CombiPrecip5min(PrecipitationArchive):
         y_start, y_end = int(y_idx[0]), int(y_idx[-1]) + 1
 
         zarr_path = Path(zarr_path)
-        if not zarr_path.exists():
+        done_dir = Path(str(zarr_path) + '.done')
+        done_dir.mkdir(exist_ok=True)
+
+        # The store is initialized iff its metadata file exists: a bare directory
+        # (created manually or by an aborted run) must still get the template.
+        if (zarr_path / 'zarr.json').exists():
+            existing = xr.open_zarr(zarr_path, consolidated=False)
+            store_start = pd.Timestamp(existing['time'].values[0])
+            store_steps = existing.sizes['time']
+            existing.close()
+            if store_steps != len(time_coord) or store_start != time_coord[0]:
+                raise ValueError(
+                    f"The existing zarr store '{zarr_path}' covers a different "
+                    f"calendar (starts {store_start}, {store_steps} steps) than "
+                    f"requested ({time_coord[0]}, {len(time_coord)} steps): the "
+                    f"day-to-region mapping would corrupt it. Delete the store "
+                    f"and '{done_dir}' or adjust year_start/year_end.")
+        else:
+            stale_markers = list(done_dir.iterdir())
+            if stale_markers:
+                logger.warning("Removing %d stale day markers from '%s' "
+                               "(no initialized store found).",
+                               len(stale_markers), done_dir)
+                for marker in stale_markers:
+                    marker.unlink()
             _init_zarr_template(zarr_path, time_coord, y_axis[y_start:y_end],
                                 x_axis[x_start:x_end], chunk_size)
             logger.info("Initialized zarr store '%s' (%d days, %d x %d cells).",
                         zarr_path, n_days, y_end - y_start, x_end - x_start)
-
-        done_dir = Path(str(zarr_path) + '.done')
-        done_dir.mkdir(exist_ok=True)
 
         todo = [(date, zip_path) for date, zip_path in day_list
                 if not (done_dir / date.strftime('%Y-%m-%d')).exists()]
