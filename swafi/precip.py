@@ -6,6 +6,7 @@ import pandas as pd
 from tqdm import tqdm
 from pathlib import Path
 from scipy.ndimage import uniform_filter
+from scipy.signal import fftconvolve
 
 from .config import Config
 from .domain import Domain
@@ -93,22 +94,19 @@ class Precipitation:
         return pd.concat(list_of_events, axis=0).reset_index(drop=True)
 
     def _extract_events(self, coords_row, method='simple', simple_strict_mode=False, api_days_nb=30, api_reg=0.8):
-        time_series = self.data.sel(
-            x=coords_row.x,
-            y=coords_row.y
-        ).to_dataframe().reset_index()
+        cell = self.data.sel(x=coords_row.x, y=coords_row.y)
+        times = pd.DatetimeIndex(pd.to_datetime(cell['time'].values))
+        precip = np.asarray(cell['precip'].values, dtype='float64').reshape(-1)
 
         # Time step [h] of the loaded data
-        dt = (time_series['time'].iloc[1] - time_series['time'].iloc[0]).total_seconds() / 3600
+        dt = (times[1] - times[0]).total_seconds() / 3600
 
         # Sub-hourly accumulation windows are only meaningful when the data
         # resolves them (e.g. 5-min data); skip windows shorter than the time step.
         window_minutes = [W for W in (5, 10, 20, 30) if W >= dt * 60]
 
-        # Transform the precipitation data to percentiles
-        time_series['precip_q'] = time_series['precip'].rank(pct=True)
-
         if method == 'classic':  # Bernet et al. (2019) method
+            time_series = pd.DataFrame({'time': times, 'precip': precip})
 
             # Calculate the Antecedent Precipitation Index (API) using a convolution
             time_series["api"] = self._compute_api(
@@ -187,102 +185,14 @@ class Precipitation:
             events = pd.concat([events, ranks], axis=1)
 
         elif method == 'simple':  # New simple method based on the precipitation intensity
-
-            # q98 threshold on precipitation intensity
-            threshold = time_series['precip'].quantile(0.98)
-
-            # All exceedance timestamps
-            exceed_times = time_series.loc[time_series['precip'] >= threshold, 'time']
-
-            # Event dates
-            events = self._build_simple_event_dates(exceed_times, simple_strict_mode)
-
-            # Pre-compute rolling precipitation sums for each accumulation window
-            window_hours = [1, 2, 4, 6, 12, 24, 48, 72]
-
-            # Hour-based windows
-            for W in window_hours:
-                n_steps = max(1, int(round(W / dt)))
-                time_series[f'p_{W}h'] = time_series['precip'].rolling(n_steps).sum()
-                time_series[f'p_{W}h_q'] = time_series[f'p_{W}h'].rank(pct=True)
-            
-            # Minute-based windows
-            for W in window_minutes:
-                n_steps = max(1, int(round(W / 60 / dt)))
-                time_series[f'p_{W}min'] = time_series['precip'].rolling(n_steps).sum()
-                time_series[f'p_{W}min_q'] = time_series[f'p_{W}min'].rank(pct=True)
-
-            # Get the date and time of the maximum precipitation intensity
-            # Use searchsorted on a time-indexed series for O(log n) window lookup
-            # instead of O(n) boolean masking, and collect results in a list to
-            # avoid repeated pandas column reallocations inside the loop.
-            ts_indexed = time_series.set_index('time')
-            time_idx = ts_indexed.index
-            records = []
-            for _, row in events.iterrows():
-                if simple_strict_mode:
-                    start = row['e_date']
-                    end = row['e_date'] + pd.Timedelta(hours=24)
-                else:
-                    start = row['e_date'] - pd.Timedelta(hours=SIMPLE_EVENT_HOURS_BEFORE)
-                    end = row['e_date'] + pd.Timedelta(hours=SIMPLE_EVENT_HOURS_AFTER)
-                i0 = time_idx.searchsorted(start, side='left')
-                i1 = time_idx.searchsorted(end, side='right')
-                window = ts_indexed.iloc[i0:i1]
-                if window.empty:
-                    rec = {'i_max': np.nan, 'i_max_q': np.nan, 'i_max_date': pd.NaT}
-                    rec.update({f'p_{W}h': np.nan for W in window_hours})
-                    rec.update({f'p_{W}h_q': np.nan for W in window_hours})
-                    rec.update({f'p_{W}min': np.nan for W in window_minutes})
-                    rec.update({f'p_{W}min_q': np.nan for W in window_minutes})
-                else:
-                    rec = {
-                        # Intensity as mm/h regardless of the native time step
-                        'i_max': window['precip'].max() / dt,
-                        'i_max_q': window['precip_q'].max(),
-                        'i_max_date': window['precip'].idxmax(),
-                    }
-                    for W in window_hours:
-                        rec[f'p_{W}h'] = window[f'p_{W}h'].max()
-                        rec[f'p_{W}h_q'] = window[f'p_{W}h_q'].max()
-                    for W in window_minutes:
-                        rec[f'p_{W}min'] = window[f'p_{W}min'].max()
-                        rec[f'p_{W}min_q'] = window[f'p_{W}min_q'].max()
-                records.append(rec)
-            events = pd.concat(
-                [events, pd.DataFrame(records, index=events.index)], axis=1
-            )
-
-            events = events.astype({
-                **{f'p_{W}h': 'float32' for W in window_hours},
-                **{f'p_{W}h_q': 'float32' for W in window_hours},
-                **{f'p_{W}min': 'float32' for W in window_minutes},
-                **{f'p_{W}min_q': 'float32' for W in window_minutes},
-            })
-
-            # Aggregate time series at daily time step
-            daily_series = time_series.set_index('time').resample('D').agg({
-                'precip': 'sum'
-            })
-
-            # Compute API on the daily series
-            daily_series['api'] = self._compute_api(
-                daily_series['precip'].values, 24, api_days_nb, api_reg
-            )
-            daily_series['api_q'] = daily_series['api'].rank(pct=True)
-
-            # Attach API and its quantile to events
-            events = events.merge(
-                daily_series.reset_index()[['time', 'api', 'api_q']],
-                left_on='e_date',
-                right_on='time',
-                how='left'
-            ).drop(columns=['time'])
+            events = self._extract_events_simple(
+                times, precip, dt, window_minutes, simple_strict_mode,
+                api_days_nb, api_reg)
 
         else:
             raise ValueError(f"Unknown event extraction method: {method}")
 
-        if len(events) == 0:
+        if events is None or len(events) == 0:
             return None
 
         # Add coordinates to the DataFrame and round all float values
@@ -293,6 +203,165 @@ class Precipitation:
         events[float_cols] = events[float_cols].round(5)
 
         return events
+
+    def _extract_events_simple(self, times, precip, dt, window_minutes,
+                               strict_mode, api_days_nb, api_reg):
+        """
+        Simple event extraction on numpy arrays. Reproduces the per-window
+        pandas rolling/rank/max results, but takes the per-event maxima on
+        plain array slices and looks quantiles up only at the event maxima
+        (rank is monotonic, so the max of the ranks over a window is the rank
+        of the window maximum) instead of ranking the full columns.
+
+        Parameters
+        ----------
+        times: pd.DatetimeIndex
+            The (complete, sorted) time axis of the cell.
+        precip: np.ndarray
+            The precipitation values [mm/step] (float64, may contain NaN).
+        dt: float
+            The time step [h].
+        window_minutes: list
+            The sub-hourly accumulation windows [min] to compute.
+        strict_mode: bool
+            See _build_simple_event_dates.
+        api_days_nb: int
+            The number of days for the API calculation.
+        api_reg: float
+            The API recession constant.
+
+        Returns
+        -------
+        pd.DataFrame|None
+            The events with their characteristics, or None if no valid data.
+        """
+        valid_mask = ~np.isnan(precip)
+        if not valid_mask.any():
+            return None
+
+        # q98 threshold on precipitation intensity and event dates
+        threshold = np.quantile(precip[valid_mask], 0.98)
+        exceed_times = pd.Series(times[precip >= threshold])
+        events = self._build_simple_event_dates(exceed_times, strict_mode)
+        if len(events) == 0:
+            return None
+
+        window_hours = [1, 2, 4, 6, 12, 24, 48, 72]
+        window_defs = [(f'p_{W}h', max(1, int(round(W / dt))))
+                       for W in window_hours]
+        window_defs += [(f'p_{W}min', max(1, int(round(W / 60 / dt))))
+                        for W in window_minutes]
+
+        # Rolling sums per window (pandas, bit-identical to the previous
+        # implementation — a shared cumulative sum would reorder the float
+        # additions and perturb rank ties). -inf marks invalid steps
+        # (incomplete window or NaN inside the window) so that a plain max()
+        # skips them without NaN handling.
+        n = precip.size
+        m = len(window_defs)
+        precip_series = pd.Series(precip)
+        win_sums = np.empty((n, m))
+        for k, (_, w) in enumerate(window_defs):
+            col = precip_series.rolling(w).sum().to_numpy()
+            win_sums[:, k] = np.where(np.isnan(col), -np.inf, col)
+        precip_filled = np.where(valid_mask, precip, -np.inf)
+
+        # Event windows (inclusive bounds, like searchsorted left/right)
+        e_dates = pd.DatetimeIndex(events['e_date'])
+        if strict_mode:
+            starts = e_dates
+            ends = e_dates + pd.Timedelta(hours=24)
+        else:
+            starts = e_dates - pd.Timedelta(hours=SIMPLE_EVENT_HOURS_BEFORE)
+            ends = e_dates + pd.Timedelta(hours=SIMPLE_EVENT_HOURS_AFTER)
+        i0 = times.searchsorted(starts, side='left')
+        i1 = times.searchsorted(ends, side='right')
+
+        # Per-event maxima over the window (one vectorized call per event)
+        n_ev = len(events)
+        times_arr = times.values
+        p_max = np.full((n_ev, m), -np.inf)
+        v_max = np.full(n_ev, -np.inf)
+        i_max_date = np.full(n_ev, np.datetime64('NaT'), dtype='datetime64[ns]')
+        for k in range(n_ev):
+            a, b = i0[k], i1[k]
+            if b <= a:
+                continue  # event day outside the data period
+            p_max[k] = win_sums[a:b].max(axis=0)
+            block = precip_filled[a:b]
+            j = int(block.argmax())
+            if np.isneginf(block[j]):
+                continue  # no valid precipitation in the window
+            v_max[k] = block[j]
+            i_max_date[k] = times_arr[a + j]
+
+        # Quantiles of the maxima within the full series of each column
+        sorted_precip = np.sort(precip[valid_mask])
+        i_max = np.where(np.isneginf(v_max), np.nan, v_max / dt)
+        data = {
+            # Intensity as mm/h regardless of the native time step
+            'i_max': i_max,
+            'i_max_q': self._pct_rank(sorted_precip, v_max),
+            'i_max_date': i_max_date,
+        }
+        for k, (name, _) in enumerate(window_defs):
+            col = win_sums[:, k]
+            sorted_col = np.sort(col[np.isfinite(col)])
+            data[name] = np.where(
+                np.isneginf(p_max[:, k]), np.nan, p_max[:, k]).astype('float32')
+            data[f'{name}_q'] = self._pct_rank(
+                sorted_col, p_max[:, k]).astype('float32')
+        events = pd.concat(
+            [events, pd.DataFrame(data, index=events.index)], axis=1)
+
+        # Aggregate time series at daily time step
+        daily_series = pd.DataFrame(
+            {'precip': precip},
+            index=pd.DatetimeIndex(times, name='time')
+        ).resample('D').agg({'precip': 'sum'})
+
+        # Compute API on the daily series
+        daily_series['api'] = self._compute_api(
+            daily_series['precip'].values, 24, api_days_nb, api_reg
+        )
+        daily_series['api_q'] = daily_series['api'].rank(pct=True)
+
+        # Attach API and its quantile to events
+        events = events.merge(
+            daily_series.reset_index()[['time', 'api', 'api_q']],
+            left_on='e_date',
+            right_on='time',
+            how='left'
+        ).drop(columns=['time'])
+
+        return events
+
+    @staticmethod
+    def _pct_rank(sorted_vals, values):
+        """
+        Percentile of each value within sorted_vals, matching pandas
+        rank(pct=True) with average tie-handling. Non-finite values map to NaN.
+
+        Parameters
+        ----------
+        sorted_vals: np.ndarray
+            The sorted, finite sample the percentiles refer to.
+        values: np.ndarray
+            The values to rank.
+
+        Returns
+        -------
+        np.ndarray
+            The percentiles (NaN where the input is not finite).
+        """
+        values = np.asarray(values, dtype='float64')
+        out = np.full(values.shape, np.nan)
+        ok = np.isfinite(values)
+        if sorted_vals.size and ok.any():
+            left = np.searchsorted(sorted_vals, values[ok], side='left')
+            right = np.searchsorted(sorted_vals, values[ok], side='right')
+            out[ok] = (left + right + 1) / 2.0 / sorted_vals.size
+        return out
 
     @staticmethod
     def _build_simple_event_dates(exceed_times, strict_mode):
@@ -347,7 +416,13 @@ class Precipitation:
         ts_per_day = 24 / time_step
         window = days_nb * ts_per_day
         kernel = np.power(reg, np.arange(window) / ts_per_day)
-        api_full = np.convolve(precip, kernel, mode="full")
+        # FFT convolution for long series (e.g. classic method on 5-min data,
+        # where the direct product is ~1e9 operations per cell). NaNs need the
+        # direct method: FFT would smear them over the whole series.
+        if precip.size * kernel.size > 1e7 and not np.isnan(precip).any():
+            api_full = fftconvolve(precip, kernel, mode="full")
+        else:
+            api_full = np.convolve(precip, kernel, mode="full")
 
         return np.concatenate(([0.0], api_full[:len(precip) - 1]))
 
