@@ -5,6 +5,7 @@ Class to handle all exposure and claims.
 import glob
 import ntpath
 from datetime import datetime
+from pathlib import Path
 
 import rasterio
 import numpy as np
@@ -149,9 +150,9 @@ class DamagesGvz(Damages):
         """
         Extract all contract data.
         """
-        exposure_file = glob.glob(directory + '/gvz_exposure*.nc')
-        assert len(exposure_file) == 1
-        data = self._parse_exposure_files(exposure_file)
+        exposure_file = directory + f'/gvz_exposure_{self.year_start}-{self.year_end}.nc'
+        assert Path(exposure_file).is_file(), f"Exposure file {exposure_file} not found."
+        data = self._parse_exposure_files([exposure_file])
 
         return [data]
 
@@ -193,9 +194,9 @@ class DamagesGvz(Damages):
         """
         Extracts all claims data.
         """
-        files = glob.glob(directory + '/gvz_flood_claims*.nc')
-        assert len(files) == 1
-        self._parse_claim_files(files)
+        file = directory + f'/gvz_flood_claims_{self.year_start}-{self.year_end}.nc'
+        assert Path(file).is_file(), f"Claim file {file} not found."
+        self._parse_claim_files([file])
 
     def _parse_claim_files(self, files):
         """
