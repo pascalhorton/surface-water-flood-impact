@@ -20,6 +20,9 @@ if __name__ == "__main__":
     setup_logging(script_name='extract_precipitation_events')
     logger = logging.getLogger(__name__)
 
+    if METHOD == 'classic' and PRECIP_DATASET != 'hourly':
+        raise ValueError("The classic method relies on hourly data.")
+
     if PRECIP_DATASET == '5min':
         config = Config()
         zarr_path = config.get('PATH_PRECIP_5MIN_ZARR', do_raise=False)
@@ -30,19 +33,26 @@ if __name__ == "__main__":
                 f"with scripts/data_preparation/build_precip_5min_zarr.py (config key "
                 f"PATH_PRECIP_5MIN_ZARR).")
         dataset_tag = 'cpc_5min'
-        output_dir = 'event_parts_5min'
     else:
-        dataset_tag = 'cpc'
-        output_dir = 'event_parts'
+        # Explicit dataset tag for the simple method; the classic method is
+        # hourly by definition and stays untagged.
+        dataset_tag = 'cpc_hourly' if METHOD == 'simple' else 'cpc'
 
-    if DETECTION_WINDOW_H is None:
-        detection_tag = 'detnative'
+    # Detection-window tag (simple method only: the classic method does not
+    # use the detection threshold window)
+    if METHOD != 'simple':
+        detection_tag = ''
+    elif DETECTION_WINDOW_H is None:
+        detection_tag = '_detnative'
     elif DETECTION_WINDOW_H < 1:
-        detection_tag = f"det{round(DETECTION_WINDOW_H * 60)}min"
+        detection_tag = f"_det{round(DETECTION_WINDOW_H * 60)}min"
     else:
-        detection_tag = f"det{DETECTION_WINDOW_H:g}h"
+        detection_tag = f"_det{DETECTION_WINDOW_H:g}h"
 
-    output_path = f"events_{dataset_tag}_model_domain_{Y_START}_{Y_END}_{METHOD}_{detection_tag}.parquet"
+    # The parts directory is a resumable cache: it must be unique per
+    # configuration, otherwise parts from another run would be reused.
+    output_dir = f"event_parts_{dataset_tag}_{METHOD}{detection_tag}"
+    output_path = f"events_{dataset_tag}_model_domain_{Y_START}_{Y_END}_{METHOD}{detection_tag}.parquet"
     run_parallel_extraction(
         Y_START,
         Y_END,
