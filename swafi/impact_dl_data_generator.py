@@ -200,6 +200,22 @@ class ImpactDlDataGenerator(keras.utils.Sequence):
 
         return self._generate_batch(idxs)
 
+    def get_batch_for_indices(self, idxs):
+        """
+        Get a batch of data from the full data (i.e., without shuffling or negative
+        event removal) for the given event indices.
+
+        Parameters
+        ----------
+        idxs : np.ndarray
+            The event indices into the full data.
+
+        Returns
+        -------
+        The batch of data.
+        """
+        return self._generate_batch(np.asarray(idxs))
+
     def get_event_dates_for_cid(self, cid):
         """
         Get all event dates for a given cid.

@@ -4,6 +4,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import xarray as xr
+from tqdm import tqdm
 
 from swafi.config import Config
 from swafi.domain import Domain
@@ -104,6 +105,90 @@ def create_prediction_dataset(year_start, year_end, fill_value=0.0):
         coords={'time': time, 'x': xs, 'y': ys},
     )
     return domain, xs, ys, ds_pred
+
+
+class GridPredictionWriter:
+    """
+    Vectorized writes of per-event predictions into a (time, y, x) prediction
+    dataset. Replaces the per-cell loops over the domain grid: cell masking and
+    event writes are resolved through a cid -> (i_y, i_x) lookup built once.
+    """
+
+    def __init__(self, ds_pred, domain):
+        self._pred = ds_pred['predict'].values
+        ids_map = domain.cids['ids_map']
+        self._outside = ids_map == 0
+        i_y, i_x = np.nonzero(ids_map)
+        self._pos = pd.DataFrame({'i_y': i_y, 'i_x': i_x},
+                                 index=ids_map[i_y, i_x])
+        self._t0 = ds_pred['time'].values[0]
+
+    def get_map_cids(self):
+        """Return the set of cell ids present in the domain map."""
+        return set(self._pos.index)
+
+    def mask_outside_domain(self):
+        """Set all cells absent from the domain map (cid == 0) to NaN."""
+        self._pred[:, self._outside] = np.nan
+
+    def fill_cells(self, cids, value):
+        """Set whole cells (all time steps) to a constant (NaN mask or background)."""
+        cids = np.fromiter(cids, dtype=np.int64)
+        if len(cids) == 0:
+            return
+        pos = self._pos.loc[cids]
+        self._pred[:, pos['i_y'].to_numpy(), pos['i_x'].to_numpy()] = value
+
+    def write_events(self, cids, dates, values):
+        """
+        Write the nonzero predictions at the day of each event. Row order is
+        preserved, so on same-day collisions within a cell the last nonzero
+        prediction wins, like the original per-event loops (which skipped
+        zeros and overwrote previous writes).
+        """
+        values = np.asarray(values, dtype=float)
+        cids = np.asarray(cids, dtype=np.int64)
+        keep = values != 0
+        if not keep.any():
+            return
+        days = pd.DatetimeIndex(np.asarray(dates)[keep]).normalize()
+        t_idx = ((days.values - self._t0) // np.timedelta64(1, 'D')).astype(int)
+        assert (t_idx >= 0).all() and (t_idx < self._pred.shape[0]).all(), \
+            "Event date outside the prediction period."
+        pos = self._pos.loc[cids[keep]]
+        self._pred[t_idx, pos['i_y'].to_numpy(), pos['i_x'].to_numpy()] = values[keep]
+
+
+def predict_events_in_chunks(model, dg, idxs, chunk_size=1024):
+    """
+    Run a keras model over the given event indices of an inference data
+    generator, many cells per predict() call. One call per grid cell is
+    dominated by the fixed per-call overhead; chunking removes it while
+    keeping the memory footprint bounded (relevant for CNN inputs).
+
+    Parameters
+    ----------
+    model : keras.Model
+        The trained model.
+    dg : ImpactDlDataGenerator
+        The inference data generator holding all events.
+    idxs : np.ndarray
+        The event indices (into the generator's full data) to predict.
+    chunk_size : int
+        The number of events per predict() call.
+
+    Returns
+    -------
+    np.ndarray
+        The predictions, aligned with idxs.
+    """
+    y_pred = np.empty(len(idxs), dtype=np.float32)
+    for start in tqdm(range(0, len(idxs), chunk_size), desc="Predicting"):
+        sel = idxs[start:start + chunk_size]
+        x, _ = dg.get_batch_for_indices(sel)
+        y_pred[start:start + len(sel)] = np.asarray(
+            model.predict(x, verbose=0)).reshape(-1)
+    return y_pred
 
 
 def ensure_precip_dataset(options, default='hourly'):

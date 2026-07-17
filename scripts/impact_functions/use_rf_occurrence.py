@@ -4,9 +4,7 @@ Test script for loading and evaluating a pre-trained Random Forest model.
 import logging
 import pickle
 import numpy as np
-import pandas as pd
 from pathlib import Path
-from tqdm import tqdm
 
 from swafi.config import Config
 from swafi.impact_rf_options import ImpactRFOptions
@@ -14,7 +12,7 @@ from swafi.impact_rf import ImpactRandomForest
 from swafi.utils.logging_setup import setup_logging
 from swafi.utils.use_common import (
     assess, get_contracts_number, get_damages, get_damages_xr,
-    get_events, create_prediction_dataset,
+    get_events, create_prediction_dataset, GridPredictionWriter,
 )
 
 logger = logging.getLogger(__name__)
@@ -61,46 +59,32 @@ def main():
     rf.select_features(rf.options.replace_simple_features)
     features = rf.get_all_features(rf.options.simple_feature_classes)
 
-    for i_x, x in enumerate(tqdm(xs, desc="Progress:", position=0)):
-        for i_y, y in enumerate(ys):
-            cell_id = domain.cids['ids_map'][i_y, i_x]
-            if cell_id == 0:
-                ds_pred['predict'][:, i_y, i_x] = np.nan
-                continue
+    writer = GridPredictionWriter(ds_pred, domain)
+    writer.mask_outside_domain()
 
-            exposure_cid = contracts_number[contracts_number['cid'] == cell_id]
-            if len(exposure_cid) == 0 or exposure_cid['nb_contracts'].values[0] == 0:
-                ds_pred['predict'][:, i_y, i_x] = np.nan
-                continue
+    # NaN masks, in the same precedence as the former per-cell loop: cells
+    # without (or zero) exposure are NaN; remaining cells without events stay
+    # at 0; cells with events but no features are NaN.
+    map_cids = writer.get_map_cids()
+    cids_events = set(events['cid'].unique()) & map_cids
+    cids_features = set(features['cid'].unique())
+    cids_exposure = set(
+        contracts_number.loc[contracts_number['nb_contracts'] != 0, 'cid'])
+    writer.fill_cells(map_cids - cids_exposure, np.nan)
+    writer.fill_cells((cids_events & cids_exposure) - cids_features, np.nan)
 
-            cell_events = events[events['cid'] == cell_id]
-            if len(cell_events) == 0:
-                continue
+    predict_cids = cids_events & cids_exposure & cids_features
+    rf.set_events(events[events['cid'].isin(predict_cids)])
+    rf.set_features(features)
+    rf.set_exposure(contracts_number)
+    rf.df.dropna(subset=rf.features, inplace=True)
+    # Cells whose events were all dropped by the NaN filter are NaN too
+    writer.fill_cells(predict_cids - set(rf.df['cid'].unique()), np.nan)
 
-            features_cid = features[features['cid'] == cell_id]
-            if len(features_cid) == 0:
-                ds_pred['predict'][:, i_y, i_x] = np.nan
-                continue
-
-            rf.set_events(cell_events)
-            rf.set_features(features_cid)
-            rf.set_exposure(exposure_cid)
-            rf.df.dropna(subset=rf.features, inplace=True)
-            x_input = rf.df[rf.features].to_numpy()
-            if len(x_input) == 0:
-                ds_pred['predict'][:, i_y, i_x] = np.nan
-                continue
-
-            y_pred = rf.model.predict_proba(x_input)[:, 1]  # Probability of class 1
-            assert len(y_pred) == len(rf.df)
-
-            # Loop over events and store the target value at the correct date
-            for i, (_, row) in enumerate(rf.df.iterrows()):
-                if y_pred[i] == 0:
-                    continue
-                # Store the prediction at the date of the event
-                ref_date = pd.to_datetime(row['i_max_date']).replace(hour=0, minute=0)
-                ds_pred['predict'].loc[dict(time=ref_date, y=y, x=x)] = y_pred[i]
+    if len(rf.df) > 0:
+        x_input = rf.df[rf.features].to_numpy()
+        y_pred = rf.model.predict_proba(x_input)[:, 1]  # Probability of class 1
+        writer.write_events(rf.df['cid'], rf.df['i_max_date'], y_pred)
 
     ds_pred.to_netcdf(output_path)
     logger.info("Results saved to %s", output_path)

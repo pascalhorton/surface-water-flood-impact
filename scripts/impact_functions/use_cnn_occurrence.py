@@ -6,10 +6,8 @@ import keras
 import random
 import tensorflow as tf
 import numpy as np
-import pandas as pd
 import xarray as xr
 from pathlib import Path
-from tqdm import tqdm
 
 from swafi.config import Config
 from swafi.domain import Domain
@@ -20,7 +18,7 @@ from swafi.utils.logging_setup import setup_logging
 from swafi.utils.use_common import (
     assess, get_contracts_number, get_damages, get_damages_xr,
     get_events, create_prediction_dataset, create_precipitation,
-    ensure_precip_dataset,
+    ensure_precip_dataset, GridPredictionWriter, predict_events_in_chunks,
 )
 
 logger = logging.getLogger(__name__)
@@ -97,31 +95,24 @@ def main():
     )
     precip_stats.close()
 
-    for i_x, x in enumerate(tqdm(xs, desc="Progress:", position=0)):
-        for i_y, y in enumerate(ys):
-            cell_id = domain.cids['ids_map'][i_y, i_x]
-            if cell_id == 0:
-                ds_pred['predict'][:, i_y, i_x] = np.nan
-                continue
+    writer = GridPredictionWriter(ds_pred, domain)
+    writer.mask_outside_domain()
 
-            cell_events = events[events['cid'] == cell_id]
-            if len(cell_events) == 0:
-                continue
+    # NaN masks, in the same precedence as the former per-cell loop: cells
+    # without events stay at 0; cells with events but no (or zero) exposure
+    # are NaN.
+    cids_events = set(events['cid'].unique()) & writer.get_map_cids()
+    cids_exposure = set(
+        contracts_number.loc[contracts_number['nb_contracts'] != 0, 'cid'])
+    writer.fill_cells(cids_events - cids_exposure, np.nan)
 
-            exposure_cid = contracts_number[contracts_number['cid'] == cell_id]
-            if len(exposure_cid) == 0 or exposure_cid['nb_contracts'].values[0] == 0:
-                ds_pred['predict'][:, i_y, i_x] = np.nan
-                continue
-
-            x_input, _ = dg.get_batch_for_cid(cell_id)
-            y_pred = cnn.model.predict(x_input, verbose=0).squeeze()
-            assert len(y_pred) == len(cell_events)
-
-            for i, (_, event) in enumerate(cell_events.iterrows()):
-                if y_pred[i] == 0:
-                    continue
-                ref_date = pd.to_datetime(event['i_max_date']).replace(hour=0, minute=0)
-                ds_pred['predict'].loc[dict(time=ref_date, y=y, x=x)] = y_pred[i]
+    predict_cids = cids_events & cids_exposure
+    event_cids = dg.event_props[:, 3].astype(np.int64)
+    idxs = np.where(np.isin(
+        event_cids, np.fromiter(predict_cids, dtype=np.int64)))[0]
+    if len(idxs) > 0:
+        y_pred = predict_events_in_chunks(cnn.model, dg, idxs, chunk_size=1024)
+        writer.write_events(event_cids[idxs], dg.event_props[idxs, 0], y_pred)
 
     ds_pred.to_netcdf(output_path)
     logger.info("Results saved to %s", output_path)

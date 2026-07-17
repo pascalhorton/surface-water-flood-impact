@@ -4,9 +4,7 @@ Test script for loading and evaluating a pre-trained Logistic Regression model.
 import logging
 import pickle
 import numpy as np
-import pandas as pd
 from pathlib import Path
-from tqdm import tqdm
 
 from swafi.config import Config
 from swafi.impact_basic_options import ImpactBasicOptions
@@ -14,7 +12,7 @@ from swafi.impact_lr import ImpactLogisticRegression
 from swafi.utils.logging_setup import setup_logging
 from swafi.utils.use_common import (
     assess, get_contracts_number, get_damages, get_damages_xr,
-    get_events, create_prediction_dataset,
+    get_events, create_prediction_dataset, GridPredictionWriter,
 )
 
 logger = logging.getLogger(__name__)
@@ -74,46 +72,33 @@ def main():
             f"  Current: {lr.features}"
         )
 
-    for i_x, x in enumerate(tqdm(xs, desc="Progress:", position=0)):
-        for i_y, y in enumerate(ys):
-            cell_id = domain.cids['ids_map'][i_y, i_x]
-            if cell_id == 0:
-                ds_pred['predict'][:, i_y, i_x] = np.nan
-                continue
+    writer = GridPredictionWriter(ds_pred, domain)
+    writer.mask_outside_domain()
 
-            cell_events = events[events['cid'] == cell_id]
-            if len(cell_events) == 0:
-                continue
+    # NaN masks, in the same precedence as the former per-cell loop:
+    # cells without events stay at 0; cells with events but no features, then
+    # no (or zero) exposure, are NaN.
+    cids_events = set(events['cid'].unique()) & writer.get_map_cids()
+    cids_features = set(features['cid'].unique())
+    cids_exposure = set(
+        contracts_number.loc[contracts_number['nb_contracts'] != 0, 'cid'])
+    writer.fill_cells(cids_events - cids_features, np.nan)
+    writer.fill_cells((cids_events & cids_features) - cids_exposure, np.nan)
 
-            features_cid = features[features['cid'] == cell_id]
-            if len(features_cid) == 0:
-                ds_pred['predict'][:, i_y, i_x] = np.nan
-                continue
+    predict_cids = cids_events & cids_features & cids_exposure
+    lr.set_events(events[events['cid'].isin(predict_cids)])
+    lr.set_features(features)
+    lr.set_exposure(contracts_number)
+    lr.df.dropna(subset=lr.features, inplace=True)
+    # Cells whose events were all dropped by the NaN filter are NaN too
+    writer.fill_cells(predict_cids - set(lr.df['cid'].unique()), np.nan)
 
-            exposure_cid = contracts_number[contracts_number['cid'] == cell_id]
-            if len(exposure_cid) == 0 or exposure_cid['nb_contracts'].values[0] == 0:
-                ds_pred['predict'][:, i_y, i_x] = np.nan
-                continue
-
-            lr.set_events(cell_events)
-            lr.set_features(features_cid)
-            lr.set_exposure(exposure_cid)
-            lr.df.dropna(subset=lr.features, inplace=True)
-            x_input = lr.df[lr.features].to_numpy()
-            if len(x_input) == 0:
-                ds_pred['predict'][:, i_y, i_x] = np.nan
-                continue
-
-            if lr.x_mean is not None:
-                x_input = (x_input - lr.x_mean) / lr.x_std
-            y_pred = lr.model.predict_proba(x_input)[:, 1]
-            assert len(y_pred) == len(lr.df)
-
-            for i, (_, row) in enumerate(lr.df.iterrows()):
-                if y_pred[i] == 0:
-                    continue
-                ref_date = pd.to_datetime(row['i_max_date']).replace(hour=0, minute=0)
-                ds_pred['predict'].loc[dict(time=ref_date, y=y, x=x)] = y_pred[i]
+    if len(lr.df) > 0:
+        x_input = lr.df[lr.features].to_numpy()
+        if lr.x_mean is not None:
+            x_input = (x_input - lr.x_mean) / lr.x_std
+        y_pred = lr.model.predict_proba(x_input)[:, 1]
+        writer.write_events(lr.df['cid'], lr.df['i_max_date'], y_pred)
 
     ds_pred.to_netcdf(output_path)
     logger.info("Results saved to %s", output_path)

@@ -2,10 +2,7 @@
 Test script for loading and evaluating a threshold-based model.
 """
 import logging
-import numpy as np
-import pandas as pd
 from pathlib import Path
-from tqdm import tqdm
 
 from swafi.config import Config
 from swafi.impact_basic_options import ImpactBasicOptions
@@ -13,6 +10,7 @@ from swafi.impact_thr import ImpactThresholds
 from swafi.utils.logging_setup import setup_logging
 from swafi.utils.use_common import (
     assess, get_damages_xr, get_events, create_prediction_dataset,
+    GridPredictionWriter,
 )
 
 logger = logging.getLogger(__name__)
@@ -56,26 +54,14 @@ def main():
         thr.tabular_features = {'event': ['i_max_q', 'p_sum_q']}
         thr.set_thresholds(thr_i_max=0.9, thr_p_sum=0.98, method=method)
 
-        for i_x, x in enumerate(tqdm(xs, desc="Progress:", position=0)):
-            for i_y, y in enumerate(ys):
-                cell_id = domain.cids['ids_map'][i_y, i_x]
-                if cell_id == 0:
-                    ds_pred['predict'][:, i_y, i_x] = np.nan
-                    continue
+        writer = GridPredictionWriter(ds_pred, domain)
+        writer.mask_outside_domain()
 
-                cell_events = events[events['cid'] == cell_id]
-                if len(cell_events) == 0:
-                    continue
-
-                thr.set_events(cell_events)
-                y_pred = thr.predict()
-                assert len(y_pred) == len(cell_events)
-
-                for i, (_, event) in enumerate(cell_events.iterrows()):
-                    if y_pred[i] == 0:
-                        continue
-                    ref_date = pd.to_datetime(event['i_max_date']).replace(hour=0, minute=0)
-                    ds_pred['predict'].loc[dict(time=ref_date, y=y, x=x)] = y_pred[i]
+        cell_events = events[events['cid'].isin(writer.get_map_cids())]
+        thr.set_events(cell_events)
+        y_pred = thr.predict()
+        assert len(y_pred) == len(cell_events)
+        writer.write_events(cell_events['cid'], cell_events['i_max_date'], y_pred)
 
         ds_pred.to_netcdf(output_path)
         logger.info("Results saved to %s", output_path)
