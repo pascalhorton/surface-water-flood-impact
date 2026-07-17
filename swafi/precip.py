@@ -13,10 +13,6 @@ from .domain import Domain
 
 config = Config()
 
-# Temporal window for simple-event extraction (hours relative to D-day at 0 h)
-SIMPLE_EVENT_HOURS_BEFORE = 8
-SIMPLE_EVENT_HOURS_AFTER = 26
-
 
 class Precipitation:
     def __init__(self, cid_file=None):
@@ -79,22 +75,22 @@ class Precipitation:
             size=(0, filter_size, filter_size)
         )
 
-    def extract_events(self, coords_row=None, method='simple', simple_strict_mode=False, api_days_nb=30, api_reg=0.8,
+    def extract_events(self, coords_row=None, method='simple', api_days_nb=30, api_reg=0.8,
                        detection_window_h=1.0):
         # Select timeseries and convert it into a DataFrame
         if coords_row is not None:
-            return self._extract_events(coords_row, method, simple_strict_mode, api_days_nb, api_reg, detection_window_h)
+            return self._extract_events(coords_row, method, api_days_nb, api_reg, detection_window_h)
 
         list_of_events = []
         coords_df = self.domain.get_coordinates_df()
         for _, coords_row in tqdm(coords_df.iterrows(), total=len(coords_df), desc="Extracting events"):
-            events = self._extract_events(coords_row, method, simple_strict_mode, api_days_nb, api_reg, detection_window_h)
+            events = self._extract_events(coords_row, method, api_days_nb, api_reg, detection_window_h)
             if events is not None:
                 list_of_events.append(events)
 
         return pd.concat(list_of_events, axis=0).reset_index(drop=True)
 
-    def _extract_events(self, coords_row, method='simple', simple_strict_mode=False, api_days_nb=30, api_reg=0.8,
+    def _extract_events(self, coords_row, method='simple', api_days_nb=30, api_reg=0.8,
                         detection_window_h=1.0):
         cell = self.data.sel(x=coords_row.x, y=coords_row.y)
         times = pd.DatetimeIndex(pd.to_datetime(cell['time'].values))
@@ -188,7 +184,7 @@ class Precipitation:
 
         elif method == 'simple':  # New simple method based on the precipitation intensity
             events = self._extract_events_simple(
-                times, precip, dt, window_minutes, simple_strict_mode,
+                times, precip, dt, window_minutes,
                 api_days_nb, api_reg, detection_window_h)
 
         else:
@@ -207,7 +203,7 @@ class Precipitation:
         return events
 
     def _extract_events_simple(self, times, precip, dt, window_minutes,
-                               strict_mode, api_days_nb, api_reg,
+                               api_days_nb, api_reg,
                                detection_window_h=1.0):
         """
         Simple event extraction on numpy arrays. Reproduces the per-window
@@ -226,8 +222,6 @@ class Precipitation:
             The time step [h].
         window_minutes: list
             The sub-hourly accumulation windows [min] to compute.
-        strict_mode: bool
-            See _build_simple_event_dates.
         api_days_nb: int
             The number of days for the API calculation.
         api_reg: float
@@ -263,7 +257,7 @@ class Precipitation:
             return None
         threshold = np.quantile(detection[detection_valid], 0.98)
         exceed_times = pd.Series(times[detection >= threshold])
-        events = self._build_simple_event_dates(exceed_times, strict_mode)
+        events = self._build_simple_event_dates(exceed_times)
         if len(events) == 0:
             return None
 
@@ -289,12 +283,8 @@ class Precipitation:
 
         # Event windows (inclusive bounds, like searchsorted left/right)
         e_dates = pd.DatetimeIndex(events['e_date'])
-        if strict_mode:
-            starts = e_dates
-            ends = e_dates + pd.Timedelta(hours=24)
-        else:
-            starts = e_dates - pd.Timedelta(hours=SIMPLE_EVENT_HOURS_BEFORE)
-            ends = e_dates + pd.Timedelta(hours=SIMPLE_EVENT_HOURS_AFTER)
+        starts = e_dates
+        ends = e_dates + pd.Timedelta(hours=24)
         i0 = times.searchsorted(starts, side='left')
         i1 = times.searchsorted(ends, side='right')
 
@@ -385,28 +375,9 @@ class Precipitation:
         return out
 
     @staticmethod
-    def _build_simple_event_dates(exceed_times, strict_mode):
-        """Build unique event days from exceedance timestamps.
-
-        Rules for non strict mode:
-        - 00:00 <= t < 02:00 -> day itself and previous day
-        - 02:00 <= t < 16:00 -> day itself
-        - 16:00 <= t < 24:00 -> day itself and next day
-        """
-        day = exceed_times.dt.floor('D')
-        if not strict_mode:
-            time_of_day = exceed_times - day
-
-            early_mask = time_of_day < pd.Timedelta(hours=2)
-            late_mask = time_of_day >= pd.Timedelta(hours=16)
-
-            candidate_days = pd.concat([
-                day,
-                day[early_mask] - pd.Timedelta(days=1),
-                day[late_mask] + pd.Timedelta(days=1),
-            ], ignore_index=True)
-        else:
-            candidate_days = day
+    def _build_simple_event_dates(exceed_times):
+        """Build unique, sorted event days from exceedance timestamps."""
+        candidate_days = exceed_times.dt.floor('D')
 
         event_days = pd.Series(pd.to_datetime(candidate_days.to_numpy()))
         event_days = event_days.drop_duplicates().sort_values().reset_index(drop=True)

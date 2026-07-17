@@ -3,7 +3,7 @@ import pandas as pd
 from swafi.precip import Precipitation
 
 
-def test_build_simple_event_dates_respects_time_of_day_rules():
+def test_build_simple_event_dates_maps_timestamps_to_their_day_only():
     exceed_times = pd.Series(
         pd.to_datetime(
             [
@@ -17,15 +17,9 @@ def test_build_simple_event_dates_respects_time_of_day_rules():
         )
     )
 
-    events = Precipitation._build_simple_event_dates(exceed_times, strict_mode=False)
+    events = Precipitation._build_simple_event_dates(exceed_times)
 
-    expected = pd.to_datetime(
-        [
-            '2020-01-09 00:00:00',
-            '2020-01-10 00:00:00',
-            '2020-01-11 00:00:00',
-        ]
-    )
+    expected = pd.to_datetime(['2020-01-10 00:00:00'])
     pd.testing.assert_series_equal(events['e_date'], pd.Series(expected), check_names=False)
 
 
@@ -41,15 +35,12 @@ def test_build_simple_event_dates_deduplicates_and_sorts_days():
         )
     )
 
-    events = Precipitation._build_simple_event_dates(exceed_times, strict_mode=False)
+    events = Precipitation._build_simple_event_dates(exceed_times)
 
     expected = pd.to_datetime(
         [
-            '2020-01-09 00:00:00',
             '2020-01-10 00:00:00',
             '2020-01-11 00:00:00',
-            '2020-01-12 00:00:00',
         ]
     )
     pd.testing.assert_series_equal(events['e_date'], pd.Series(expected), check_names=False)
-

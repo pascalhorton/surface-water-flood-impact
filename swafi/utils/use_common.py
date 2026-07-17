@@ -151,7 +151,7 @@ def create_precipitation(precip_dataset, year_start, year_end):
     raise ValueError(f"Unknown precipitation dataset: {precip_dataset}")
 
 
-def get_events(year_start, year_end, event_method, simple_strict_mode=False,
+def get_events(year_start, year_end, event_method,
                filter_size=None, precip_dataset='hourly'):
     """Return events DataFrame, loading from pickle cache or extracting in parallel."""
     # The simple method exists for both precipitation datasets: name the cache
@@ -164,7 +164,7 @@ def get_events(year_start, year_end, event_method, simple_strict_mode=False,
     if not events_path.exists():
         logger.info("Extracting events and saving to %s...", events_path)
         events = extract_events_parallel(year_start, year_end, event_method,
-                                         simple_strict_mode, filter_size,
+                                         filter_size,
                                          precip_dataset=precip_dataset)
         events.to_pickle(events_path)
     else:

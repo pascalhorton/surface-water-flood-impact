@@ -20,9 +20,12 @@ except ImportError:
 
 from .config import Config
 from .domain import Domain
-from .precip import SIMPLE_EVENT_HOURS_BEFORE, SIMPLE_EVENT_HOURS_AFTER
 
 config = Config()
+
+# Temporal window for claim-event matching (hours relative to the claim day at 0 h)
+SIMPLE_EVENT_HOURS_BEFORE = 8
+SIMPLE_EVENT_HOURS_AFTER = 26
 
 logger = logging.getLogger(__name__)
 

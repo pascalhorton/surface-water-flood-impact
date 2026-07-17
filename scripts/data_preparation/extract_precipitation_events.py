@@ -10,7 +10,6 @@ from swafi.utils.event_extraction import run_parallel_extraction
 
 PRECIP_DATASET = 'hourly'  # 'hourly' (CombiPrecip netCDF) or '5min' (zarr store)
 METHOD = 'simple'
-STRICT = True  # Extract only days exceeding the threshold. Recommended.
 DETECTION_WINDOW_H = 1  # Accumulation window [h] for the q98 detection threshold (None = native time step)
 Y_START = 2005
 Y_END = 2024
@@ -57,7 +56,6 @@ if __name__ == "__main__":
         Y_START,
         Y_END,
         METHOD,
-        simple_strict_mode=STRICT,
         filter_size=None,
         output_dir=output_dir,
         output_path=output_path,

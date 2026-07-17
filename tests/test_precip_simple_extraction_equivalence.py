@@ -5,11 +5,9 @@ reference) on identical inputs.
 """
 import numpy as np
 import pandas as pd
-import pytest
 import xarray as xr
 
-from swafi.precip import (SIMPLE_EVENT_HOURS_AFTER, SIMPLE_EVENT_HOURS_BEFORE,
-                          Precipitation)
+from swafi.precip import Precipitation
 
 
 def _make_precip(values, freq, time_step):
@@ -24,7 +22,7 @@ def _make_precip(values, freq, time_step):
     return precip
 
 
-def _reference_simple(precip_obj, coords_row, strict_mode,
+def _reference_simple(precip_obj, coords_row,
                       api_days_nb=30, api_reg=0.8):
     """The previous pandas implementation of the 'simple' method, verbatim."""
     time_series = precip_obj.data.sel(
@@ -37,7 +35,7 @@ def _reference_simple(precip_obj, coords_row, strict_mode,
 
     threshold = time_series['precip'].quantile(0.98)
     exceed_times = time_series.loc[time_series['precip'] >= threshold, 'time']
-    events = Precipitation._build_simple_event_dates(exceed_times, strict_mode)
+    events = Precipitation._build_simple_event_dates(exceed_times)
 
     window_hours = [1, 2, 4, 6, 12, 24, 48, 72]
     for W in window_hours:
@@ -53,12 +51,8 @@ def _reference_simple(precip_obj, coords_row, strict_mode,
     time_idx = ts_indexed.index
     records = []
     for _, row in events.iterrows():
-        if strict_mode:
-            start = row['e_date']
-            end = row['e_date'] + pd.Timedelta(hours=24)
-        else:
-            start = row['e_date'] - pd.Timedelta(hours=SIMPLE_EVENT_HOURS_BEFORE)
-            end = row['e_date'] + pd.Timedelta(hours=SIMPLE_EVENT_HOURS_AFTER)
+        start = row['e_date']
+        end = row['e_date'] + pd.Timedelta(hours=24)
         i0 = time_idx.searchsorted(start, side='left')
         i1 = time_idx.searchsorted(end, side='right')
         window = ts_indexed.iloc[i0:i1]
@@ -101,7 +95,7 @@ def _reference_simple(precip_obj, coords_row, strict_mode,
     return events
 
 
-def _run_new(precip_obj, coords_row, strict_mode):
+def _run_new(precip_obj, coords_row):
     cell = precip_obj.data.sel(x=coords_row.x, y=coords_row.y)
     times = pd.DatetimeIndex(pd.to_datetime(cell['time'].values))
     values = np.asarray(cell['precip'].values, dtype='float64').reshape(-1)
@@ -109,7 +103,7 @@ def _run_new(precip_obj, coords_row, strict_mode):
     window_minutes = [W for W in (5, 10, 20, 30) if W >= dt * 60]
     # detection_window_h=None: the reference implements native-step detection
     return precip_obj._extract_events_simple(
-        times, values, dt, window_minutes, strict_mode, 30, 0.8,
+        times, values, dt, window_minutes, 30, 0.8,
         detection_window_h=None)
 
 
@@ -127,13 +121,12 @@ def _synthetic_5min(days=60, with_nan=True):
     return values
 
 
-@pytest.mark.parametrize('strict', [True, False])
-def test_simple_extraction_matches_reference_5min(strict):
+def test_simple_extraction_matches_reference_5min():
     precip = _make_precip(_synthetic_5min(), '5min', 5 / 60)
     row = pd.Series({'cid': 1, 'x': 2500500.0, 'y': 1200500.0})
 
-    ref = _reference_simple(precip, row, strict)
-    new = _run_new(precip, row, strict)
+    ref = _reference_simple(precip, row)
+    new = _run_new(precip, row)
 
     assert list(ref.columns) == list(new.columns)
     # check_dtype=False: the reference builds rows from dicts, which pandas 3
@@ -142,16 +135,15 @@ def test_simple_extraction_matches_reference_5min(strict):
                                   rtol=1e-5, atol=1e-8, check_dtype=False)
 
 
-@pytest.mark.parametrize('strict', [True, False])
-def test_simple_extraction_matches_reference_hourly(strict):
+def test_simple_extraction_matches_reference_hourly():
     n = 180 * 24
     rng = np.random.default_rng(9)
     values = rng.gamma(0.15, 1.5, n)
     precip = _make_precip(values, 'h', 1)
     row = pd.Series({'cid': 1, 'x': 2500500.0, 'y': 1200500.0})
 
-    ref = _reference_simple(precip, row, strict)
-    new = _run_new(precip, row, strict)
+    ref = _reference_simple(precip, row)
+    new = _run_new(precip, row)
 
     assert list(ref.columns) == list(new.columns)
     # check_dtype=False: the reference builds rows from dicts, which pandas 3

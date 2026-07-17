@@ -40,7 +40,7 @@ def _get_precipitation(precip_dataset, y_start, y_end, config):
     return cpc
 
 
-def process_part(i, part, config, y_start, y_end, method, simple_strict_mode, filter_size, output_dir, precip_dataset='hourly', detection_window_h=1.0):
+def process_part(i, part, config, y_start, y_end, method, filter_size, output_dir, precip_dataset='hourly', detection_window_h=1.0):
     output_file = Path(output_dir) / f"part_{i}.parquet"
     if output_file.exists():
         logger.info(f"Output file '{output_file}' already exists.")
@@ -56,7 +56,7 @@ def process_part(i, part, config, y_start, y_end, method, simple_strict_mode, fi
     if filter_size is not None:
         cpc.apply_smoothing(filter_size=filter_size)
     cpc.data = cpc.data.compute()
-    list_of_events = [cpc.extract_events(row, method, simple_strict_mode, detection_window_h=detection_window_h)
+    list_of_events = [cpc.extract_events(row, method, detection_window_h=detection_window_h)
                       for _, row in part.iterrows()]
     events = pd.concat(list_of_events, axis=0).reset_index(drop=True)
     events.to_parquet(output_file)
@@ -88,10 +88,10 @@ def _split_parts(config, precip_dataset):
     return _split_coords(config)
 
 
-def _run_workers(parts, config, y_start, y_end, method, simple_strict_mode, filter_size, output_dir, precip_dataset='hourly', detection_window_h=1.0, max_workers=None):
+def _run_workers(parts, config, y_start, y_end, method, filter_size, output_dir, precip_dataset='hourly', detection_window_h=1.0, max_workers=None):
     with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
         futures = [
-            executor.submit(process_part, i, part, config, y_start, y_end, method, simple_strict_mode, filter_size, output_dir, precip_dataset, detection_window_h)
+            executor.submit(process_part, i, part, config, y_start, y_end, method, filter_size, output_dir, precip_dataset, detection_window_h)
             for i, part in enumerate(parts)
         ]
         results = [
@@ -119,27 +119,27 @@ def _stamp_precip_dataset(events, precip_dataset):
     return events
 
 
-def extract_events_parallel(y_start, y_end, method, simple_strict_mode=False, filter_size=None,
+def extract_events_parallel(y_start, y_end, method, filter_size=None,
                             precip_dataset='hourly', detection_window_h=1.0, max_workers=None):
     """Extract events for all domain cells in parallel and return a DataFrame."""
     config = Config()
     parts = _split_parts(config, precip_dataset)
     with tempfile.TemporaryDirectory() as tmp_dir:
-        _run_workers(parts, config, y_start, y_end, method, simple_strict_mode, filter_size, tmp_dir, precip_dataset, detection_window_h, max_workers)
+        _run_workers(parts, config, y_start, y_end, method, filter_size, tmp_dir, precip_dataset, detection_window_h, max_workers)
         events = _merge_parts(tmp_dir, len(parts))
     events = _stamp_precip_dataset(events, precip_dataset)
     logger.info("Extracted %d events for %d-%d.", len(events), y_start, y_end)
     return events
 
 
-def run_parallel_extraction(y_start, y_end, method, simple_strict_mode=False, filter_size=None,
+def run_parallel_extraction(y_start, y_end, method, filter_size=None,
                             output_dir="event_parts", output_path='.', precip_dataset='hourly',
                             detection_window_h=1.0, max_workers=None):
     """Extract events in parallel, saving intermediate parts to output_dir and merging to output_path."""
     config = Config()
     parts = _split_parts(config, precip_dataset)
     os.makedirs(output_dir, exist_ok=True)
-    _run_workers(parts, config, y_start, y_end, method, simple_strict_mode, filter_size, output_dir, precip_dataset, detection_window_h, max_workers)
+    _run_workers(parts, config, y_start, y_end, method, filter_size, output_dir, precip_dataset, detection_window_h, max_workers)
     logger.info("All parts processed. Saved in '%s'.", output_dir)
     events = _merge_parts(output_dir, len(parts))
     events = _stamp_precip_dataset(events, precip_dataset)
