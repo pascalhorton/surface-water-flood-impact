@@ -30,7 +30,7 @@ def test_load_events_uses_fallback_when_main_pickle_is_incompatible(tmp_path, mo
 
     monkeypatch.setattr(events_module.config, 'get', _mock_config_get(tmp_path))
     events_only_path = events_module._events_only_pickle_path(tmp_path, filename)
-    df.to_pickle(events_only_path, compression='gzip')
+    df.to_pickle(events_only_path, compression='bz2')
 
     def _raise_incompatible(_):
         raise NotImplementedError('simulated cross-version incompatibility')
@@ -70,6 +70,6 @@ def test_dump_always_writes_portable_events_only_pickle(tmp_path, monkeypatch):
 
     events_only_path = events_module._events_only_pickle_path(tmp_path, filename)
     assert events_only_path.is_file()
-    loaded_df = pd.read_pickle(events_only_path, compression='gzip')
+    loaded_df = pd.read_pickle(events_only_path, compression='bz2')
     assert_frame_equal(loaded_df.reset_index(drop=True), df.reset_index(drop=True))
 

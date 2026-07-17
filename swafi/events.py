@@ -41,8 +41,6 @@ class Events:
         self.use_dump = use_dump
         self.events = None
 
-        self._load_from_dump()
-
     def load_events_and_select_those_with_contracts(self, path, damages, tag):
         """
         Load all events from a parquet file. Then, select only the events where there
@@ -57,6 +55,10 @@ class Events:
         tag: str
             The tag to add to the pickle file (e.g. damage dataset).
         """
+        # Reload the tagged dump (never a generic one: another run's events
+        # would silently be reused for the wrong dataset/method).
+        if self.use_dump and self.events is None:
+            self._load_from_dump(f'events_{tag}.pickle')
         if self.use_dump and self.events is not None:
             logger.info("Events were reloaded from pickle file.")
             return
@@ -97,7 +99,7 @@ class Events:
         elif 'date' in self.events.columns:
             date_field = 'date'
         else:
-            raise ValueError("No date field found in damages claims.")
+            raise ValueError("No date field found in events.")
 
         self.events = self.events[
             (self.events[date_field].dt.year >= damages.year_start) &
@@ -120,14 +122,24 @@ class Events:
         cids = damages.cids_list
         self.events = self.events[self.events['cid'].isin(cids)]
 
-        # Second, remove cells where there is no annual contract
+        # Second, remove cell-years where there is no annual contract
+        # (single anti-join on (cid, year) instead of one filter per cell)
+        if 'e_start' in self.events.columns:
+            date_field = 'e_start'
+        elif 'e_date' in self.events.columns:
+            date_field = 'e_date'
+        else:
+            raise ValueError("No date field found in events.")
+
         empty_cells = damages.exposure[damages.exposure['selection'] == 0]
-        for index, row in empty_cells.iterrows():
-            cid = cids[row['mask_index']]
-            self.events = self.events[
-                (self.events['cid'] != cid) |
-                (self.events['e_start'].dt.year != row['year'])
-                ]
+        if not empty_cells.empty:
+            empty_pairs = pd.MultiIndex.from_arrays(
+                [np.asarray(cids)[empty_cells['mask_index']].astype('float64'),
+                 empty_cells['year'].to_numpy()])
+            event_pairs = pd.MultiIndex.from_arrays(
+                [self.events['cid'].astype('float64'),
+                 self.events[date_field].dt.year])
+            self.events = self.events[~event_pairs.isin(empty_pairs)]
 
         logger.info("Number of events with potential contracts: %s", len(self.events))
 
@@ -184,17 +196,31 @@ class Events:
             events['mid_date'] = events['e_start'] + (events['e_end'] - events['e_start']) / 2
             n_days = 2
 
+        # Group the events per cell (sorted by date): the per-claim lookup is
+        # then a binary search instead of a scan of the whole dataframe.
+        events_by_cid = {cid: group.sort_values('mid_date')
+                         for cid, group in events.groupby('cid', sort=False)}
+
         events_to_remove = []
         for i_claim in tqdm(range(len(removed_claims)), desc=f"Checking events"):
             claim = removed_claims.iloc[i_claim]
-            mask = (events['cid'] == claim['cid']) & \
-                   (events['mid_date'] >= claim['date_claim'] - pd.Timedelta(days=n_days)) & \
-                   (events['mid_date'] <= claim['date_claim'] + pd.Timedelta(days=n_days))
-            events_to_remove.extend(events.loc[mask, 'eid'].tolist())
+            cid_events = events_by_cid.get(claim['cid'])
+            if cid_events is None:
+                continue
+            mid_dates = cid_events['mid_date'].to_numpy()
+            i0 = np.searchsorted(
+                mid_dates,
+                (claim['date_claim'] - pd.Timedelta(days=n_days)).to_datetime64())
+            i1 = np.searchsorted(
+                mid_dates,
+                (claim['date_claim'] + pd.Timedelta(days=n_days)).to_datetime64(),
+                side='right')
+            events_to_remove.extend(cid_events['eid'].to_numpy()[i0:i1].tolist())
 
         # Filter out the events that are associated with damages
+        linked_eids = set(damages.claims['eid'].tolist())
         events_to_remove = [ev for ev in events_to_remove if
-                            ev not in damages.claims.eid.tolist()]
+                            ev not in linked_eids]
 
         logger.info("Events to remove dues to claim classes: %s", len(events_to_remove))
 

@@ -59,7 +59,9 @@ class DamagesGvz(Damages):
             'E']  # most likely fluvial flood
 
         self._create_exposure_claims_df()
-        self._load_from_dump(f'damages_gvz_{year_start}-{year_end}.pickle')
+        # Use the resolved years (the constructor arguments may be None)
+        self._load_from_dump(
+            f'damages_gvz_{self.year_start}-{self.year_end}.pickle')
 
         if dir_exposure is not None:
             self.load_exposure(dir_exposure)
@@ -231,22 +233,10 @@ class DamagesGvz(Damages):
             data = data[:, i_start:i_end + 1, :, :]
             types = dataset.variables['type'][:]
 
+            dates = [datetime(d.year, d.month, d.day).date() for d in dates]
             for i_cat, cat in enumerate(types):
-                df_claims = pd.DataFrame(columns=['date_claim', 'mask_index', cat])
-                df_claims = df_claims.astype('int32')
-                df_claims['date_claim'] = pd.to_datetime(df_claims['date_claim'])
-                for i_date, date in enumerate(dates):
-                    date = datetime(date.year, date.month, date.day).date()
-                    indices, values = self._extract_non_null_claims(
-                        data[i_cat, i_date, :, :])
-                    df_case = pd.DataFrame(columns=['date_claim', 'mask_index', cat])
-                    df_case['date_claim'] = [date] * len(indices)
-                    df_case['mask_index'] = indices
-                    df_case[cat] = values
-                    df_case = df_case.dropna(axis=1, how='all')
-                    if not df_case.empty:
-                        df_claims = pd.concat([df_claims, df_case])
-
+                df_claims = self._extract_claims_from_grids(
+                    data[i_cat], dates, cat)
                 self._store_in_claims_dataframe(df_claims)
 
     @staticmethod
