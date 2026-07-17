@@ -11,6 +11,7 @@ from swafi.utils.event_extraction import run_parallel_extraction
 PRECIP_DATASET = 'hourly'  # 'hourly' (CombiPrecip netCDF) or '5min' (zarr store)
 METHOD = 'simple'
 STRICT = True  # Extract only days exceeding the threshold. Recommended.
+DETECTION_WINDOW_H = 1  # Accumulation window [h] for the q98 detection threshold (None = native time step)
 Y_START = 2005
 Y_END = 2024
 MAX_WORKERS = 10  # Memory ~ MAX_WORKERS x part footprint (~2.2 GB/tile for 5 years of 5-min data)
@@ -34,7 +35,14 @@ if __name__ == "__main__":
         dataset_tag = 'cpc'
         output_dir = 'event_parts'
 
-    output_path = f"events_{dataset_tag}_model_domain_{Y_START}_{Y_END}_{METHOD}.parquet"
+    if DETECTION_WINDOW_H is None:
+        detection_tag = 'detnative'
+    elif DETECTION_WINDOW_H < 1:
+        detection_tag = f"det{round(DETECTION_WINDOW_H * 60)}min"
+    else:
+        detection_tag = f"det{DETECTION_WINDOW_H:g}h"
+
+    output_path = f"events_{dataset_tag}_model_domain_{Y_START}_{Y_END}_{METHOD}_{detection_tag}.parquet"
     run_parallel_extraction(
         Y_START,
         Y_END,
@@ -44,5 +52,6 @@ if __name__ == "__main__":
         output_dir=output_dir,
         output_path=output_path,
         precip_dataset=PRECIP_DATASET,
+        detection_window_h=DETECTION_WINDOW_H,
         max_workers=MAX_WORKERS
     )

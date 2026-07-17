@@ -79,21 +79,23 @@ class Precipitation:
             size=(0, filter_size, filter_size)
         )
 
-    def extract_events(self, coords_row=None, method='simple', simple_strict_mode=False, api_days_nb=30, api_reg=0.8):
+    def extract_events(self, coords_row=None, method='simple', simple_strict_mode=False, api_days_nb=30, api_reg=0.8,
+                       detection_window_h=1.0):
         # Select timeseries and convert it into a DataFrame
         if coords_row is not None:
-            return self._extract_events(coords_row, method, simple_strict_mode, api_days_nb, api_reg)
+            return self._extract_events(coords_row, method, simple_strict_mode, api_days_nb, api_reg, detection_window_h)
 
         list_of_events = []
         coords_df = self.domain.get_coordinates_df()
         for _, coords_row in tqdm(coords_df.iterrows(), total=len(coords_df), desc="Extracting events"):
-            events = self._extract_events(coords_row, method, simple_strict_mode, api_days_nb, api_reg)
+            events = self._extract_events(coords_row, method, simple_strict_mode, api_days_nb, api_reg, detection_window_h)
             if events is not None:
                 list_of_events.append(events)
 
         return pd.concat(list_of_events, axis=0).reset_index(drop=True)
 
-    def _extract_events(self, coords_row, method='simple', simple_strict_mode=False, api_days_nb=30, api_reg=0.8):
+    def _extract_events(self, coords_row, method='simple', simple_strict_mode=False, api_days_nb=30, api_reg=0.8,
+                        detection_window_h=1.0):
         cell = self.data.sel(x=coords_row.x, y=coords_row.y)
         times = pd.DatetimeIndex(pd.to_datetime(cell['time'].values))
         precip = np.asarray(cell['precip'].values, dtype='float64').reshape(-1)
@@ -187,7 +189,7 @@ class Precipitation:
         elif method == 'simple':  # New simple method based on the precipitation intensity
             events = self._extract_events_simple(
                 times, precip, dt, window_minutes, simple_strict_mode,
-                api_days_nb, api_reg)
+                api_days_nb, api_reg, detection_window_h)
 
         else:
             raise ValueError(f"Unknown event extraction method: {method}")
@@ -205,7 +207,8 @@ class Precipitation:
         return events
 
     def _extract_events_simple(self, times, precip, dt, window_minutes,
-                               strict_mode, api_days_nb, api_reg):
+                               strict_mode, api_days_nb, api_reg,
+                               detection_window_h=1.0):
         """
         Simple event extraction on numpy arrays. Reproduces the per-window
         pandas rolling/rank/max results, but takes the per-event maxima on
@@ -229,6 +232,11 @@ class Precipitation:
             The number of days for the API calculation.
         api_reg: float
             The API recession constant.
+        detection_window_h: float|None
+            The accumulation window [h] on which the q98 detection threshold
+            is applied (default: 1 h). None means the native time step, i.e.
+            for the 5-min dataset the events are detected on the 5-min bursts
+            instead of the rolling hourly intensity.
 
         Returns
         -------
@@ -239,9 +247,22 @@ class Precipitation:
         if not valid_mask.any():
             return None
 
-        # q98 threshold on precipitation intensity and event dates
-        threshold = np.quantile(precip[valid_mask], 0.98)
-        exceed_times = pd.Series(times[precip >= threshold])
+        # q98 threshold on the precipitation intensity accumulated over the
+        # detection window (right-labelled rolling sum, like the p_*h columns;
+        # a 1-step window keeps the native values untouched) and event dates
+        if detection_window_h is None:
+            w_det = 1
+        else:
+            w_det = max(1, int(round(detection_window_h / dt)))
+        if w_det == 1:
+            detection = precip
+        else:
+            detection = pd.Series(precip).rolling(w_det).sum().to_numpy()
+        detection_valid = np.isfinite(detection)
+        if not detection_valid.any():
+            return None
+        threshold = np.quantile(detection[detection_valid], 0.98)
+        exceed_times = pd.Series(times[detection >= threshold])
         events = self._build_simple_event_dates(exceed_times, strict_mode)
         if len(events) == 0:
             return None
