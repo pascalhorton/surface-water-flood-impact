@@ -28,9 +28,9 @@ EVENTS_PATH_SIMPLE_5MIN: 'path/to/events_cpc_5min_model_domain_2020_2024_simple.
 EVENTS_PATH_CLASSIC: 'path/to/events_cpc_model_domain_2005_2024_classic.parquet'
 
 # Path to the precipitation directory (hourly CombiPrecip netCDF files)
-DIR_PRECIP: ''
+DIR_PRECIP_HOURLY: ''
 
-# Path to the hourly CombiPrecip zarr store (built once from DIR_PRECIP by
+# Path to the hourly CombiPrecip zarr store (built once from DIR_PRECIP_HOURLY by
 # scripts/data_preparation/build_precip_hourly_zarr.py; needs ~10-15 GB of disk)
 PATH_PRECIP_HOURLY_ZARR: ''
 

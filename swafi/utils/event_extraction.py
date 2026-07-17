@@ -28,7 +28,7 @@ def _get_precipitation(precip_dataset, y_start, y_end, config):
     """Instantiate and open the precipitation source for the given dataset name."""
     if precip_dataset == 'hourly':
         cpc = CombiPrecip(y_start, y_end)
-        cpc.open_files(config.get('DIR_PRECIP'))
+        cpc.open_files(config.get('DIR_PRECIP_HOURLY'))
     elif precip_dataset == '5min':
         # Lazily opened zarr store: only the chunks covering the selected tile
         # are read from disk (the raw zips would require materialising the full

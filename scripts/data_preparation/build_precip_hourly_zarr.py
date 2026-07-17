@@ -3,7 +3,7 @@
 
 """
 Build the hourly CombiPrecip zarr store (one-time conversion of the netCDF
-files from DIR_PRECIP). The store replaces the former monthly pickle files:
+files from DIR_PRECIP_HOURLY). The store replaces the former monthly pickle files:
 extraction, statistics and training read small chunks from it lazily.
 
 The build is resumable: rerun the script to continue after an interruption.

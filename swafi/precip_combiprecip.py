@@ -53,7 +53,7 @@ class CombiPrecip(PrecipitationArchive):
         if data_path:
             self.data_path = data_path
         if not self.data_path:
-            self.data_path = config.get('DIR_PRECIP')
+            self.data_path = config.get('DIR_PRECIP_HOURLY')
         if not self.data_path:
             raise FileNotFoundError("The data path was not provided.")
         self.resolution = resolution
@@ -137,7 +137,7 @@ class CombiPrecip(PrecipitationArchive):
             The path of the zarr store to create/complete. Defaults to the
             PATH_PRECIP_HOURLY_ZARR config entry.
         data_path: str|None
-            The path to the source netCDF files. Defaults to the DIR_PRECIP
+            The path to the source netCDF files. Defaults to the DIR_PRECIP_HOURLY
             config entry.
         margin: float
             The margin [m] added around the CID domain extent (default: 5000).
