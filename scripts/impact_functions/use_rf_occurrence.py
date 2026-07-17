@@ -31,7 +31,13 @@ def main():
     assert options.is_ok()
     assert options.event_method in ['simple', 'classic'], "Invalid event method."
 
-    rf_model = pickle.load(open(MODEL, "rb"))
+    payload = pickle.load(open(MODEL, "rb"))
+    if isinstance(payload, dict):
+        rf_model = payload['model']
+        saved_features = payload.get('features', None)
+    else:  # Legacy format: bare sklearn model, without the feature list
+        rf_model = payload
+        saved_features = None
 
     year_start = config.get('YEAR_START_TEST')
     year_end = config.get('YEAR_END_TEST')
@@ -56,8 +62,27 @@ def main():
 
     rf = ImpactRandomForest(options)
     rf.set_model(rf_model)
+    # Align the default event features with the loaded events: sub-hourly
+    # features (5-min dataset) are only included when present in the events.
+    rf.update_potential_features(events.columns)
     rf.select_features(rf.options.replace_simple_features)
     features = rf.get_all_features(rf.options.simple_feature_classes)
+
+    if saved_features is not None:
+        assert rf.features == saved_features, (
+            f"Feature mismatch between saved model and current options.\n"
+            f"  Saved:   {saved_features}\n"
+            f"  Current: {rf.features}"
+        )
+
+    # Legacy models carry no feature list: at least check the feature count
+    n_features_model = getattr(rf_model, 'n_features_in_', None)
+    if n_features_model is not None and n_features_model != len(rf.features):
+        raise ValueError(
+            f"The loaded model expects {n_features_model} features, but the "
+            f"current setup provides {len(rf.features)}: {rf.features}. Check "
+            f"that the precipitation dataset and feature options match the "
+            f"ones used for training.")
 
     writer = GridPredictionWriter(ds_pred, domain)
     writer.mask_outside_domain()

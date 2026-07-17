@@ -68,14 +68,21 @@ class ImpactRandomForest(Impact):
 
         filename = f'{dir_output}/{base_name}_{self.options.run_name}.pkl'
 
+        payload = {
+            'model': self.model,
+            'features': self.features,
+        }
+
         with open(filename, 'wb') as f:
-            pickle.dump(self.model, f)
+            pickle.dump(payload, f)
 
         logger.info("Model saved: %s", filename)
 
     def load_model(self, dir_output, base_name):
         """
-        Load the model.
+        Load the model. Supports both the payload format (dict with 'model'
+        and 'features') and the legacy format (bare sklearn model, without the
+        feature list).
 
         Parameters
         ----------
@@ -87,7 +94,19 @@ class ImpactRandomForest(Impact):
         filename = f'{dir_output}/{base_name}_{self.options.run_name}.pkl'
 
         with open(filename, 'rb') as f:
-            self.model = pickle.load(f)
+            payload = pickle.load(f)
+
+        if isinstance(payload, dict):
+            self.model = payload['model']
+            self.features = payload.get('features', [])
+        else:  # Legacy format: bare sklearn model
+            logger.warning(
+                "Legacy model file without feature list: %s. The features "
+                "cannot be checked against the current options; retrain to "
+                "save the payload format.", filename)
+            self.model = payload
+
+        logger.info("Model loaded: %s", filename)
 
         logger.info("Model loaded: %s", filename)
 

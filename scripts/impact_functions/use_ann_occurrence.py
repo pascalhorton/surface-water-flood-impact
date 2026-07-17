@@ -80,6 +80,9 @@ def main():
     ann.set_model(ann_model)
     features = None
     if ann.options.use_static_attributes or ann.options.use_event_attributes:
+        # Align the default event features with the loaded events: sub-hourly
+        # features (5-min dataset) are only included when present in the events.
+        ann.update_potential_features(events.columns)
         ann.select_features(ann.options.replace_simple_features)
         features = ann.get_all_features(ann.options.simple_feature_classes)
 

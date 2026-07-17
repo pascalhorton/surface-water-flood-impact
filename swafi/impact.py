@@ -61,6 +61,23 @@ class Impact:
         events_columns = events.events.columns if events is not None else []
         self._define_potential_features(events_columns)
 
+    def update_potential_features(self, events_columns):
+        """
+        Re-derive the default tabular features from the given events columns.
+
+        Needed when the model was constructed without events (e.g. in the
+        inference scripts): the sub-hourly event features (p_10min_q, ...) are
+        only part of the defaults when present in the events, so the defaults
+        must be re-aligned with the events actually used before selecting
+        features.
+
+        Parameters
+        ----------
+        events_columns: list|pd.Index
+            The column names of the events dataframe.
+        """
+        self._define_potential_features(events_columns)
+
     def select_features(self, features):
         """
         Select the features to use for the model. The features are selected by

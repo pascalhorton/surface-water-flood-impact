@@ -62,6 +62,9 @@ def main():
     lr.model = lr_model
     lr.x_mean = lr_mean
     lr.x_std = lr_std
+    # Align the default event features with the loaded events: sub-hourly
+    # features (5-min dataset) are only included when present in the events.
+    lr.update_potential_features(events.columns)
     lr.select_features(lr.options.replace_simple_features)
     features = lr.get_all_features(lr.options.simple_feature_classes)
 
