@@ -20,7 +20,7 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
                  mean_precip=None, std_precip=None, min_static=None,
                  max_static=None, q99_precip=None,
                  mean_dem=None, std_dem=None, min_dem=None, max_dem=None,
-                 batch_pos_ratio=None, debug=False):
+                 batch_pos_ratio=None, log_exposure=None, debug=False):
         """
         event_props: np.array
             The event properties (2D; dates and coordinates).
@@ -93,6 +93,7 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
                          min_static=min_static,
                          max_static=max_static,
                          batch_pos_ratio=batch_pos_ratio,
+                         log_exposure=log_exposure,
                          debug=debug)
         self.time_dim_size = None
         self.precip_window_size = precip_window_size
@@ -222,6 +223,11 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
         x_3d = None
         x_static = None
 
+        # Exposure offset for the Poisson head (last model input when present)
+        offset = None
+        if self.log_exposure is not None:
+            offset = self.log_exposure[idxs].reshape(-1, 1).astype('float32')
+
         # Select the 3D data
         if self.X_precip is not None:
             pixels_nb = int(self.precip_window_size / self.precip_resolution)
@@ -246,6 +252,8 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
                 x_3d = np.expand_dims(x_3d, axis=-1)
 
             if self.X_static is None or self.X_static.shape[1] == 0:
+                if offset is not None:
+                    return (x_3d, offset), y
                 return x_3d, y
 
         # Select the static data
@@ -253,7 +261,12 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
             x_static = self.X_static[idxs, :]
 
             if self.X_precip is None:
+                if offset is not None:
+                    return (x_static, offset), y
                 return x_static, y
+
+        if offset is not None:
+            return (x_3d, x_static, offset), y
 
         return (x_3d, x_static), y
 

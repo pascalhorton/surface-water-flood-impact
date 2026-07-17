@@ -17,7 +17,8 @@ class ImpactDlDataGenerator(keras.utils.Sequence):
                  tmp_dir=None, transform_static='standardize',
                  transform_precip='normalize', log_transform_precip=True,
                  mean_static=None, std_static=None, min_static=None,
-                 max_static=None, batch_pos_ratio=None, debug=False):
+                 max_static=None, batch_pos_ratio=None, log_exposure=None,
+                 debug=False):
         """
         Data generator class.
         Template from:
@@ -55,6 +56,9 @@ class ImpactDlDataGenerator(keras.utils.Sequence):
             The min of the static data.
         max_static: np.array
             The max of the static data.
+        log_exposure: np.array|None
+            The log of the exposure (nb_contracts) per sample, used as an offset
+            input by the Poisson head. None when not using the Poisson head.
         debug: bool
             Whether to run in debug mode or not (print more messages).
         """
@@ -63,6 +67,7 @@ class ImpactDlDataGenerator(keras.utils.Sequence):
         self.tmp_dir = tmp_dir
         self.event_props = event_props
         self.y = y
+        self.log_exposure = log_exposure
         self.batch_size = batch_size
         self.shuffle = shuffle
         self.debug = debug

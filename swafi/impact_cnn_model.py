@@ -358,23 +358,39 @@ class ModelCnn(keras.models.Model):
                     )(x_skip)
                     x = keras.layers.Add(name=f'res_dense_{i}')([x, x_proj])
 
-        # Last activation — bias initialized to log-odds of class prior for faster convergence
-        output = keras.layers.Dense(
-            1,
-            activation=self.last_activation,
-            bias_initializer=keras.initializers.Constant(self.output_bias_init),
-            name='dense_last'
-        )(x)
+        inputs = []
+        if self.input_3d_size is not None:
+            inputs.append(input_3d)
+        if self.input_1d_size is not None:
+            inputs.append(input_1d)
+        if not inputs:
+            raise ValueError("At least one input size must be provided")
+
+        if getattr(self.options, 'use_poisson_head', False):
+            # Poisson head: lambda = exp(log_rate + log(nb_contracts)), so the
+            # exposure enters as an additive offset in log space.
+            log_rate = keras.layers.Dense(
+                1,
+                activation='linear',
+                bias_initializer=keras.initializers.Constant(self.output_bias_init),
+                name='dense_last'
+            )(x)
+            input_offset = keras.layers.Input(shape=(1,), name='input_offset')
+            inputs.append(input_offset)
+            output = keras.layers.Add(name='add_offset')([log_rate, input_offset])
+            output = keras.layers.Activation('exponential', name='lambda')(output)
+        else:
+            # Last activation — bias initialized to log-odds of class prior for faster convergence
+            output = keras.layers.Dense(
+                1,
+                activation=self.last_activation,
+                bias_initializer=keras.initializers.Constant(self.output_bias_init),
+                name='dense_last'
+            )(x)
 
         # Build model
-        if self.input_3d_size is not None and self.input_1d_size is not None:
-            self.model = keras.models.Model(inputs=[input_3d, input_1d], outputs=output)
-        elif self.input_3d_size is None:
-            self.model = keras.models.Model(inputs=input_1d, outputs=output)
-        elif self.input_1d_size is None:
-            self.model = keras.models.Model(inputs=input_3d, outputs=output)
-        else:
-            raise ValueError("At least one input size must be provided")
+        self.model = keras.models.Model(
+            inputs=inputs if len(inputs) > 1 else inputs[0], outputs=output)
 
     def call(self, inputs, training=None, **kwargs):
         """

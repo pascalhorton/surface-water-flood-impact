@@ -115,6 +115,10 @@ class ImpactCnn(ImpactDl):
         y_fields = ['date', 'x', 'y', 'cid']
         event_props = df[y_fields].to_numpy()
 
+        log_exposure = None
+        if self.options.use_poisson_head:
+            log_exposure = np.log(df['nb_contracts'].to_numpy(dtype=float))
+
         model_stats = getattr(self, 'model', None)
         if model_stats is not None:
             mean_static = mean_static if mean_static is not None else getattr(model_stats, 'mean_static', None)
@@ -159,6 +163,7 @@ class ImpactCnn(ImpactDl):
             mean_precip=mean_precip,
             std_precip=std_precip,
             q99_precip=q99_precip,
+            log_exposure=log_exposure,
             debug=DEBUG
         )
 
@@ -192,6 +197,7 @@ class ImpactCnn(ImpactDl):
             transform_precip=self.options.transform_precip,
             log_transform_precip=self.options.log_transform_precip,
             batch_pos_ratio=self.options.batch_pos_ratio,
+            log_exposure=self.exposure_train,
             debug=DEBUG,
         )
 
@@ -236,6 +242,7 @@ class ImpactCnn(ImpactDl):
             std_dem=self.dg_train.std_dem,
             min_dem=self.dg_train.min_dem,
             max_dem=self.dg_train.max_dem,
+            log_exposure=self.exposure_valid,
             debug=DEBUG
         )
 
@@ -268,6 +275,7 @@ class ImpactCnn(ImpactDl):
             std_dem=self.dg_train.std_dem,
             min_dem=self.dg_train.min_dem,
             max_dem=self.dg_train.max_dem,
+            log_exposure=self.exposure_test,
             debug=DEBUG
         )
 
@@ -311,9 +319,14 @@ class ImpactCnn(ImpactDl):
         if count > 0:
             feature_class_sizes.append(count)
 
-        n_pos = np.sum(self.y_train > 0)
-        n_neg = np.sum(self.y_train == 0)
-        output_bias_init = float(np.log(n_pos / n_neg))
+        if self.options.use_poisson_head:
+            # Start at the base rate: log(total claims / total contracts)
+            total_exposure = np.sum(np.exp(self.exposure_train))
+            output_bias_init = float(np.log(np.sum(self.y_train) / total_exposure))
+        else:
+            n_pos = np.sum(self.y_train > 0)
+            n_neg = np.sum(self.y_train == 0)
+            output_bias_init = float(np.log(n_pos / n_neg))
 
         self.model = ModelCnn(
             task=self.target_type,

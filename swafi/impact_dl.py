@@ -199,9 +199,16 @@ class ImpactDl(Impact):
             # Get loss function
             loss_fn = self._get_loss_function()
 
-            # Create instances of ROC-AUC and PR-AUC metrics to track during training
-            roc_auc = keras.metrics.AUC(name='ROC_AUC', curve='ROC')
-            pr_auc = keras.metrics.AUC(name='PR_AUC', curve='PR')
+            # Create instances of ROC-AUC and PR-AUC metrics to track during training.
+            # With the Poisson head, the model outputs a rate; the metrics then
+            # operate on P(>=1) = 1 - exp(-rate) and binarized counts.
+            from_rate = getattr(self.options, 'use_poisson_head', False)
+            if from_rate:
+                roc_auc = RateAUC(name='ROC_AUC', curve='ROC')
+                pr_auc = RateAUC(name='PR_AUC', curve='PR')
+            else:
+                roc_auc = keras.metrics.AUC(name='ROC_AUC', curve='ROC')
+                pr_auc = keras.metrics.AUC(name='PR_AUC', curve='PR')
 
             # Use class-prior-based CSI threshold so that early learning is visible
             n_pos_train = int(np.sum(self.y_train > 0))
@@ -214,7 +221,8 @@ class ImpactDl(Impact):
             self.model.compile(
                 loss=loss_fn,
                 optimizer=optimizer,
-                metrics=[CriticalSuccessIndex(threshold=csi_threshold), F1Score(), roc_auc, pr_auc],
+                metrics=[CriticalSuccessIndex(threshold=csi_threshold, from_rate=from_rate),
+                         F1Score(from_rate=from_rate), roc_auc, pr_auc],
                 run_eagerly=DEBUG,  # Set to True for debugging purposes
                 steps_per_execution=self.options.steps_per_execution,
                 jit_compile=self.options.jit_compile,
@@ -310,6 +318,23 @@ class ImpactDl(Impact):
             tf.random.set_seed(self.options.random_state)
             keras.utils.set_random_seed(self.options.random_state)
 
+    def _predictions_to_proba(self, y_pred):
+        """
+        Convert raw model outputs to occurrence probabilities. With the Poisson
+        head, the model outputs a rate: P(>=1) = 1 - exp(-rate). No-op otherwise.
+        """
+        if getattr(self.options, 'use_poisson_head', False):
+            return 1.0 - np.exp(-y_pred)
+        return y_pred
+
+    def _obs_to_binary(self, y_obs):
+        """
+        Binarize observed claim counts when using the Poisson head. No-op otherwise.
+        """
+        if getattr(self.options, 'use_poisson_head', False):
+            return (np.asarray(y_obs) > 0).astype(int)
+        return y_obs
+
     def _assess_model_dg(self, dg, period_name, df_res):
         """
         Assess the model on a single period.
@@ -338,8 +363,8 @@ class ImpactDl(Impact):
         dg.batch_size = batch_size_orig
 
         # Concatenate predictions and obs from all batches
-        y_pred = np.concatenate(all_pred, axis=0)
-        y_obs = np.concatenate(all_obs, axis=0)
+        y_pred = self._predictions_to_proba(np.concatenate(all_pred, axis=0))
+        y_obs = self._obs_to_binary(np.concatenate(all_obs, axis=0))
 
         logger.info("\nSplit: %s", period_name)
 
@@ -407,8 +432,8 @@ class ImpactDl(Impact):
         dg.batch_size = batch_size_orig
 
         # Concatenate predictions and obs from all batches
-        y_pred = np.concatenate(all_pred, axis=0)
-        y_obs = np.concatenate(all_obs, axis=0)
+        y_pred = self._predictions_to_proba(np.concatenate(all_pred, axis=0))
+        y_obs = self._obs_to_binary(np.concatenate(all_obs, axis=0))
 
         # Compute the score
         thr = self.decision_threshold
@@ -427,6 +452,17 @@ class ImpactDl(Impact):
         -------
         The loss function.
         """
+        if getattr(self.options, 'use_poisson_head', False):
+            logger.info("Using Poisson NLL loss (exposure offset); "
+                        "--loss-function '%s' is ignored.",
+                        self.options.loss_function)
+            if self.factor_neg_reduction != 1:
+                logger.warning(
+                    "factor_neg_reduction=%s subsamples negatives, which inflates "
+                    "the predicted rates; use 1 for calibrated rates.",
+                    self.factor_neg_reduction)
+            return keras.losses.Poisson()
+
         if self.target_type == 'occurrence':
             # Ensure class weights are floats
             class_weight = {k: float(v) for k, v in self.class_weight.items()}
@@ -629,8 +665,8 @@ class ImpactDl(Impact):
             all_pred.append(y_pred_batch)
         dg.batch_size = batch_size_orig
 
-        y_pred = np.concatenate(all_pred, axis=0)
-        y_obs = np.concatenate(all_obs, axis=0).astype(int)
+        y_pred = self._predictions_to_proba(np.concatenate(all_pred, axis=0))
+        y_obs = self._obs_to_binary(np.concatenate(all_obs, axis=0)).astype(int)
 
         # Edge cases
         n_pos = int(np.sum(y_obs))
@@ -1127,10 +1163,14 @@ class BCEJaccardLoss(keras.losses.Loss):
 class CriticalSuccessIndex(keras.metrics.Metric):
     """
     CSI (Critical Success Index) metric accumulating TP/FP/FN.
+
+    With from_rate=True, y_pred is a Poisson rate converted to P(>=1) and
+    y_true holds counts that are binarized before thresholding.
     """
-    def __init__(self, threshold=0.5, name='csi', dtype=tf.float32):
+    def __init__(self, threshold=0.5, from_rate=False, name='csi', dtype=tf.float32):
         super().__init__(name=name)
         self.threshold = float(threshold)
+        self.from_rate = bool(from_rate)
         self.tp = self.add_weight(name='tp', shape=(), initializer='zeros', dtype=dtype)
         self.fp = self.add_weight(name='fp', shape=(), initializer='zeros', dtype=dtype)
         self.fn = self.add_weight(name='fn', shape=(), initializer='zeros', dtype=dtype)
@@ -1143,6 +1183,10 @@ class CriticalSuccessIndex(keras.metrics.Metric):
 
         y_true = tf.reshape(tf.convert_to_tensor(y_true), [-1])
         y_pred = tf.reshape(tf.convert_to_tensor(y_pred), [-1])
+
+        if self.from_rate:
+            y_pred = 1.0 - tf.exp(-y_pred)
+            y_true = tf.cast(y_true > 0, self.dtype)
 
         y_pred_bin = tf.cast(tf.greater_equal(y_pred, self.threshold), self.dtype)
 
@@ -1175,6 +1219,7 @@ class CriticalSuccessIndex(keras.metrics.Metric):
         config = super().get_config()
         config.update({
             "threshold": self.threshold,
+            "from_rate": self.from_rate,
         })
         return config
 
@@ -1183,10 +1228,14 @@ class CriticalSuccessIndex(keras.metrics.Metric):
 class F1Score(keras.metrics.Metric):
     """
     F1 Score metric accumulating TP/FP/FN.
+
+    With from_rate=True, y_pred is a Poisson rate converted to P(>=1) and
+    y_true holds counts that are binarized before thresholding.
     """
-    def __init__(self, threshold=0.5, name='F1', dtype=tf.float32):
+    def __init__(self, threshold=0.5, from_rate=False, name='F1', dtype=tf.float32):
         super().__init__(name=name)
         self.threshold = float(threshold)
+        self.from_rate = bool(from_rate)
         self.tp = self.add_weight(name='tp', shape=(), initializer='zeros', dtype=dtype)
         self.fp = self.add_weight(name='fp', shape=(), initializer='zeros', dtype=dtype)
         self.fn = self.add_weight(name='fn', shape=(), initializer='zeros', dtype=dtype)
@@ -1199,6 +1248,10 @@ class F1Score(keras.metrics.Metric):
 
         y_true = tf.reshape(tf.convert_to_tensor(y_true), [-1])
         y_pred = tf.reshape(tf.convert_to_tensor(y_pred), [-1])
+
+        if self.from_rate:
+            y_pred = 1.0 - tf.exp(-y_pred)
+            y_true = tf.cast(y_true > 0, self.dtype)
 
         y_pred_bin = tf.cast(tf.greater_equal(y_pred, self.threshold), self.dtype)
 
@@ -1231,8 +1284,22 @@ class F1Score(keras.metrics.Metric):
         config = super().get_config()
         config.update({
             "threshold": self.threshold,
+            "from_rate": self.from_rate,
         })
         return config
+
+
+@tf.keras.utils.register_keras_serializable()
+class RateAUC(keras.metrics.AUC):
+    """
+    AUC metric for the Poisson head: converts the predicted rate to
+    P(>=1) = 1 - exp(-rate) and binarizes the observed counts.
+    """
+
+    def update_state(self, y_true, y_pred, sample_weight=None):
+        y_pred = 1.0 - tf.exp(-tf.cast(y_pred, tf.float32))
+        y_true = tf.cast(tf.cast(y_true, tf.float32) > 0, tf.float32)
+        return super().update_state(y_true, y_pred, sample_weight=sample_weight)
 
 
 @tf.keras.utils.register_keras_serializable()

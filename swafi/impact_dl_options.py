@@ -54,6 +54,9 @@ class ImpactDlOptions(ImpactBasicOptions):
         'cosine_decay_warmup', 'reduce_on_plateau'.
     lr_warmup_epochs: int
         Number of warmup epochs for 'cosine_decay_warmup'.
+    use_poisson_head: bool
+        Whether to predict a claim-count rate with log(nb_contracts) as exposure
+        offset (Poisson NLL on nb_claims) instead of an occurrence probability.
     jit_compile: bool
         Whether to enable XLA JIT compilation in Keras model.compile.
     use_mixed_precision: bool
@@ -96,6 +99,7 @@ class ImpactDlOptions(ImpactBasicOptions):
         self.lr_warmup_epochs = None
         self.early_stopping_metric = None
         self.loss_function = None
+        self.use_poisson_head = None
         self.jit_compile = False
         self.use_mixed_precision = False
 
@@ -234,6 +238,15 @@ class ImpactDlOptions(ImpactBasicOptions):
                  'focal_tversky (Focal Tversky Loss)'
         )
         self.parser.add_argument(
+            '--use-poisson-head',
+            action=argparse.BooleanOptionalAction,
+            default=False,
+            help='Predict a claim-count rate with log(nb_contracts) as exposure '
+                 'offset, trained with a Poisson NLL on nb_claims '
+                 '(--loss-function is then ignored). Occurrence probability is '
+                 'evaluated as 1 - exp(-rate).'
+        )
+        self.parser.add_argument(
             '--jit-compile',
             action=argparse.BooleanOptionalAction,
             default=True,
@@ -347,6 +360,7 @@ class ImpactDlOptions(ImpactBasicOptions):
         self.lr_warmup_epochs = args.lr_warmup_epochs
         self.early_stopping_metric = args.early_stopping_metric
         self.loss_function = args.loss_function
+        self.use_poisson_head = args.use_poisson_head
         self.jit_compile = args.jit_compile
         self.use_mixed_precision = args.use_mixed_precision
         self.dropout_rate_dense = args.dropout_rate_dense
@@ -467,6 +481,7 @@ class ImpactDlOptions(ImpactBasicOptions):
             logger.info("- log_transform_precip:  %s", self.log_transform_precip)
 
         logger.info("- loss_function:  %s", self.loss_function)
+        logger.info("- use_poisson_head:  %s", self.use_poisson_head)
         logger.info("- jit_compile:  %s", self.jit_compile)
         logger.info("- use_mixed_precision:  %s", self.use_mixed_precision)
         logger.info("- batch_size:  %s", self.batch_size)
@@ -519,6 +534,10 @@ class ImpactDlOptions(ImpactBasicOptions):
         assert self.optimizer_name in ['adam', 'adamw'], "optimizer_name must be 'adam' or 'adamw'"
         assert self.early_stopping_metric in ['val_csi', 'val_ROC_AUC', 'val_PR_AUC'], \
             "early_stopping_metric must be 'val_csi', 'val_ROC_AUC', or 'val_PR_AUC'"
+        if self.use_poisson_head is None:
+            # Options deserialized from models saved before this flag existed
+            self.use_poisson_head = False
+        assert isinstance(self.use_poisson_head, bool), "use_poisson_head is not set"
         assert isinstance(self.jit_compile, bool), "jit_compile is not set"
         assert isinstance(self.use_mixed_precision, bool), "use_mixed_precision is not set"
         assert self.dropout_rate_dense is not None, "dropout_rate_dense is not set"

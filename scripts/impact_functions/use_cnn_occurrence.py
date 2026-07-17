@@ -83,6 +83,9 @@ def main():
     cnn.set_precipitation(cpc)
     features = None
     if cnn.options.use_static_attributes or cnn.options.use_event_attributes:
+        # Align the default event features with the loaded events: sub-hourly
+        # features (5-min dataset) are only included when present in the events.
+        cnn.update_potential_features(events.columns)
         cnn.select_features(cnn.options.replace_simple_features)
         features = cnn.get_all_features(cnn.options.simple_feature_classes)
 
@@ -112,6 +115,8 @@ def main():
         event_cids, np.fromiter(predict_cids, dtype=np.int64)))[0]
     if len(idxs) > 0:
         y_pred = predict_events_in_chunks(cnn.model, dg, idxs, chunk_size=1024)
+        # Poisson head: rate -> P(>=1) = 1 - exp(-rate); no-op otherwise.
+        y_pred = cnn._predictions_to_proba(y_pred)
         writer.write_events(event_cids[idxs], dg.event_props[idxs, 0], y_pred)
 
     ds_pred.to_netcdf(output_path)

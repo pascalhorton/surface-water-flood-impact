@@ -45,6 +45,9 @@ class Impact:
         self.y_train = None
         self.y_test = None
         self.y_valid = None
+        self.exposure_train = None
+        self.exposure_valid = None
+        self.exposure_test = None
         self.features = []
         self.weights = None
         self.class_weight = None
@@ -463,6 +466,9 @@ class Impact:
         self.x_test = test_df[self.features].to_numpy()
 
         y_fields = ['target', 'date', 'x', 'y', 'cid']
+        use_poisson_head = getattr(self.options, 'use_poisson_head', False)
+        if use_poisson_head:
+            y_fields += ['nb_claims', 'nb_contracts']
         self.y_train = train_df[y_fields].to_numpy()
         self.y_valid = val_df[y_fields].to_numpy()
         self.y_test = test_df[y_fields].to_numpy()
@@ -475,13 +481,23 @@ class Impact:
         self.events_valid[:, 0] = pd.to_datetime(self.events_valid[:, 0])
         self.events_test[:, 0] = pd.to_datetime(self.events_test[:, 0])
 
-        val_y_train = self.y_train[:, 0].astype(float)
-        val_y_valid = self.y_valid[:, 0].astype(float)
-        val_y_test = self.y_test[:, 0].astype(float)
-        if self.target_type == 'occurrence':
-            val_y_train = val_y_train.astype(int)
-            val_y_valid = val_y_valid.astype(int)
-            val_y_test = val_y_test.astype(int)
+        if use_poisson_head:
+            # The response is the claim count; log(nb_contracts) is the exposure
+            # offset fed to the model as an extra input.
+            val_y_train = self.y_train[:, 5].astype(float).astype(int)
+            val_y_valid = self.y_valid[:, 5].astype(float).astype(int)
+            val_y_test = self.y_test[:, 5].astype(float).astype(int)
+            self.exposure_train = np.log(self.y_train[:, 6].astype(float))
+            self.exposure_valid = np.log(self.y_valid[:, 6].astype(float))
+            self.exposure_test = np.log(self.y_test[:, 6].astype(float))
+        else:
+            val_y_train = self.y_train[:, 0].astype(float)
+            val_y_valid = self.y_valid[:, 0].astype(float)
+            val_y_test = self.y_test[:, 0].astype(float)
+            if self.target_type == 'occurrence':
+                val_y_train = val_y_train.astype(int)
+                val_y_valid = val_y_valid.astype(int)
+                val_y_test = val_y_test.astype(int)
         self.y_train = val_y_train
         self.y_valid = val_y_valid
         self.y_test = val_y_test
@@ -749,6 +765,11 @@ class Impact:
                 self.tabular_features['event'] = [
                     'i_max_q', 'p_sum_q', 'duration', 'i_mean_q',
                     'api_q', 'nb_contracts']
+
+            if getattr(self.options, 'use_poisson_head', False):
+                # nb_contracts is the exposure offset; using it as a predictor
+                # too would be double-use.
+                self.tabular_features['event'].remove('nb_contracts')
 
         if self.options.use_static_attributes:
             if not self.options.use_all_static_attributes:
