@@ -16,11 +16,11 @@ from swafi.domain import Domain
 from swafi.impact_cnn import ImpactCnn
 from swafi.impact_cnn_options import ImpactCnnOptions
 from swafi.impact_dl import WeightedBinaryCrossEntropy, CriticalSuccessIndex
-from swafi.precip_combiprecip import CombiPrecip
 from swafi.utils.logging_setup import setup_logging
 from swafi.utils.use_common import (
     assess, get_contracts_number, get_damages, get_damages_xr,
-    get_events, create_prediction_dataset,
+    get_events, create_prediction_dataset, create_precipitation,
+    ensure_precip_dataset,
 )
 
 logger = logging.getLogger(__name__)
@@ -39,6 +39,8 @@ def main():
 
     options = cnn_model.options
     options.dataset = DATASET
+    # Before print_options(): both it and is_ok() read the precipitation dataset.
+    ensure_precip_dataset(options)
     options.print_options()
     assert options.is_ok()
     assert options.event_method in ['simple', 'classic'], "Invalid event method."
@@ -55,14 +57,17 @@ def main():
 
     year_start = config.get('YEAR_START_TEST')
     year_end = config.get('YEAR_END_TEST')
-    events = get_events(year_start, year_end, options.event_method)
+    events = get_events(year_start, year_end, options.event_method,
+                        precip_dataset=options.precip_dataset)
 
-    # Precipitation for CNN input, from the zarr store (PATH_PRECIP_HOURLY_ZARR)
-    cpc = CombiPrecip(year_start, year_end)
+    # Precipitation for CNN input, from the zarr store of the same dataset the
+    # model was trained on.
+    cpc = create_precipitation(options.precip_dataset, year_start, year_end)
 
     output_path = (
         Path(config.get('OUTPUT_DIR'))
-        / f'pred_cnn_{options.dataset}_{options.run_name}_{year_start}-{year_end}.nc'
+        / f'pred_cnn_{options.dataset}_{options.event_method}'
+          f'_{options.precip_dataset}_{options.run_name}_{year_start}-{year_end}.nc'
     )
 
     if output_path.exists():

@@ -15,7 +15,7 @@ from swafi.impact_cnn import ImpactCnn
 from swafi.utils.logging_setup import setup_logging
 from swafi.utils.use_common import (
     assess, get_contracts_number, get_damages, get_damages_xr,
-    get_events, create_prediction_dataset,
+    get_events, create_prediction_dataset, ensure_precip_dataset,
 )
 
 logger = logging.getLogger(__name__)
@@ -39,6 +39,8 @@ def main():
     options.dataset = DATASET
     options.event_method = EVENT_METHOD
     options.run_name = RUN_NAME
+    # Before print_options(): both it and is_ok() read the precipitation dataset.
+    ensure_precip_dataset(options)
     options.print_options()
     assert options.is_ok()
     assert options.event_method in ['simple', 'classic'], "Invalid event method."
@@ -55,9 +57,14 @@ def main():
 
     year_start = config.get('YEAR_START_TEST')
     year_end = config.get('YEAR_END_TEST')
-    events = get_events(year_start, year_end, options.event_method)
+    events = get_events(year_start, year_end, options.event_method,
+                        precip_dataset=options.precip_dataset)
 
-    output_path = Path(config.get('OUTPUT_DIR')) / f'pred_ann_{options.dataset}_{options.event_method}_{options.run_name}_{year_start}-{year_end}.nc'
+    output_path = (
+        Path(config.get('OUTPUT_DIR'))
+        / f'pred_ann_{options.dataset}_{options.event_method}'
+          f'_{options.precip_dataset}_{options.run_name}_{year_start}-{year_end}.nc'
+    )
 
     if output_path.exists():
         if DO_ASSESS:

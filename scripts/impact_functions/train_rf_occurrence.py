@@ -34,8 +34,8 @@ def main():
     assert options.is_ok()
 
     # Load events
-    events_filename = f'events_{options.dataset}_with_target_{options.event_file_label}_{options.event_method}.pickle'
-    events = load_events_from_pickle(filename=events_filename)
+    events = load_events_from_pickle(filename=options.get_events_filename())
+    events.check_precip_dataset(options.precip_dataset)
 
     if not options.optimize_with_optuna:
         rf = _setup_model(options, events)
@@ -44,8 +44,10 @@ def main():
         rf.plot_feature_importance(tag='feature_importance_' + rf.options.run_name,
                                    dir_output=config.get('OUTPUT_DIR'))
         if SAVE_MODEL:
-            rf.save_model(dir_output=config.get('OUTPUT_DIR'),
-                          base_name=f'model_rf_{options.dataset}_{options.event_method}')
+            rf.save_model(
+                dir_output=config.get('OUTPUT_DIR'),
+                base_name=f'model_rf_{options.dataset}_{options.event_method}'
+                          f'_{options.precip_dataset}')
             logger.info("Model saved in %s", config.get('OUTPUT_DIR'))
 
     else:

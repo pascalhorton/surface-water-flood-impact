@@ -29,8 +29,8 @@ def main():
     options.print_options()
     assert options.is_ok()
 
-    events_filename = f'events_{options.dataset}_with_target_{options.event_file_label}.pickle'
-    events = load_events_from_pickle(filename=events_filename)
+    events = load_events_from_pickle(filename=options.get_events_filename())
+    events.check_precip_dataset(options.precip_dataset)
 
     options.print_options()
 
@@ -53,8 +53,11 @@ def main():
         lr.assess_model_on_all_periods(save_results=True, file_tag=file_tag)
 
         if SAVE_MODEL:
-            lr.save_model(dir_output=config.get('OUTPUT_DIR'),
-                          base_name=f'model_lr_{options.dataset}_{options.event_file_label}_wd_{weight_denominator}')
+            lr.save_model(
+                dir_output=config.get('OUTPUT_DIR'),
+                base_name=f'model_lr_{options.dataset}_{options.event_file_label}'
+                          f'_{options.event_method}_{options.precip_dataset}'
+                          f'_wd_{weight_denominator}')
             logger.info("Model saved in %s", config.get('OUTPUT_DIR'))
 
 

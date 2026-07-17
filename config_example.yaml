@@ -24,7 +24,7 @@ DIR_CLAIMS_GVZ: ''
 # dataset (the simple method exists for hourly and 5-min precipitation; the
 # classic method relies on hourly data by definition)
 EVENTS_PATH_SIMPLE_HOURLY: 'path/to/events_cpc_hourly_model_domain_2005_2024_simple_det1h.parquet'
-EVENTS_PATH_SIMPLE_5MIN: 'path/to/events_cpc_5min_model_domain_2020_2024_simple_det1h.parquet'
+EVENTS_PATH_SIMPLE_5MIN: 'path/to/events_cpc_5min_model_domain_2005_2024_simple_det1h.parquet'
 EVENTS_PATH_CLASSIC: 'path/to/events_cpc_model_domain_2005_2024_classic.parquet'
 
 # Path to the precipitation directory (hourly CombiPrecip netCDF files)

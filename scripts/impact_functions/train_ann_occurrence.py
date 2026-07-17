@@ -41,8 +41,8 @@ def main():
         keras.utils.set_random_seed(options.random_state)
 
     # Load events
-    events_filename = f'events_{options.dataset}_with_target_{options.event_file_label}.pickle'
-    events = load_events_from_pickle(filename=events_filename)
+    events = load_events_from_pickle(filename=options.get_events_filename())
+    events.check_precip_dataset(options.precip_dataset)
 
     if not options.optimize_with_optuna:
         ann = _setup_model(options, events)

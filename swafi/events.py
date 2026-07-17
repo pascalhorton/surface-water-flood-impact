@@ -459,6 +459,52 @@ class Events:
         self.events.insert(0, 'eid', ids)
 
 
+def get_events_filename(dataset, event_file_label, event_method,
+                        precip_dataset='hourly', extension='.pickle'):
+    """
+    Compose the name of the events file holding the target values.
+
+    Single source of truth for that name: it is used both where the file is
+    written (the claims-events linkage) and where it is read back (the training
+    and assessment scripts). The name carries the extraction method and, for the
+    simple method, the precipitation dataset the events were extracted from. The
+    classic method relies on hourly data by definition and is not tagged.
+
+    Parameters
+    ----------
+    dataset: str
+        The damage dataset ('mobiliar' or 'gvz').
+    event_file_label: str
+        The event file label (e.g. 'default_occurrence').
+    event_method: str
+        The event extraction method ('simple' or 'classic').
+    precip_dataset: str
+        The precipitation dataset the events were extracted from ('hourly' or
+        '5min'). Only tagged for the simple method.
+    extension: str
+        The file extension to append (e.g. '.pickle' or '.csv'). Pass '' to get
+        the base name.
+
+    Returns
+    -------
+    str
+        The events filename.
+    """
+    if event_method not in ['simple', 'classic']:
+        raise ValueError(
+            f"Invalid event method: {event_method}. Expected 'simple' or "
+            f"'classic' (use --event-method to set it).")
+    if precip_dataset not in ['hourly', '5min']:
+        raise ValueError(f"Unknown precipitation dataset: {precip_dataset}")
+    if event_method == 'classic' and precip_dataset != 'hourly':
+        raise ValueError("The classic method relies on hourly data.")
+
+    precip_suffix = f'_{precip_dataset}' if event_method == 'simple' else ''
+
+    return (f'events_{dataset}_with_target_{event_file_label}_'
+            f'{event_method}{precip_suffix}{extension}')
+
+
 def load_events_from_pickle(filename='events.pickle'):
     """
     Load the events from a pickle file.

@@ -32,12 +32,14 @@ def main():
 
     year_start = config.get('YEAR_START_TEST')
     year_end = config.get('YEAR_END_TEST')
-    events = get_events(year_start, year_end, options.event_method)
+    events = get_events(year_start, year_end, options.event_method,
+                        precip_dataset=options.precip_dataset)
 
     for method in ['union', 'intersection']:
         output_path = (
             Path(config.get('OUTPUT_DIR'))
-            / f'pred_thr_{options.dataset}_{method}_{year_start}-{year_end}.nc'
+            / f'pred_thr_{options.dataset}_{options.event_method}'
+              f'_{options.precip_dataset}_{method}_{year_start}-{year_end}.nc'
         )
 
         logger.info("Processing %s...", method)

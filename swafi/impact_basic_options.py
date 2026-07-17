@@ -9,6 +9,8 @@ import logging
 import pandas as pd
 from typing import List
 
+from .events import get_events_filename
+
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +31,10 @@ class ImpactBasicOptions:
         The event file label (default: 'default_occurrence').
     event_method: str|None
         The event extraction method. Options: 'simple', 'classic'. Default: None.
+    precip_dataset: str
+        The precipitation dataset the events were extracted from. Options:
+        'hourly', '5min'. Default: 'hourly'. The classic event method relies on
+        hourly data by definition.
     target_type : str
         The target type. Options are: 'occurrence', 'damage_ratio'
     random_state: int|None
@@ -63,6 +69,7 @@ class ImpactBasicOptions:
         self.dataset = None
         self.event_file_label = None
         self.event_method = None
+        self.precip_dataset = None
         self.min_nb_claims = None
         self.target_type = None
         self.random_state = None
@@ -164,6 +171,12 @@ class ImpactBasicOptions:
             choices=['simple', 'classic'],
             help="The event extraction method ('simple' or 'classic').")
         self.parser.add_argument(
+            "--precip-dataset", type=str, default='hourly',
+            choices=['hourly', '5min'],
+            help="The precipitation dataset the events were extracted from "
+                 "('hourly' or '5min'). The classic event method relies on "
+                 "hourly data.")
+        self.parser.add_argument(
             '--min-nb-claims', type=int, default=1,
             help='The minimum number of claims for an event to be considered.')
         self.parser.add_argument(
@@ -221,6 +234,7 @@ class ImpactBasicOptions:
         self.dataset = args.dataset
         self.event_file_label = args.event_file_label
         self.event_method = args.event_method
+        self.precip_dataset = args.precip_dataset
         self.min_nb_claims = args.min_nb_claims
         self.target_type = args.target_type
         self.random_state = args.random_state
@@ -260,6 +274,7 @@ class ImpactBasicOptions:
         logger.info("- dataset:  %s", self.dataset)
         logger.info("- event_file_label:  %s", self.event_file_label)
         logger.info("- event_method:  %s", self.event_method)
+        logger.info("- precip_dataset:  %s", self.precip_dataset)
         logger.info("- min_nb_claims:  %s", self.min_nb_claims)
         logger.info("- target_type:  %s", self.target_type)
         logger.info("- random_state:  %s", self.random_state)
@@ -276,6 +291,29 @@ class ImpactBasicOptions:
             logger.info("- optuna_study_name:  %s", self.optuna_study_name)
             logger.info("- optuna_trials_nb:  %s", self.optuna_trials_nb)
             logger.info("- optuna_random_sampler:  %s", self.optuna_random_sampler)
+
+    def get_events_filename(self, extension='.pickle'):
+        """
+        Get the name of the events file holding the target values, as written by
+        the claims-events linkage.
+
+        Parameters
+        ----------
+        extension : str
+            The file extension to append (e.g. '.pickle' or '.csv').
+
+        Returns
+        -------
+        str
+            The events filename.
+        """
+        return get_events_filename(
+            dataset=self.dataset,
+            event_file_label=self.event_file_label,
+            event_method=self.event_method,
+            precip_dataset=self.precip_dataset,
+            extension=extension,
+        )
 
     def get_attributes_tag(self):
         """
@@ -314,6 +352,10 @@ class ImpactBasicOptions:
             Whether the options are ok or not.
         """
         assert self.dataset in ['mobiliar', 'gvz'], "Invalid dataset"
+        assert self.precip_dataset in ['hourly', '5min'], "Invalid precip dataset"
+        if self.event_method == 'classic':
+            assert self.precip_dataset == 'hourly', \
+                "The classic method relies on hourly data"
         assert self.target_type in ['occurrence', 'damage_ratio'], "Invalid target type"
         assert self.random_state is None or isinstance(self.random_state, int), "Invalid random state"
         assert isinstance(self.use_event_attributes, bool), "Invalid use_event_attributes"

@@ -9,6 +9,8 @@ from swafi.config import Config
 from swafi.domain import Domain
 from swafi.damages_mobiliar import DamagesMobiliar
 from swafi.damages_gvz import DamagesGvz
+from swafi.precip_combiprecip import CombiPrecip
+from swafi.precip_combiprecip_5min import CombiPrecip5min
 from swafi.utils.event_extraction import extract_events_parallel
 from swafi.utils.verification import (
     compute_confusion_matrix,
@@ -102,6 +104,51 @@ def create_prediction_dataset(year_start, year_end, fill_value=0.0):
         coords={'time': time, 'x': xs, 'y': ys},
     )
     return domain, xs, ys, ds_pred
+
+
+def ensure_precip_dataset(options, default='hourly'):
+    """Backfill the precipitation dataset on options restored from a model.
+
+    Models trained before the precip_dataset option existed carry no such
+    attribute: assume the default rather than failing. Returns the value.
+
+    Parameters
+    ----------
+    options : ImpactBasicOptions
+        The options, typically restored from a saved model.
+    default : str
+        The dataset to assume when the option is absent.
+    """
+    if getattr(options, 'precip_dataset', None) is None:
+        logger.warning(
+            "The loaded model carries no precipitation dataset option: assuming "
+            "'%s'. Retrain the model or set options.precip_dataset explicitly if "
+            "it was trained on another dataset.", default)
+        options.precip_dataset = default
+
+    return options.precip_dataset
+
+
+def create_precipitation(precip_dataset, year_start, year_end):
+    """Instantiate the precipitation source for the given dataset name.
+
+    The data itself is read lazily from the corresponding zarr store.
+
+    Parameters
+    ----------
+    precip_dataset : str
+        The precipitation dataset ('hourly' or '5min').
+    year_start : int
+        The first year to cover.
+    year_end : int
+        The last year to cover.
+    """
+    if precip_dataset == 'hourly':
+        return CombiPrecip(year_start, year_end)
+    elif precip_dataset == '5min':
+        return CombiPrecip5min(year_start, year_end)
+
+    raise ValueError(f"Unknown precipitation dataset: {precip_dataset}")
 
 
 def get_events(year_start, year_end, event_method, simple_strict_mode=False,

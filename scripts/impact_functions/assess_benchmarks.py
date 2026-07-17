@@ -21,8 +21,8 @@ def main():
     assert options.is_ok()
 
     # Load events
-    events_filename = f'events_{options.dataset}_with_target_{options.event_file_label}.pickle'
-    events = load_events_from_pickle(filename=events_filename)
+    events = load_events_from_pickle(filename=options.get_events_filename())
+    events.check_precip_dataset(options.precip_dataset)
 
     # Create the impact function
     logger.info("Benchmark model (always false):")

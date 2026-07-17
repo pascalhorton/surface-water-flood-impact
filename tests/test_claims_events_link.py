@@ -10,7 +10,7 @@ import pandas as pd
 import pytest
 
 from swafi.damages import Damages
-from swafi.events import Events
+from swafi.events import Events, get_events_filename
 from swafi.utils.event_extraction import _stamp_precip_dataset
 
 
@@ -396,3 +396,30 @@ def test_check_precip_dataset():
         pd.DataFrame({'eid': [1, 2]}), '5min')
     with pytest.raises(ValueError, match="5min.*hourly"):
         events.check_precip_dataset('hourly')
+
+
+@pytest.mark.parametrize('method, precip, expected', [
+    ('simple', 'hourly', 'events_gvz_with_target_default_occurrence_simple_hourly'),
+    ('simple', '5min', 'events_gvz_with_target_default_occurrence_simple_5min'),
+    # The classic method relies on hourly data and is not tagged
+    ('classic', 'hourly', 'events_gvz_with_target_default_occurrence_classic'),
+])
+def test_get_events_filename(method, precip, expected):
+    assert get_events_filename(
+        'gvz', 'default_occurrence', method, precip) == expected + '.pickle'
+    assert get_events_filename(
+        'gvz', 'default_occurrence', method, precip,
+        extension='.csv') == expected + '.csv'
+    assert get_events_filename(
+        'gvz', 'default_occurrence', method, precip, extension='') == expected
+
+
+def test_get_events_filename_rejects_invalid_combinations():
+    with pytest.raises(ValueError, match="Invalid event method"):
+        get_events_filename('gvz', 'default_occurrence', None, 'hourly')
+
+    with pytest.raises(ValueError, match="Unknown precipitation dataset"):
+        get_events_filename('gvz', 'default_occurrence', 'simple', 'daily')
+
+    with pytest.raises(ValueError, match="classic method relies on hourly"):
+        get_events_filename('gvz', 'default_occurrence', 'classic', '5min')

@@ -15,7 +15,7 @@ import logging
 from swafi.config import Config
 from swafi.damages_mobiliar import DamagesMobiliar
 from swafi.damages_gvz import DamagesGvz
-from swafi.events import Events
+from swafi.events import Events, get_events_filename
 from swafi.utils.logging_setup import setup_logging
 from pathlib import Path
 
@@ -56,7 +56,9 @@ else:
     PRECIP_SUFFIX = ''
 EVENTS_TAG = f'{DATASET}_{METHOD}{PRECIP_SUFFIX}'
 TARGET_TYPE = 'occurrence'  # 'occurrence' or 'damage_ratio'
-LABEL_RESULTING_FILE = 'default_' + TARGET_TYPE + '_' + METHOD + PRECIP_SUFFIX
+# The method and precipitation dataset are appended by get_events_filename(),
+# which the impact scripts use to read the file back.
+LABEL_RESULTING_FILE = 'default_' + TARGET_TYPE
 SAVE_AS_CSV = True
 
 if DATASET == 'mobiliar':
@@ -114,7 +116,8 @@ def main():
     logger.info("Final number of events: %s", nb_events)
 
     # Save the events with target values to a pickle file
-    filename = f'events_{DATASET}_with_target_{LABEL_RESULTING_FILE}'
+    filename = get_events_filename(DATASET, LABEL_RESULTING_FILE, METHOD,
+                                   PRECIP_DATASET, extension='')
     events.save_to_pickle(filename=filename + '.pickle')
     if SAVE_AS_CSV:
         events.save_to_csv(filename=filename + '.csv')

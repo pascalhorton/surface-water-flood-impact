@@ -185,7 +185,11 @@ This script will:
 
 6. From the selection of events on step 3, assign the target value to the events based on the corresponding damages.
    All events not linked to damages are assigned a target value of 0.
-   The selected events are saved as pickle files with the name `events_{DATASET}_with_target_{LABEL_RESULTING_FILE}`.
+   The selected events are saved as pickle files with a name composed by `get_events_filename()`
+   (in `swafi/events.py`): `events_{DATASET}_with_target_{LABEL_RESULTING_FILE}_{METHOD}{PRECIP_SUFFIX}`,
+   where `PRECIP_SUFFIX` is `_hourly` or `_5min` for the simple method (the classic
+   method relies on hourly data and is not tagged). The impact scripts use the same
+   function to read the file back, via `--event-method` and `--precip-dataset`.
 
 The file resulting from this step is a pickle file with the events and the assigned target values.
 This file is needed to train or assess the impact functions.
@@ -231,11 +235,12 @@ These scripts are located in `scripts/impact_functions`.
 For example, the code for training the logistic regression model is:
 
 ```python
-from swafi.events import load_events_from_pickle
+from swafi.events import get_events_filename, load_events_from_pickle
 from swafi.impact_lr import ImpactLogisticRegression
 
 # Load the events with the target values
-events_filename = f'events_mobiliar_with_target_pluvial_occurrence.pickle'
+events_filename = get_events_filename(
+    'mobiliar', 'pluvial_occurrence', 'simple', 'hourly')
 events = load_events_from_pickle(filename=events_filename)
 
 # Create the impact function
