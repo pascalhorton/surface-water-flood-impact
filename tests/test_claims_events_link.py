@@ -7,9 +7,11 @@ from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from swafi.damages import Damages
 from swafi.events import Events
+from swafi.utils.event_extraction import _stamp_precip_dataset
 
 
 def _bare_damages():
@@ -363,3 +365,34 @@ def test_extract_claims_from_grids_matches_per_slice():
     assert new['date_claim'].tolist() == ref['date_claim'].tolist()
     assert new['mask_index'].tolist() == ref['mask_index'].tolist()
     assert new['A'].tolist() == ref['A'].tolist()
+
+
+def test_stamp_precip_dataset_roundtrips_through_parquet(tmp_path):
+    events = pd.DataFrame({'eid': [1, 2, 3], 'cid': [10, 20, 30]})
+    events = _stamp_precip_dataset(events, '5min')
+
+    assert isinstance(events['precip_dataset'].dtype, pd.CategoricalDtype)
+
+    path = tmp_path / 'events.parquet'
+    events.to_parquet(path)
+    reloaded = pd.read_parquet(path)
+    assert reloaded['precip_dataset'].unique().tolist() == ['5min']
+
+
+def test_check_precip_dataset():
+    events = Events(use_dump=False)
+
+    # Legacy file without the provenance column: warning only, no raise
+    events.events = pd.DataFrame({'eid': [1, 2]})
+    events.check_precip_dataset('hourly')
+
+    # Matching provenance: OK
+    events.events = _stamp_precip_dataset(
+        pd.DataFrame({'eid': [1, 2]}), 'hourly')
+    events.check_precip_dataset('hourly')
+
+    # Mismatch: raises with both names in the message
+    events.events = _stamp_precip_dataset(
+        pd.DataFrame({'eid': [1, 2]}), '5min')
+    with pytest.raises(ValueError, match="5min.*hourly"):
+        events.check_precip_dataset('hourly')

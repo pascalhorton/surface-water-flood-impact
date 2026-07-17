@@ -72,6 +72,29 @@ class Events:
         self._add_event_id()
         self._dump_object(f'events_{tag}.pickle')
 
+    def check_precip_dataset(self, expected):
+        """
+        Check that the loaded events were extracted from the expected
+        precipitation dataset (provenance column stamped at extraction).
+
+        Parameters
+        ----------
+        expected: str
+            The expected precipitation dataset (e.g. 'hourly' or '5min').
+        """
+        if 'precip_dataset' not in self.events.columns:
+            logger.warning("The events carry no 'precip_dataset' column (legacy "
+                           "file): cannot verify they are '%s' events.", expected)
+            return
+
+        found = set(self.events['precip_dataset'].unique().tolist())
+        if found != {expected}:
+            raise ValueError(
+                f"The loaded events were extracted from the {sorted(found)} "
+                f"precipitation dataset(s), but '{expected}' is expected. "
+                f"Check the events path / pickle tag.")
+        logger.info("Events provenance check passed: '%s' precipitation.", expected)
+
     def get_events_sample(self):
         """
         Get a small sample of the events dataframe.

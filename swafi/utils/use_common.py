@@ -104,15 +104,21 @@ def create_prediction_dataset(year_start, year_end, fill_value=0.0):
     return domain, xs, ys, ds_pred
 
 
-def get_events(year_start, year_end, event_method, simple_strict_mode=False, filter_size=None):
+def get_events(year_start, year_end, event_method, simple_strict_mode=False,
+               filter_size=None, precip_dataset='hourly'):
     """Return events DataFrame, loading from pickle cache or extracting in parallel."""
+    # The simple method exists for both precipitation datasets: name the cache
+    # explicitly; the classic method relies on hourly data (untagged).
+    precip_suffix = f'_{precip_dataset}' if event_method == 'simple' else ''
     events_path = (
         Path(config.get('TMP_DIR'))
-        / f'test_events_{event_method}_{year_start}-{year_end}.pickle'
+        / f'test_events_{event_method}{precip_suffix}_{year_start}-{year_end}.pickle'
     )
     if not events_path.exists():
         logger.info("Extracting events and saving to %s...", events_path)
-        events = extract_events_parallel(year_start, year_end, event_method, simple_strict_mode, filter_size)
+        events = extract_events_parallel(year_start, year_end, event_method,
+                                         simple_strict_mode, filter_size,
+                                         precip_dataset=precip_dataset)
         events.to_pickle(events_path)
     else:
         events = pd.read_pickle(events_path)

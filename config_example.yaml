@@ -20,8 +20,12 @@ DIR_CLAIMS_MOBILIAR: ''
 DIR_EXPOSURE_GVZ: ''
 DIR_CLAIMS_GVZ: ''
 
-# Path to the events parquet file
-EVENTS_PATH: 'path/to/prec_events_2005-2023_no_smoothing.parquet'
+# Paths to the events parquet files, per extraction method and precipitation
+# dataset (the simple method exists for hourly and 5-min precipitation; the
+# classic method relies on hourly data by definition)
+EVENTS_PATH_SIMPLE_HOURLY: 'path/to/events_cpc_model_domain_2005_2024_simple.parquet'
+EVENTS_PATH_SIMPLE_5MIN: 'path/to/events_cpc_5min_model_domain_2020_2024_simple.parquet'
+EVENTS_PATH_CLASSIC: 'path/to/events_cpc_model_domain_2005_2024_classic.parquet'
 
 # Path to the precipitation directory (hourly CombiPrecip netCDF files)
 DIR_PRECIP: ''
