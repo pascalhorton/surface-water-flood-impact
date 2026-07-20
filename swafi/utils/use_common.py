@@ -237,7 +237,7 @@ def create_precipitation(precip_dataset, year_start, year_end):
 
 
 def get_events(year_start, year_end, event_method,
-               filter_size=None, precip_dataset='hourly'):
+               filter_size=None, precip_dataset='hourly', detection_window_h=1.0):
     """Return events DataFrame, loading from pickle cache or extracting in parallel."""
     # The simple method exists for both precipitation datasets: name the cache
     # explicitly; the classic method relies on hourly data (untagged).
@@ -248,9 +248,9 @@ def get_events(year_start, year_end, event_method,
     )
     if not events_path.exists():
         logger.info("Extracting events and saving to %s...", events_path)
-        events = extract_events_parallel(year_start, year_end, event_method,
-                                         filter_size,
-                                         precip_dataset=precip_dataset)
+        events = extract_events_parallel(year_start, year_end, event_method, filter_size,
+                                         precip_dataset=precip_dataset,
+                                         detection_window_h=detection_window_h)
         events.to_pickle(events_path)
     else:
         events = pd.read_pickle(events_path)

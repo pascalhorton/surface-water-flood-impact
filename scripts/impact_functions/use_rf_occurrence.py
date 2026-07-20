@@ -50,12 +50,6 @@ def main():
           f'_{options.precip_dataset}_{year_start}-{year_end}.nc'
     )
 
-    if output_path.exists():
-        if DO_ASSESS:
-            assess(output_path, get_damages_xr(options.dataset, year_start, year_end),
-                   ignore_removed=True, relax_days=True, prob_threshold=0.5)
-        return
-
     damages, _ = get_damages(options.dataset, year_start, year_end)
     contracts_number = get_contracts_number(damages)
     domain, xs, ys, ds_pred = create_prediction_dataset(year_start, year_end)
