@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import average_precision_score, precision_recall_curve
 
 from .utils.verification import compute_confusion_matrix, print_classic_scores, \
     assess_roc_auc, store_classic_scores
@@ -51,6 +52,7 @@ class Impact:
         self.features = []
         self.weights = None
         self.class_weight = None
+        self.probability_threshold = 0.5
         self.x_mean = None
         self.x_std = None
 
@@ -542,6 +544,76 @@ class Impact:
         self.x_valid = (self.x_valid - self.x_mean) / self.x_std
         self.x_test = (self.x_test - self.x_mean) / self.x_std
 
+    def compute_average_precision(self, x, y):
+        """
+        Compute the average precision (area under the precision-recall curve) on
+        the given set. This is a threshold-free metric well suited to imbalanced
+        occurrence problems, making it a more stable objective for hyperparameter
+        optimization than the F1 score at a fixed threshold.
+
+        Parameters
+        ----------
+        x: np.array
+            The features.
+        y: np.array
+            The target.
+
+        Returns
+        -------
+        float
+            The average precision score.
+        """
+        if self.target_type != 'occurrence':
+            raise NotImplementedError(
+                "Average precision is only available for occurrence")
+
+        y_prob = self.model.predict_proba(x)[:, 1]
+        return average_precision_score(y, y_prob)
+
+    def tune_probability_threshold(self, x=None, y=None):
+        """
+        Find the decision threshold that maximizes the F1 score on the given set
+        (the validation set by default) and store it in
+        ``self.probability_threshold``. The threshold is subsequently used when
+        turning predicted probabilities into class labels (assessment, inference).
+
+        Parameters
+        ----------
+        x: np.array
+            The features. If None, the validation set is used.
+        y: np.array
+            The target. If None, the validation set is used.
+
+        Returns
+        -------
+        float
+            The selected probability threshold.
+        """
+        if self.target_type != 'occurrence':
+            raise NotImplementedError(
+                "Threshold tuning is only available for occurrence")
+
+        if x is None or y is None:
+            x, y = self.x_valid, self.y_valid
+
+        y_prob = self.model.predict_proba(x)[:, 1]
+
+        precision, recall, thresholds = precision_recall_curve(y, y_prob)
+        # precision/recall have one more element than thresholds (the last point
+        # corresponds to recall=0 with no threshold); drop it before scoring.
+        epsilon = 1e-7
+        f1 = 2 * precision[:-1] * recall[:-1] / (
+                precision[:-1] + recall[:-1] + epsilon)
+
+        best_idx = int(np.argmax(f1))
+        self.probability_threshold = float(thresholds[best_idx])
+
+        logger.info(
+            "Tuned probability threshold: %.4f (valid F1=%.4f)",
+            self.probability_threshold, f1[best_idx])
+
+        return self.probability_threshold
+
     def compute_balanced_class_weights(self, factor_neg_reduction=1):
         """
         Compute balanced the class weights.
@@ -699,8 +771,6 @@ class Impact:
         if self.model is None:
             raise ValueError("Model not defined")
 
-        y_pred = self.model.predict(x)
-
         logger.info("\nSplit: %s", period_name)
 
         df_tmp = pd.DataFrame(columns=df_res.columns)
@@ -708,13 +778,17 @@ class Impact:
 
         # Compute the scores
         if self.target_type == 'occurrence':
+            # Derive the class labels from the probabilities using the tuned
+            # decision threshold (default 0.5, i.e. equivalent to predict()).
+            y_pred_prob = self.model.predict_proba(x)[:, 1]
+            y_pred = (y_pred_prob >= self.probability_threshold).astype(int)
             tp, tn, fp, fn = compute_confusion_matrix(y, y_pred)
             print_classic_scores(tp, tn, fp, fn)
             store_classic_scores(tp, tn, fp, fn, df_tmp)
-            y_pred_prob = self.model.predict_proba(x)
-            roc = assess_roc_auc(y, y_pred_prob[:, 1])
+            roc = assess_roc_auc(y, y_pred_prob)
             df_tmp['ROC_AUC'] = [roc]
         else:
+            y_pred = self.model.predict(x)
             rmse = np.sqrt(np.mean((y - y_pred) ** 2))
             logger.info("RMSE: %s", rmse)
             df_tmp['RMSE'] = [rmse]

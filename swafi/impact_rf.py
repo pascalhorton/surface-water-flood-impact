@@ -40,8 +40,6 @@ class ImpactRandomForest(Impact):
     def __init__(self, options, events=None):
         super().__init__(options, events)
 
-        self.n_jobs = 5
-
     def copy(self):
         """
         Make a copy of the object.
@@ -71,6 +69,7 @@ class ImpactRandomForest(Impact):
         payload = {
             'model': self.model,
             'features': self.features,
+            'probability_threshold': self.probability_threshold,
         }
 
         with open(filename, 'wb') as f:
@@ -99,6 +98,7 @@ class ImpactRandomForest(Impact):
         if isinstance(payload, dict):
             self.model = payload['model']
             self.features = payload.get('features', [])
+            self.probability_threshold = payload.get('probability_threshold', 0.5)
         else:  # Legacy format: bare sklearn model
             logger.warning(
                 "Legacy model file without feature list: %s. The features "
@@ -108,11 +108,10 @@ class ImpactRandomForest(Impact):
 
         logger.info("Model loaded: %s", filename)
 
-        logger.info("Model loaded: %s", filename)
-
     def compute_f1_score(self, x_valid, y_valid):
         """
-        Compute the F1 score on the given set.
+        Compute the F1 score on the given set, using the tuned decision threshold
+        (default 0.5).
 
         Parameters
         ----------
@@ -128,9 +127,9 @@ class ImpactRandomForest(Impact):
         """
         epsilon = 1e-7  # a small constant to avoid division by zero
 
-        y_pred = self.model.predict(x_valid)
+        y_pred_prob = self.model.predict_proba(x_valid)[:, 1]
 
-        y_pred_class = (y_pred > 0.5).astype(int)
+        y_pred_class = (y_pred_prob >= self.probability_threshold).astype(int)
         tp, tn, fp, fn = compute_confusion_matrix(y_valid, y_pred_class)
         f1 = 2 * tp / (2 * tp + fp + fn + epsilon)
 
@@ -179,21 +178,23 @@ class ImpactRandomForest(Impact):
         if self.target_type == 'occurrence':
             self.model = RandomForestClassifier(
                 n_estimators=self.options.n_estimators,
+                criterion=self.options.criterion,
                 max_depth=self.options.max_depth,
                 min_samples_split=self.options.min_samples_split,
                 min_samples_leaf=self.options.min_samples_leaf,
                 max_features=self.options.max_features,
                 class_weight=self.class_weight,
                 random_state=self.random_state,
-                n_jobs=self.n_jobs)
+                n_jobs=self.options.n_jobs)
         elif self.target_type == 'damage_ratio':
             self.model = RandomForestRegressor(
                 n_estimators=self.options.n_estimators,
+                criterion=self.options.criterion,
                 max_depth=self.options.max_depth,
                 min_samples_split=self.options.min_samples_split,
                 min_samples_leaf=self.options.min_samples_leaf,
                 max_features=self.options.max_features,
                 random_state=self.random_state,
-                n_jobs=self.n_jobs)
+                n_jobs=self.options.n_jobs)
         else:
             raise ValueError(f"Unknown target type: {self.target_type}")

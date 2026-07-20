@@ -35,9 +35,11 @@ def main():
     if isinstance(payload, dict):
         rf_model = payload['model']
         saved_features = payload.get('features', None)
+        prob_threshold = payload.get('probability_threshold', 0.5)
     else:  # Legacy format: bare sklearn model, without the feature list
         rf_model = payload
         saved_features = None
+        prob_threshold = 0.5
 
     year_start = config.get('YEAR_START_TEST')
     year_end = config.get('YEAR_END_TEST')
@@ -111,7 +113,7 @@ def main():
 
     if DO_ASSESS:
         assess(output_path, get_damages_xr(options.dataset, year_start, year_end),
-               ignore_removed=True, relax_days=True, prob_threshold=0.5)
+               ignore_removed=True, relax_days=True, prob_threshold=prob_threshold)
 
 
 if __name__ == '__main__':
