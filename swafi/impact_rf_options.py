@@ -39,7 +39,15 @@ class ImpactRFOptions(ImpactBasicOptions):
         The minimum number of samples in a leaf.
     max_features: str
         The maximum number of features
+    n_jobs: int
+        The number of jobs to run in parallel (-1 uses all processors).
     """
+
+    # Valid split criteria per target type (sklearn RF classifier/regressor)
+    CLASSIFIER_CRITERIA = ['gini', 'log_loss', 'entropy']
+    REGRESSOR_CRITERIA = ['squared_error', 'absolute_error',
+                          'friedman_mse', 'poisson']
+
     def __init__(self):
         super().__init__()
         self._set_parser_rf_arguments()
@@ -54,6 +62,7 @@ class ImpactRFOptions(ImpactBasicOptions):
         self.min_samples_split = None
         self.min_samples_leaf = None
         self.max_features = None
+        self.n_jobs = None
 
     def copy(self):
         """
@@ -76,9 +85,11 @@ class ImpactRFOptions(ImpactBasicOptions):
             '--n-estimators', type=int, default=800,
             help='The number of estimators')
         self.parser.add_argument(
-            '--criterion', type=str, default='entropy',
-            help='The function to measure the quality of a split. Supported criteria are '
-                 '\'gini\', \'log_loss\', and \'entropy\'')
+            '--criterion', type=str, default=None,
+            help='The function to measure the quality of a split. For occurrence: '
+                 '\'gini\', \'log_loss\', \'entropy\' (default \'entropy\'). For '
+                 'damage_ratio: \'squared_error\', \'absolute_error\', '
+                 '\'friedman_mse\', \'poisson\' (default \'squared_error\')')
         self.parser.add_argument(
             '--max-depth', type=int, default=30,
             help='The maximum depth')
@@ -91,6 +102,9 @@ class ImpactRFOptions(ImpactBasicOptions):
         self.parser.add_argument(
             '--max-features', type=float, default=0.3,
             help='The maximum number of features')
+        self.parser.add_argument(
+            '--n-jobs', type=int, default=5,
+            help='The number of jobs to run in parallel (-1 uses all processors)')
 
     def parse_args(self):
         """
@@ -106,6 +120,12 @@ class ImpactRFOptions(ImpactBasicOptions):
         self.min_samples_split = args.min_samples_split
         self.min_samples_leaf = args.min_samples_leaf
         self.max_features = args.max_features
+        self.n_jobs = args.n_jobs
+
+        # Resolve the default criterion depending on the target type
+        if self.criterion is None:
+            self.criterion = ('entropy' if self.target_type == 'occurrence'
+                              else 'squared_error')
 
     def generate_for_optuna(self, trial, hp_to_optimize='default'):
         """
@@ -142,8 +162,10 @@ class ImpactRFOptions(ImpactBasicOptions):
             self.n_estimators = trial.suggest_int(
                 'n_estimators', 50, 1000)
         if 'criterion' in hp_to_optimize:
-            self.criterion = trial.suggest_categorical(
-                'criterion', ['gini', 'log_loss', 'entropy'])
+            criteria = (self.CLASSIFIER_CRITERIA
+                        if self.target_type == 'occurrence'
+                        else self.REGRESSOR_CRITERIA)
+            self.criterion = trial.suggest_categorical('criterion', criteria)
         if 'max_depth' in hp_to_optimize:
             self.max_depth = trial.suggest_int(
                 'max_depth', 5, 100)
@@ -182,6 +204,7 @@ class ImpactRFOptions(ImpactBasicOptions):
         logger.info("- min_samples_split:  %s", self.min_samples_split)
         logger.info("- min_samples_leaf:  %s", self.min_samples_leaf)
         logger.info("- max_features:  %s", self.max_features)
+        logger.info("- n_jobs:  %s", self.n_jobs)
 
         logger.info("-" * 80)
 
@@ -197,9 +220,13 @@ class ImpactRFOptions(ImpactBasicOptions):
         if not super().is_ok():
             return False
 
+        valid_criteria = (self.CLASSIFIER_CRITERIA
+                          if self.target_type == 'occurrence'
+                          else self.REGRESSOR_CRITERIA)
+
         assert self.weight_denominator > 0, "Invalid weight_denominator"
         assert self.n_estimators > 0, "Invalid n_estimators"
-        assert self.criterion in ['gini', 'log_loss', 'entropy'], "Invalid criterion"
+        assert self.criterion in valid_criteria, "Invalid criterion"
         assert self.min_samples_split > 0, "Invalid min_samples_split"
         assert self.min_samples_leaf > 0, "Invalid min_samples_leaf"
 

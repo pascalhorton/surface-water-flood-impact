@@ -40,6 +40,7 @@ def main():
     if not options.optimize_with_optuna:
         rf = _setup_model(options, events)
         rf.fit()
+        rf.tune_probability_threshold()
         rf.assess_model_on_all_periods(save_results=True, file_tag=f'rf_{rf.options.run_name}')
         rf.plot_feature_importance(tag='feature_importance_' + rf.options.run_name,
                                    dir_output=config.get('OUTPUT_DIR'))
@@ -111,8 +112,10 @@ def optimize_model_with_optuna(options, events, dir_plots=None):
         end_time = time.time()
         logger.info("Model fitting took %.2f seconds", end_time - start_time)
 
-        # Assess the model
-        score = rf_trial.compute_f1_score(rf_trial.x_valid, rf_trial.y_valid)
+        # Assess the model with a threshold-free metric (average precision),
+        # so the hyperparameter search is not tied to a fixed decision threshold.
+        score = rf_trial.compute_average_precision(
+            rf_trial.x_valid, rf_trial.y_valid)
 
         return score
 
