@@ -12,6 +12,7 @@ computed using the following criteria:
 """
 
 import logging
+import pickle
 from swafi.config import Config
 from swafi.damages_mobiliar import DamagesMobiliar
 from swafi.damages_gvz import DamagesGvz
@@ -149,7 +150,11 @@ def get_damages_linked_to_events():
             )
         else:
             raise ValueError(f"Unknown damage dataset: {DATASET}")
-        return damages, None
+        # Reload the list of events to remove that was saved alongside the
+        # linked damages (see below). Without it, the cached path would skip the
+        # removal and produce a different (polluted) events file than a fresh run.
+        events_to_remove = _load_events_to_remove(filename)
+        return damages, events_to_remove
 
     logger.info("Linking claims and events using method '%s'...", METHOD)
     if METHOD == 'classic':
@@ -191,7 +196,41 @@ def get_damages_linked_to_events():
     events_to_remove = list(set(events_to_remove))
     logger.info("Total number of events to remove: %s", len(events_to_remove))
 
+    # Persist the list next to the linked damages pickle so that a cached re-run
+    # applies the exact same removal (the damages pickle alone does not carry it).
+    _save_events_to_remove(filename, events_to_remove)
+
     return damages, events_to_remove
+
+
+def _events_to_remove_path(damages_filename):
+    """Path of the sidecar file holding the events-to-remove list, derived from
+    the linked-damages pickle name."""
+    sidecar = damages_filename.replace('damages_', 'events_to_remove_', 1)
+    return Path(PICKLES_DIR + '/' + sidecar)
+
+
+def _save_events_to_remove(damages_filename, events_to_remove):
+    path = _events_to_remove_path(damages_filename)
+    with open(path, 'wb') as f:
+        pickle.dump(events_to_remove, f)
+    logger.info("Events to remove saved to %s", path)
+
+
+def _load_events_to_remove(damages_filename):
+    """Load the events-to-remove list saved alongside the linked damages. Returns
+    None for legacy linkages saved before this list was persisted (the caller
+    then warns that the removal cannot be reapplied)."""
+    path = _events_to_remove_path(damages_filename)
+    if not path.exists():
+        logger.warning("No events-to-remove sidecar found at %s (legacy linkage). "
+                       "Delete the linked damages pickle to recompute the link.", path)
+        return None
+    with open(path, 'rb') as f:
+        events_to_remove = pickle.load(f)
+    logger.info("Events to remove reloaded from %s (%s events)",
+                path, len(events_to_remove))
+    return events_to_remove
 
 
 if __name__ == '__main__':

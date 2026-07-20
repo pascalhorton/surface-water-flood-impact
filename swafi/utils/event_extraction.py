@@ -40,8 +40,11 @@ def _get_precipitation(precip_dataset, y_start, y_end, config):
     return cpc
 
 
-def process_part(i, part, config, y_start, y_end, method, filter_size, output_dir, precip_dataset='hourly', detection_window_h=1.0):
-    output_file = Path(output_dir) / f"part_{i}.parquet"
+def process_part(i, part, config, y_start, y_end, method, filter_size, output_dir, precip_dataset='hourly', detection_window_h=1.0, n_parts=None):
+    # The part count is embedded in the file name so that a resume with a
+    # different partitioning (e.g. a machine with another CPU count for the
+    # hourly split) does not silently reuse parts covering different cells.
+    output_file = Path(output_dir) / f"part_{n_parts}_{i}.parquet"
     if output_file.exists():
         logger.info(f"Output file '{output_file}' already exists.")
         return True
@@ -89,9 +92,10 @@ def _split_parts(config, precip_dataset):
 
 
 def _run_workers(parts, config, y_start, y_end, method, filter_size, output_dir, precip_dataset='hourly', detection_window_h=1.0, max_workers=None):
+    n_parts = len(parts)
     with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
         futures = [
-            executor.submit(process_part, i, part, config, y_start, y_end, method, filter_size, output_dir, precip_dataset, detection_window_h)
+            executor.submit(process_part, i, part, config, y_start, y_end, method, filter_size, output_dir, precip_dataset, detection_window_h, n_parts)
             for i, part in enumerate(parts)
         ]
         results = [
@@ -104,7 +108,7 @@ def _run_workers(parts, config, y_start, y_end, method, filter_size, output_dir,
 
 def _merge_parts(output_dir, n_parts):
     return pd.concat(
-        [pd.read_parquet(Path(output_dir) / f"part_{i}.parquet") for i in range(n_parts)],
+        [pd.read_parquet(Path(output_dir) / f"part_{n_parts}_{i}.parquet") for i in range(n_parts)],
         ignore_index=True,
     )
 

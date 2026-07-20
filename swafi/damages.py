@@ -155,8 +155,8 @@ class Damages:
         """
         Select all the damage categories.
         """
-        self.exposure['selection'] = self.exposure[self.claim_categories].sum(axis=1)
-        self.claims['selection'] = self.claims[self.exposure_categories].sum(axis=1)
+        self.exposure['selection'] = self.exposure[self.exposure_categories].sum(axis=1)
+        self.claims['selection'] = self.claims[self.claim_categories].sum(axis=1)
 
     def exposure_categories_are_for_type(self, types):
         """
@@ -711,9 +711,9 @@ class Damages:
                     continue
                 within_window = pot_events['min_window'] <= window
                 val_max = pot_events.loc[within_window, criterion].max()
+                if pd.isna(val_max):
+                    continue  # no event within this window for this criterion
                 with_max_val = pot_events[criterion] == val_max
-                if with_max_val.empty:
-                    continue
                 field_name = f'{criterion}_{window}'
                 pot_events.loc[within_window & with_max_val, field_name] = 1
                 pot_events.loc[within_window & with_max_val, 'match_score'] += 1

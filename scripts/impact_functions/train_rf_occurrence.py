@@ -40,7 +40,9 @@ def main():
     if not options.optimize_with_optuna:
         rf = _setup_model(options, events)
         rf.fit()
-        rf.tune_probability_threshold()
+        threshold = rf.tune_probability_threshold()
+        logger.info("Optimal probability threshold (tuned on validation): %.4f",
+                    threshold)
         rf.assess_model_on_all_periods(save_results=True, file_tag=f'rf_{rf.options.run_name}')
         rf.plot_feature_importance(tag='feature_importance_' + rf.options.run_name,
                                    dir_output=config.get('OUTPUT_DIR'))

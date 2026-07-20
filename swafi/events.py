@@ -145,8 +145,11 @@ class Events:
         cids = damages.cids_list
         self.events = self.events[self.events['cid'].isin(cids)]
 
-        # Second, remove cell-years where there is no annual contract
-        # (single anti-join on (cid, year) instead of one filter per cell)
+        # Second, keep only the (cid, year) pairs that actually have an annual
+        # contract. Expressed as a positive semi-join on (cid, year): the former
+        # anti-join on `selection == 0` was a no-op because the exposure is
+        # already filtered to `selection != 0` upstream, so those rows never
+        # existed. The semi-join stays correct whatever the exposure state.
         if 'e_start' in self.events.columns:
             date_field = 'e_start'
         elif 'e_date' in self.events.columns:
@@ -154,15 +157,14 @@ class Events:
         else:
             raise ValueError("No date field found in events.")
 
-        empty_cells = damages.exposure[damages.exposure['selection'] == 0]
-        if not empty_cells.empty:
-            empty_pairs = pd.MultiIndex.from_arrays(
-                [np.asarray(cids)[empty_cells['mask_index']].astype('float64'),
-                 empty_cells['year'].to_numpy()])
-            event_pairs = pd.MultiIndex.from_arrays(
-                [self.events['cid'].astype('float64'),
-                 self.events[date_field].dt.year])
-            self.events = self.events[~event_pairs.isin(empty_pairs)]
+        valid_cells = damages.exposure[damages.exposure['selection'] > 0]
+        valid_pairs = pd.MultiIndex.from_arrays(
+            [valid_cells['cid'].astype('float64'),
+             valid_cells['year'].to_numpy()])
+        event_pairs = pd.MultiIndex.from_arrays(
+            [self.events['cid'].astype('float64'),
+             self.events[date_field].dt.year])
+        self.events = self.events[event_pairs.isin(valid_pairs)]
 
         logger.info("Number of events with potential contracts: %s", len(self.events))
 
@@ -178,13 +180,25 @@ class Events:
         """
         target_values = damages.claims.loc[:, ['date_claim', 'eid',
                                                'selection', 'target']]
+        target_values = target_values.rename(columns={'selection': 'nb_claims'})
 
-        # Rename the column selection to nb_claims
-        target_values.rename(columns={'selection': 'nb_claims'}, inplace=True)
+        # Aggregate per event: several claims can be linked to the same event
+        # (same eid). Collapsing them here keeps the merge one-to-one, so an
+        # event is never duplicated in the output. The 'simple' method also
+        # relies on remove_duplicates() (same cid/i_max_date), but the 'classic'
+        # method had no such step and produced duplicate event rows. nb_claims
+        # are summed; the target is summed then clipped to 1 — all claims of an
+        # event share the same nb_contracts, so summed damage ratios give the
+        # event's total ratio, and summed occurrence flags collapse to 1.
+        target_values = target_values.groupby('eid', as_index=False).agg(
+            date_claim=('date_claim', 'min'),
+            nb_claims=('nb_claims', 'sum'),
+            target=('target', 'sum'))
+        target_values['target'] = target_values['target'].clip(upper=1)
 
-        # Merge the target values with the events
+        # Merge the target values with the events (one event per eid)
         self.events = pd.merge(self.events, target_values,
-                               how="left", on=['eid'])
+                               how="left", on=['eid'], validate='m:1')
         self.events['target'] = self.events['target'].fillna(0)
         self.events['nb_claims'] = self.events['nb_claims'].fillna(0)
 
