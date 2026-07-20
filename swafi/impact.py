@@ -193,7 +193,7 @@ class Impact:
 
         return all_features
 
-    def load_features(self, feature_types):
+    def load_features(self, feature_types, use_pickle=False):
         """
         Load the features from the given feature types.
 
@@ -202,6 +202,9 @@ class Impact:
         feature_types: list
             The list of feature types to load. Options are: 'event', 'terrain',
             'swf_map', 'flowacc', 'land_cover', 'runoff_coeff'
+        use_pickle: bool
+            Whether to load the features from a pickle file if it exists. If False,
+            the features will be loaded from the CSV files.
         """
         feature_files = self.get_feature_files(feature_types)
 
@@ -209,13 +212,12 @@ class Impact:
         tmp_filename = self._create_data_tmp_file_name(feature_files)
 
         try:
-            if tmp_filename.exists():
+            if use_pickle and tmp_filename.exists():
                 logger.info("Loading data from %s", tmp_filename)
                 self.df = pd.read_pickle(tmp_filename)
             else:
                 raise FileNotFoundError
         except (pickle.UnpicklingError, FileNotFoundError, EOFError, Exception):
-            logger.info("Creating dataframe and saving to %s", tmp_filename)
             for f in feature_files:
                 df_features = pd.read_csv(f)
 
@@ -226,7 +228,9 @@ class Impact:
 
                 self.df = self.df.merge(df_features, on='cid', how='left')
 
-            self.df.to_pickle(tmp_filename)
+            if use_pickle:
+                logger.info("Saving dataframe to %s", tmp_filename)
+                self.df.to_pickle(tmp_filename)
 
     def set_events(self, events):
         """
