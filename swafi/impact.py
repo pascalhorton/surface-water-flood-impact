@@ -829,14 +829,14 @@ class Impact:
 
         if self.options.use_event_attributes:
             if self.options.event_method=='simple' or 'e_date' in events_columns:
-                self.tabular_features['event'] = ['i_max_q']
+                self.tabular_features['event'] = []
                 if 'p_5min_q' in events_columns:
                     self.tabular_features['event'] += [
-                        'p_10min_q', 'p_20min_q',
-                        'p_30min_q', 'p_1h_q']
+                        'p_5min_q', 'p_10min_q',
+                        'p_20min_q', 'p_30min_q']
 
                 self.tabular_features['event'] += [
-                    'p_2h_q', 'p_4h_q', 'p_6h_q',
+                    'p_1h_q', 'p_2h_q', 'p_4h_q', 'p_6h_q',
                     'p_12h_q', 'p_24h_q', 'p_48h_q', 'p_72h_q',
                     'api_q', 'nb_contracts']
             else:
