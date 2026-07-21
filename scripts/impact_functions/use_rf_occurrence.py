@@ -18,7 +18,12 @@ from swafi.utils.use_common import (
 logger = logging.getLogger(__name__)
 
 DO_ASSESS = True
+SWEEP_THRESHOLDS = True  # also log scores across thresholds and the best operating point
 MODEL = R"C:\Users\phorton\Documents\SWF\outputs\model_rf_2025-08-29_160926.pkl"
+# Per-cell training reference (the '*_ref.pkl' saved by extract_precipitation_events
+# for the simple method). When set, the test events are normalised against the
+# training distribution instead of the test period. None keeps the old behaviour.
+REFERENCE_PATH = None
 
 config = Config()
 
@@ -44,7 +49,8 @@ def main():
     year_start = config.get('YEAR_START_TEST')
     year_end = config.get('YEAR_END_TEST')
     events = get_events(year_start, year_end, options.event_method,
-                        precip_dataset=options.precip_dataset)
+                        precip_dataset=options.precip_dataset,
+                        reference_path=REFERENCE_PATH)
 
     output_path = (
         Path(config.get('OUTPUT_DIR'))
@@ -113,7 +119,8 @@ def main():
 
     if DO_ASSESS:
         assess(output_path, get_damages_xr(options.dataset, year_start, year_end),
-               ignore_removed=True, relax_days=True, prob_threshold=prob_threshold)
+               ignore_removed=True, relax_days=True, prob_threshold=prob_threshold,
+               sweep_thresholds=SWEEP_THRESHOLDS)
 
 
 if __name__ == '__main__':

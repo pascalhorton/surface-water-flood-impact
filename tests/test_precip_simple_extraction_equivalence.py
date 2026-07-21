@@ -102,9 +102,10 @@ def _run_new(precip_obj, coords_row):
     dt = (times[1] - times[0]).total_seconds() / 3600
     window_minutes = [W for W in (5, 10, 20, 30) if W >= dt * 60]
     # detection_window_h=None: the reference implements native-step detection
-    return precip_obj._extract_events_simple(
+    events, _ = precip_obj._extract_events_simple(
         times, values, dt, window_minutes, 30, 0.8,
         detection_window_h=None)
+    return events
 
 
 def _synthetic_5min(days=60, with_nan=True):

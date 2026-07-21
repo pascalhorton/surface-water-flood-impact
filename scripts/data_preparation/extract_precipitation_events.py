@@ -52,6 +52,15 @@ if __name__ == "__main__":
     # configuration, otherwise parts from another run would be reused.
     output_dir = f"event_parts_{dataset_tag}_{METHOD}{detection_tag}"
     output_path = f"events_{dataset_tag}_model_domain_{Y_START}_{Y_END}_{METHOD}{detection_tag}.parquet"
+
+    # For the simple method, persist the per-cell normalisation reference (q98
+    # threshold + CDFs) so that events extracted over other (test) periods can be
+    # ranked against this training distribution instead of their own. The classic
+    # method defines events by absolute thresholds and needs no reference.
+    save_reference_path = None
+    if METHOD == 'simple':
+        save_reference_path = output_path.replace('.parquet', '_ref.pkl')
+
     run_parallel_extraction(
         Y_START,
         Y_END,
@@ -61,5 +70,6 @@ if __name__ == "__main__":
         output_path=output_path,
         precip_dataset=PRECIP_DATASET,
         detection_window_h=DETECTION_WINDOW_H,
-        max_workers=MAX_WORKERS
+        max_workers=MAX_WORKERS,
+        save_reference_path=save_reference_path,
     )

@@ -2,6 +2,7 @@ import logging
 import multiprocessing
 import concurrent.futures
 import os
+import pickle
 import tempfile
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from swafi.config import Config
 from swafi.domain import Domain
 from swafi.precip_combiprecip import CombiPrecip
 from swafi.precip_combiprecip_5min import CombiPrecip5min
+from swafi.utils.precip_reference import load_reference, save_reference
 
 logger = logging.getLogger(__name__)
 
@@ -40,12 +42,15 @@ def _get_precipitation(precip_dataset, y_start, y_end, config):
     return cpc
 
 
-def process_part(i, part, config, y_start, y_end, method, filter_size, output_dir, precip_dataset='hourly', detection_window_h=1.0, n_parts=None):
+def process_part(i, part, config, y_start, y_end, method, filter_size, output_dir,
+                 precip_dataset='hourly', detection_window_h=1.0, n_parts=None,
+                 reference=None, collect_reference=False):
     # The part count is embedded in the file name so that a resume with a
     # different partitioning (e.g. a machine with another CPU count for the
     # hourly split) does not silently reuse parts covering different cells.
     output_file = Path(output_dir) / f"part_{n_parts}_{i}.parquet"
-    if output_file.exists():
+    ref_file = Path(output_dir) / f"part_{n_parts}_{i}_ref.pkl"
+    if output_file.exists() and (not collect_reference or ref_file.exists()):
         logger.info(f"Output file '{output_file}' already exists.")
         return True
 
@@ -59,10 +64,25 @@ def process_part(i, part, config, y_start, y_end, method, filter_size, output_di
     if filter_size is not None:
         cpc.apply_smoothing(filter_size=filter_size)
     cpc.data = cpc.data.compute()
-    list_of_events = [cpc.extract_events(row, method, detection_window_h=detection_window_h)
-                      for _, row in part.iterrows()]
-    events = pd.concat(list_of_events, axis=0).reset_index(drop=True)
+
+    collect = {} if collect_reference else None
+    list_of_events = []
+    for _, row in part.iterrows():
+        events = cpc.extract_events(
+            row, method, detection_window_h=detection_window_h,
+            reference=reference, collect_reference=collect)
+        if events is not None:
+            list_of_events.append(events)
+
+    if list_of_events:
+        events = pd.concat(list_of_events, axis=0).reset_index(drop=True)
+    else:
+        events = pd.DataFrame()
     events.to_parquet(output_file)
+
+    if collect_reference:
+        with open(ref_file, 'wb') as f:
+            pickle.dump(collect, f, protocol=pickle.HIGHEST_PROTOCOL)
     return True
 
 
@@ -91,13 +111,21 @@ def _split_parts(config, precip_dataset):
     return _split_coords(config)
 
 
-def _run_workers(parts, config, y_start, y_end, method, filter_size, output_dir, precip_dataset='hourly', detection_window_h=1.0, max_workers=None):
+def _run_workers(parts, config, y_start, y_end, method, filter_size, output_dir, precip_dataset='hourly', detection_window_h=1.0, max_workers=None, reference=None, collect_reference=False):
     n_parts = len(parts)
     with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
-        futures = [
-            executor.submit(process_part, i, part, config, y_start, y_end, method, filter_size, output_dir, precip_dataset, detection_window_h, n_parts)
-            for i, part in enumerate(parts)
-        ]
+        futures = []
+        for i, part in enumerate(parts):
+            # Pass each worker only the references for its own cells, so the
+            # full (per-cell) reference is never duplicated across workers.
+            part_ref = None
+            if reference is not None:
+                part_ref = {c: reference[c] for c in part['cid'].to_numpy()
+                            if c in reference}
+            futures.append(executor.submit(
+                process_part, i, part, config, y_start, y_end, method, filter_size,
+                output_dir, precip_dataset, detection_window_h, n_parts,
+                part_ref, collect_reference))
         results = [
             f.result()
             for f in tqdm(concurrent.futures.as_completed(futures),
@@ -113,6 +141,18 @@ def _merge_parts(output_dir, n_parts):
     )
 
 
+def _merge_references(output_dir, n_parts):
+    """Merge the per-part reference dicts written by the workers into one
+    mapping (cid -> reference dict)."""
+    reference = {}
+    for i in range(n_parts):
+        ref_file = Path(output_dir) / f"part_{n_parts}_{i}_ref.pkl"
+        if ref_file.exists():
+            with open(ref_file, 'rb') as f:
+                reference.update(pickle.load(f))
+    return reference
+
+
 def _stamp_precip_dataset(events, precip_dataset):
     """
     Record the source precipitation dataset as a categorical provenance column
@@ -124,13 +164,26 @@ def _stamp_precip_dataset(events, precip_dataset):
 
 
 def extract_events_parallel(y_start, y_end, method, filter_size=None,
-                            precip_dataset='hourly', detection_window_h=1.0, max_workers=None):
-    """Extract events for all domain cells in parallel and return a DataFrame."""
+                            precip_dataset='hourly', detection_window_h=1.0, max_workers=None,
+                            reference_path=None, save_reference_path=None):
+    """Extract events for all domain cells in parallel and return a DataFrame.
+
+    reference_path: str|Path|None
+        A per-cell training reference to normalise the events against (see
+        Precipitation._extract_events_simple). None re-estimates on this period.
+    save_reference_path: str|Path|None
+        When given (training extraction), the per-cell reference computed on this
+        period is saved to that path for later reuse on the test period.
+    """
     config = Config()
     parts = _split_parts(config, precip_dataset)
+    reference = load_reference(reference_path) if reference_path else None
+    collect = save_reference_path is not None
     with tempfile.TemporaryDirectory() as tmp_dir:
-        _run_workers(parts, config, y_start, y_end, method, filter_size, tmp_dir, precip_dataset, detection_window_h, max_workers)
+        _run_workers(parts, config, y_start, y_end, method, filter_size, tmp_dir, precip_dataset, detection_window_h, max_workers, reference, collect)
         events = _merge_parts(tmp_dir, len(parts))
+        if collect:
+            save_reference(_merge_references(tmp_dir, len(parts)), save_reference_path)
     events = _stamp_precip_dataset(events, precip_dataset)
     logger.info("Extracted %d events for %d-%d.", len(events), y_start, y_end)
     return events
@@ -138,14 +191,27 @@ def extract_events_parallel(y_start, y_end, method, filter_size=None,
 
 def run_parallel_extraction(y_start, y_end, method, filter_size=None,
                             output_dir="event_parts", output_path='.', precip_dataset='hourly',
-                            detection_window_h=1.0, max_workers=None):
-    """Extract events in parallel, saving intermediate parts to output_dir and merging to output_path."""
+                            detection_window_h=1.0, max_workers=None,
+                            reference_path=None, save_reference_path=None):
+    """Extract events in parallel, saving intermediate parts to output_dir and merging to output_path.
+
+    reference_path / save_reference_path: see extract_events_parallel. Training
+    extraction passes save_reference_path to persist the per-cell reference;
+    test extraction passes reference_path to reuse it.
+    """
     config = Config()
     parts = _split_parts(config, precip_dataset)
     os.makedirs(output_dir, exist_ok=True)
-    _run_workers(parts, config, y_start, y_end, method, filter_size, output_dir, precip_dataset, detection_window_h, max_workers)
+    reference = load_reference(reference_path) if reference_path else None
+    collect = save_reference_path is not None
+    _run_workers(parts, config, y_start, y_end, method, filter_size, output_dir, precip_dataset, detection_window_h, max_workers, reference, collect)
     logger.info("All parts processed. Saved in '%s'.", output_dir)
     events = _merge_parts(output_dir, len(parts))
     events = _stamp_precip_dataset(events, precip_dataset)
     events.to_parquet(output_path)
     logger.info("Merged into '%s'.", output_path)
+    if collect:
+        reference = _merge_references(output_dir, len(parts))
+        save_reference(reference, save_reference_path)
+        logger.info("Saved per-cell reference (%d cells) to '%s'.",
+                    len(reference), save_reference_path)

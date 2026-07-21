@@ -10,6 +10,7 @@ from scipy.signal import fftconvolve
 
 from .config import Config
 from .domain import Domain
+from .utils.precip_reference import build_cdf, cdf_percentile
 
 config = Config()
 
@@ -76,22 +77,34 @@ class Precipitation:
         )
 
     def extract_events(self, coords_row=None, method='simple', api_days_nb=30, api_reg=0.8,
-                       detection_window_h=1.0):
+                       detection_window_h=1.0, reference=None, collect_reference=None):
+        """
+        Extract events for one cell (coords_row given) or the whole domain.
+
+        reference: dict|None
+            Mapping cid -> per-cell training reference to normalise against
+            (see _extract_events_simple). None re-estimates on the current period.
+        collect_reference: dict|None
+            When given, the computed per-cell reference is written into it
+            (keyed by cid) so the training normalisation can be persisted.
+        """
         # Select timeseries and convert it into a DataFrame
         if coords_row is not None:
-            return self._extract_events(coords_row, method, api_days_nb, api_reg, detection_window_h)
+            return self._extract_events(coords_row, method, api_days_nb, api_reg,
+                                        detection_window_h, reference, collect_reference)
 
         list_of_events = []
         coords_df = self.domain.get_coordinates_df()
         for _, coords_row in tqdm(coords_df.iterrows(), total=len(coords_df), desc="Extracting events"):
-            events = self._extract_events(coords_row, method, api_days_nb, api_reg, detection_window_h)
+            events = self._extract_events(coords_row, method, api_days_nb, api_reg,
+                                          detection_window_h, reference, collect_reference)
             if events is not None:
                 list_of_events.append(events)
 
         return pd.concat(list_of_events, axis=0).reset_index(drop=True)
 
     def _extract_events(self, coords_row, method='simple', api_days_nb=30, api_reg=0.8,
-                        detection_window_h=1.0):
+                        detection_window_h=1.0, reference=None, collect_reference=None):
         cell = self.data.sel(x=coords_row.x, y=coords_row.y)
         times = pd.DatetimeIndex(pd.to_datetime(cell['time'].values))
         precip = np.asarray(cell['precip'].values, dtype='float64').reshape(-1)
@@ -183,9 +196,14 @@ class Precipitation:
             events = pd.concat([events, ranks], axis=1)
 
         elif method == 'simple':  # New simple method based on the precipitation intensity
-            events = self._extract_events_simple(
+            cid = coords_row['cid']
+            ref_in = reference.get(cid) if reference is not None else None
+            events, cell_ref = self._extract_events_simple(
                 times, precip, dt, window_minutes,
-                api_days_nb, api_reg, detection_window_h)
+                api_days_nb, api_reg, detection_window_h,
+                ref=ref_in, build_ref=collect_reference is not None)
+            if collect_reference is not None and cell_ref is not None:
+                collect_reference[cid] = cell_ref
 
         else:
             raise ValueError(f"Unknown event extraction method: {method}")
@@ -204,7 +222,7 @@ class Precipitation:
 
     def _extract_events_simple(self, times, precip, dt, window_minutes,
                                api_days_nb, api_reg,
-                               detection_window_h=1.0):
+                               detection_window_h=1.0, ref=None, build_ref=False):
         """
         Simple event extraction on numpy arrays. Reproduces the per-window
         pandas rolling/rank/max results, but takes the per-event maxima on
@@ -231,15 +249,30 @@ class Precipitation:
             is applied (default: 1 h). None means the native time step, i.e.
             for the 5-min dataset the events are detected on the 5-min bursts
             instead of the rolling hourly intensity.
+        ref: dict|None
+            A per-cell training reference (q98 threshold + CDFs) to normalise
+            against, produced by a previous extraction with build_ref=True. When
+            given, the detection threshold and every ``*_q`` are computed against
+            the reference distribution instead of the current period, keeping the
+            feature space consistent across the train/test boundary. When None,
+            the normalisation is estimated on the current period (unchanged
+            behaviour).
+        build_ref: bool
+            Whether to also compute and return this cell's reference (the q98
+            threshold and the CDFs of raw precip, each accumulation window, and
+            the daily API). Used when extracting the training events.
 
         Returns
         -------
-        pd.DataFrame|None
-            The events with their characteristics, or None if no valid data.
+        tuple(pd.DataFrame|None, dict|None)
+            The events with their characteristics (or None if no valid data),
+            and the cell reference (or None when build_ref is False).
         """
         valid_mask = ~np.isnan(precip)
         if not valid_mask.any():
-            return None
+            return None, None
+
+        ref_out = {'windows': {}} if build_ref else None
 
         # q98 threshold on the precipitation intensity accumulated over the
         # detection window (right-labelled rolling sum, like the p_*h columns;
@@ -254,12 +287,13 @@ class Precipitation:
             detection = pd.Series(precip).rolling(w_det).sum().to_numpy()
         detection_valid = np.isfinite(detection)
         if not detection_valid.any():
-            return None
-        threshold = np.quantile(detection[detection_valid], 0.98)
-        exceed_times = pd.Series(times[detection >= threshold])
-        events = self._build_simple_event_dates(exceed_times)
-        if len(events) == 0:
-            return None
+            return None, None
+        if ref is not None:
+            threshold = ref['q98']
+        else:
+            threshold = np.quantile(detection[detection_valid], 0.98)
+        if build_ref:
+            ref_out['q98'] = float(threshold)
 
         window_hours = [1, 2, 4, 6, 12, 24, 48, 72]
         window_defs = [(f'p_{W}h', max(1, int(round(W / dt))))
@@ -280,6 +314,24 @@ class Precipitation:
             col = precip_series.rolling(w).sum().to_numpy()
             win_sums[:, k] = np.where(np.isnan(col), -np.inf, col)
         precip_filled = np.where(valid_mask, precip, -np.inf)
+
+        # Record the per-column CDFs of the current (training) period so that a
+        # later extraction can rank its events against this same distribution.
+        if build_ref:
+            ref_out['precip'] = build_cdf(precip[valid_mask])
+            for k, (name, _) in enumerate(window_defs):
+                ref_out['windows'][name] = build_cdf(
+                    win_sums[:, k][np.isfinite(win_sums[:, k])])
+
+        exceed_times = pd.Series(times[detection >= threshold])
+        events = self._build_simple_event_dates(exceed_times)
+        if len(events) == 0:
+            # Still return the reference (built from the full series, not events)
+            # so that cells without training events are covered at test time.
+            if build_ref:
+                ref_out['api'] = self._build_api_reference(
+                    times, precip, api_days_nb, api_reg)
+            return None, ref_out
 
         # Event windows (inclusive bounds, like searchsorted left/right)
         e_dates = pd.DatetimeIndex(events['e_date'])
@@ -306,22 +358,32 @@ class Precipitation:
             v_max[k] = block[j]
             i_max_date[k] = times_arr[a + j]
 
-        # Quantiles of the maxima within the full series of each column
-        sorted_precip = np.sort(precip[valid_mask])
+        # Quantiles of the maxima: against the training reference when given,
+        # otherwise within the full series of each column (current period).
         i_max = np.where(np.isneginf(v_max), np.nan, v_max / dt)
+        v_max_q = np.where(np.isneginf(v_max), np.nan, v_max)
+        if ref is not None:
+            i_max_q = cdf_percentile(ref.get('precip'), v_max_q)
+        else:
+            sorted_precip = np.sort(precip[valid_mask])
+            i_max_q = self._pct_rank(sorted_precip, v_max)
         data = {
             # Intensity as mm/h regardless of the native time step
             'i_max': i_max,
-            'i_max_q': self._pct_rank(sorted_precip, v_max),
+            'i_max_q': i_max_q,
             'i_max_date': i_max_date,
         }
         for k, (name, _) in enumerate(window_defs):
             col = win_sums[:, k]
-            sorted_col = np.sort(col[np.isfinite(col)])
-            data[name] = np.where(
-                np.isneginf(p_max[:, k]), np.nan, p_max[:, k]).astype('float32')
-            data[f'{name}_q'] = self._pct_rank(
-                sorted_col, p_max[:, k]).astype('float32')
+            p_max_col = np.where(np.isneginf(p_max[:, k]), np.nan, p_max[:, k])
+            data[name] = p_max_col.astype('float32')
+            if ref is not None:
+                data[f'{name}_q'] = cdf_percentile(
+                    ref['windows'].get(name), p_max_col).astype('float32')
+            else:
+                sorted_col = np.sort(col[np.isfinite(col)])
+                data[f'{name}_q'] = self._pct_rank(
+                    sorted_col, p_max[:, k]).astype('float32')
         events = pd.concat(
             [events, pd.DataFrame(data, index=events.index)], axis=1)
 
@@ -335,17 +397,37 @@ class Precipitation:
         daily_series['api'] = self._compute_api(
             daily_series['precip'].values, 24, api_days_nb, api_reg
         )
-        daily_series['api_q'] = daily_series['api'].rank(pct=True)
+        if build_ref:
+            ref_out['api'] = build_cdf(daily_series['api'].values)
 
-        # Attach API and its quantile to events
-        events = events.merge(
-            daily_series.reset_index()[['time', 'api', 'api_q']],
-            left_on='e_date',
-            right_on='time',
-            how='left'
-        ).drop(columns=['time'])
+        if ref is not None:
+            # Attach the API value, then rank it against the training reference.
+            events = events.merge(
+                daily_series.reset_index()[['time', 'api']],
+                left_on='e_date', right_on='time', how='left').drop(columns=['time'])
+            events['api_q'] = cdf_percentile(
+                ref.get('api'), events['api'].to_numpy()).astype('float32')
+        else:
+            daily_series['api_q'] = daily_series['api'].rank(pct=True)
+            events = events.merge(
+                daily_series.reset_index()[['time', 'api', 'api_q']],
+                left_on='e_date', right_on='time', how='left').drop(columns=['time'])
 
-        return events
+        return events, ref_out
+
+    def _build_api_reference(self, times, precip, api_days_nb, api_reg):
+        """
+        Build the CDF of the daily API for a cell (used as the reference for
+        api_q), for the case where the cell has no training events but must
+        still carry a reference.
+        """
+        daily_series = pd.DataFrame(
+            {'precip': precip},
+            index=pd.DatetimeIndex(times, name='time')
+        ).resample('D').agg({'precip': 'sum'})
+        api = self._compute_api(
+            daily_series['precip'].values, 24, api_days_nb, api_reg)
+        return build_cdf(api)
 
     @staticmethod
     def _pct_rank(sorted_vals, values):

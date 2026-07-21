@@ -14,9 +14,10 @@ def _extract(values, freq, dt, detection_window_h):
     times = pd.date_range('2021-03-01', periods=len(values), freq=freq)
     precip = object.__new__(Precipitation)
     window_minutes = [W for W in (5, 10, 20, 30) if W >= dt * 60]
-    return precip._extract_events_simple(
+    events, _ = precip._extract_events_simple(
         pd.DatetimeIndex(times), values.astype('float64'), dt, window_minutes,
         30, 0.8, detection_window_h=detection_window_h)
+    return events
 
 
 def test_detection_window_5min():

@@ -57,25 +57,75 @@ def get_damages_xr(dataset, year_start, year_end):
 
 
 def assess(result_path, ds_damages, ignore_removed=True, relax_days=True,
-           prob_threshold=None):
+           prob_threshold=None, sweep_thresholds=False):
     """Compute and print classic verification scores.
 
     prob_threshold=None treats predictions as binary (> 0); otherwise applies
     a probability threshold (>= threshold).
+
+    sweep_thresholds: if True (or a list/array of thresholds), also logs the
+    scores across a range of probability thresholds and the best operating
+    points (by F1 and by CSI) on this independent assessment. Useful to compare
+    models at each one's own best threshold rather than at a training-tuned one.
     """
     ds_pred = xr.open_dataset(result_path)
     y_true, y_pred = prepare_full_domain_assessment(
         ds_pred, ds_damages, ignore_removed, relax_days, flatten=True
     )
-    if prob_threshold is None:
-        y_pred = (y_pred > 0).astype(int)
-    else:
-        y_pred = (y_pred >= prob_threshold).astype(int)
     y_true = (y_true > 0).astype(int)
-    tp, tn, fp, fn = compute_confusion_matrix(y_true, y_pred)
+
+    if sweep_thresholds is not False:
+        thresholds = None if sweep_thresholds is True else sweep_thresholds
+        _sweep_thresholds(y_true, y_pred, thresholds)
+
+    if prob_threshold is None:
+        y_pred_bin = (y_pred > 0).astype(int)
+    else:
+        y_pred_bin = (y_pred >= prob_threshold).astype(int)
+    tp, tn, fp, fn = compute_confusion_matrix(y_true, y_pred_bin)
+    logger.info("Scores at prob_threshold=%s:", prob_threshold)
     print_classic_scores(tp, tn, fp, fn)
     logger.info("*************************************")
     ds_pred.close()
+
+
+def _sweep_thresholds(y_true, y_pred, thresholds=None):
+    """Log verification scores across probability thresholds and the best
+    operating points (by F1 and by CSI) on this independent assessment.
+
+    Parameters
+    ----------
+    y_true: np.ndarray
+        The binary observed values.
+    y_pred: np.ndarray
+        The predicted probabilities.
+    thresholds: array-like or None
+        The thresholds to evaluate. None uses a 0.05..0.95 grid.
+    """
+    if thresholds is None:
+        thresholds = np.round(np.arange(0.05, 1.0, 0.05), 2)
+    eps = 1e-9
+
+    logger.info("Threshold sweep (independent assessment):")
+    logger.info("   thr      F1     CSI     POD     FAR")
+    best_f1 = (-1.0, None)
+    best_csi = (-1.0, None)
+    for thr in thresholds:
+        y_bin = (y_pred >= thr).astype(int)
+        tp, tn, fp, fn = compute_confusion_matrix(y_true, y_bin)
+        f1 = 2 * tp / (2 * tp + fp + fn + eps)
+        csi = tp / (tp + fp + fn + eps)
+        pod = tp / (tp + fn + eps)
+        far = fp / (fp + tp + eps)
+        logger.info("  %.2f  %.4f  %.4f  %.4f  %.4f", thr, f1, csi, pod, far)
+        if f1 > best_f1[0]:
+            best_f1 = (f1, thr)
+        if csi > best_csi[0]:
+            best_csi = (csi, thr)
+
+    logger.info("Best F1  = %.4f at threshold %.2f", best_f1[0], best_f1[1])
+    logger.info("Best CSI = %.4f at threshold %.2f", best_csi[0], best_csi[1])
+    logger.info("*************************************")
 
 
 def get_contracts_number(damages):
@@ -237,20 +287,32 @@ def create_precipitation(precip_dataset, year_start, year_end):
 
 
 def get_events(year_start, year_end, event_method,
-               filter_size=None, precip_dataset='hourly', detection_window_h=1.0):
-    """Return events DataFrame, loading from pickle cache or extracting in parallel."""
+               filter_size=None, precip_dataset='hourly', detection_window_h=1.0,
+               reference_path=None):
+    """Return events DataFrame, loading from pickle cache or extracting in parallel.
+
+    reference_path: str|Path|None
+        A per-cell training reference (produced by the training extraction) to
+        normalise the test events against, so their ``*_q`` features are ranked
+        against the training distribution instead of the test period. None keeps
+        the previous behaviour (re-estimated on the test period).
+    """
     # The simple method exists for both precipitation datasets: name the cache
-    # explicitly; the classic method relies on hourly data (untagged).
+    # explicitly; the classic method relies on hourly data (untagged). When a
+    # training reference is applied, the cache carries a distinct tag so it is
+    # never confused with self-normalised events.
     precip_suffix = f'_{precip_dataset}' if event_method == 'simple' else ''
+    ref_suffix = '_refnorm' if reference_path else ''
     events_path = (
         Path(config.get('TMP_DIR'))
-        / f'test_events_{event_method}{precip_suffix}_{year_start}-{year_end}.pickle'
+        / f'test_events_{event_method}{precip_suffix}{ref_suffix}_{year_start}-{year_end}.pickle'
     )
     if not events_path.exists():
         logger.info("Extracting events and saving to %s...", events_path)
         events = extract_events_parallel(year_start, year_end, event_method, filter_size,
                                          precip_dataset=precip_dataset,
-                                         detection_window_h=detection_window_h)
+                                         detection_window_h=detection_window_h,
+                                         reference_path=reference_path)
         events.to_pickle(events_path)
     else:
         events = pd.read_pickle(events_path)
