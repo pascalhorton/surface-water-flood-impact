@@ -73,6 +73,7 @@ def assess(result_path, ds_damages, ignore_removed=True, relax_days=True,
         ds_pred, ds_damages, ignore_removed, relax_days, flatten=True
     )
     y_true = (y_true > 0).astype(int)
+    _log_recall_ceiling(y_true, y_pred)
 
     if sweep_thresholds is not False:
         thresholds = None if sweep_thresholds is True else sweep_thresholds
@@ -87,6 +88,24 @@ def assess(result_path, ds_damages, ignore_removed=True, relax_days=True,
     print_classic_scores(tp, tn, fp, fn)
     logger.info("*************************************")
     ds_pred.close()
+
+
+def _log_recall_ceiling(y_true, y_pred):
+    """Log how many observed positives no threshold can ever hit.
+
+    A cell-day left at exactly 0 carries no prediction at all: either the event
+    selection produced no candidate there, or the model scored it 0 (the grid
+    writer skips zeros). Those are unreachable whatever the threshold, so they
+    bound the recall and separate an event-selection problem from a model one.
+    """
+    n_pos = int(y_true.sum())
+    if n_pos == 0:
+        return
+    unreachable = int(((y_true > 0) & (y_pred <= 0)).sum())
+    logger.info(
+        "Observed positives: %d, of which %d (%.1f%%) carry no prediction "
+        "(no candidate event, or scored exactly 0) -> recall ceiling %.3f",
+        n_pos, unreachable, 100 * unreachable / n_pos, 1 - unreachable / n_pos)
 
 
 def _sweep_thresholds(y_true, y_pred, thresholds=None):

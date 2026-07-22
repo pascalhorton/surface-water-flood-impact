@@ -39,7 +39,8 @@ class ImpactBasicOptions:
         The target type. Options are: 'occurrence', 'damage_ratio'
     random_state: int|None
         The random state to use for the random number generator.
-        Default: None. Set to None to not set the random seed.
+        Default: 42, so that the sample split and the model fit are reproducible
+        and two runs can be compared. Set to None to draw a new seed each run.
     use_event_attributes: bool
         Whether to use event attributes or not.
     use_static_attributes: bool
@@ -72,7 +73,7 @@ class ImpactBasicOptions:
         self.precip_dataset = None
         self.min_nb_claims = None
         self.target_type = None
-        self.random_state = None
+        self.random_state = 42
         self.use_event_attributes = None
         self.use_static_attributes = None
         self.use_all_static_attributes = None
@@ -183,8 +184,9 @@ class ImpactBasicOptions:
             '--target-type', type=str, default='occurrence',
             help='The target type. Options are: occurrence, damage_ratio')
         self.parser.add_argument(
-            '--random-state', type=int, default=None,
-            help='The random state to use for the random number generator')
+            '--random-state', type=int, default=42,
+            help='The random state to use for the random number generator '
+                 '(default: 42, for reproducible splits and fits)')
         self.parser.add_argument(
             '--use-event-attributes', action=argparse.BooleanOptionalAction,
             default=True, help='Use event attributes (i_max_q, p_sum_q, duration, ...)')
