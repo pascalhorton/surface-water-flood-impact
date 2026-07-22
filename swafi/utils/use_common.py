@@ -12,7 +12,7 @@ from swafi.damages_mobiliar import DamagesMobiliar
 from swafi.damages_gvz import DamagesGvz
 from swafi.precip_combiprecip import CombiPrecip
 from swafi.precip_combiprecip_5min import CombiPrecip5min
-from swafi.utils.event_extraction import extract_events_parallel
+from swafi.utils.event_extraction import detection_tag, extract_events_parallel
 from swafi.utils.verification import (
     compute_confusion_matrix,
     print_classic_scores,
@@ -288,7 +288,8 @@ def create_precipitation(precip_dataset, year_start, year_end):
 
 def get_events(year_start, year_end, event_method,
                filter_size=None, precip_dataset='hourly', detection_window_h=1.0,
-               reference_path=None):
+               reference_path=None, detection_threshold=None,
+               detection_centered=True, detection_peak_days=True):
     """Return events DataFrame, loading from pickle cache or extracting in parallel.
 
     reference_path: str|Path|None
@@ -296,23 +297,37 @@ def get_events(year_start, year_end, event_method,
         normalise the test events against, so their ``*_q`` features are ranked
         against the training distribution instead of the test period. None keeps
         the previous behaviour (re-estimated on the test period).
+    detection_window_h / detection_threshold / detection_centered /
+    detection_peak_days:
+        The event detection settings, which must match those used for the
+        training extraction (see Precipitation._extract_events_simple).
     """
     # The simple method exists for both precipitation datasets: name the cache
     # explicitly; the classic method relies on hourly data (untagged). When a
-    # training reference is applied, the cache carries a distinct tag so it is
-    # never confused with self-normalised events.
+    # training reference is applied, or a non-default detection is used, the
+    # cache carries a distinct tag so it is never confused with the default.
     precip_suffix = f'_{precip_dataset}' if event_method == 'simple' else ''
     ref_suffix = '_refnorm' if reference_path else ''
+    # The default detection stays untagged, so the caches written before the
+    # detection became configurable are still picked up.
+    time_step_h = 5 / 60 if precip_dataset == '5min' else 1.0
+    det_suffix = detection_tag(detection_window_h, detection_threshold,
+                               detection_centered, detection_peak_days, time_step_h)
+    if event_method != 'simple' or det_suffix == detection_tag():
+        det_suffix = ''
     events_path = (
         Path(config.get('TMP_DIR'))
-        / f'test_events_{event_method}{precip_suffix}{ref_suffix}_{year_start}-{year_end}.pickle'
+        / f'test_events_{event_method}{precip_suffix}{det_suffix}{ref_suffix}_{year_start}-{year_end}.pickle'
     )
     if not events_path.exists():
         logger.info("Extracting events and saving to %s...", events_path)
         events = extract_events_parallel(year_start, year_end, event_method, filter_size,
                                          precip_dataset=precip_dataset,
                                          detection_window_h=detection_window_h,
-                                         reference_path=reference_path)
+                                         reference_path=reference_path,
+                                         detection_threshold=detection_threshold,
+                                         detection_centered=detection_centered,
+                                         detection_peak_days=detection_peak_days)
         events.to_pickle(events_path)
     else:
         events = pd.read_pickle(events_path)

@@ -26,6 +26,41 @@ _n_parts = max(1, int(multiprocessing.cpu_count() * 0.9))
 _tile_size_5min = 32000
 
 
+def detection_tag(detection_window_h=1.0, detection_threshold=None,
+                  detection_centered=True, detection_peak_days=True,
+                  time_step_h=1.0):
+    """Build the file-name tag identifying the event detection settings.
+
+    Caches (part directories, merged parquet, test-event pickles) must be unique
+    per detection setting, otherwise events extracted with another definition
+    would be silently reused.
+
+    Centring and peak dating only bear on a detection window spanning several
+    time steps, so they are left out of the tag when the window is a single
+    step: the extractions predating them are then still picked up, instead of
+    being re-run to produce the very same events.
+    """
+    if detection_window_h is None:
+        tag = '_detnative'
+    elif detection_window_h < 1:
+        tag = f"_det{round(detection_window_h * 60)}min"
+    else:
+        tag = f"_det{detection_window_h:g}h"
+
+    if detection_threshold is not None:
+        tag += f"_thr{detection_threshold:g}mm"
+
+    w_det = (1 if detection_window_h is None
+             else max(1, int(round(detection_window_h / time_step_h))))
+    if w_det > 1:
+        if detection_centered:
+            tag += "_centered"
+        if detection_peak_days:
+            tag += "_peakdays"
+
+    return tag
+
+
 def _get_precipitation(precip_dataset, y_start, y_end, config):
     """Instantiate and open the precipitation source for the given dataset name."""
     if precip_dataset == 'hourly':
@@ -44,7 +79,8 @@ def _get_precipitation(precip_dataset, y_start, y_end, config):
 
 def process_part(i, part, config, y_start, y_end, method, filter_size, output_dir,
                  precip_dataset='hourly', detection_window_h=1.0, n_parts=None,
-                 reference=None, collect_reference=False):
+                 reference=None, collect_reference=False, detection_threshold=None,
+                 detection_centered=True, detection_peak_days=True):
     # The part count is embedded in the file name so that a resume with a
     # different partitioning (e.g. a machine with another CPU count for the
     # hourly split) does not silently reuse parts covering different cells.
@@ -70,6 +106,9 @@ def process_part(i, part, config, y_start, y_end, method, filter_size, output_di
     for _, row in part.iterrows():
         events = cpc.extract_events(
             row, method, detection_window_h=detection_window_h,
+            detection_threshold=detection_threshold,
+            detection_centered=detection_centered,
+            detection_peak_days=detection_peak_days,
             reference=reference, collect_reference=collect)
         if events is not None:
             list_of_events.append(events)
@@ -111,7 +150,10 @@ def _split_parts(config, precip_dataset):
     return _split_coords(config)
 
 
-def _run_workers(parts, config, y_start, y_end, method, filter_size, output_dir, precip_dataset='hourly', detection_window_h=1.0, max_workers=None, reference=None, collect_reference=False):
+def _run_workers(parts, config, y_start, y_end, method, filter_size, output_dir,
+                 precip_dataset='hourly', detection_window_h=1.0, max_workers=None,
+                 reference=None, collect_reference=False, detection_threshold=None,
+                 detection_centered=True, detection_peak_days=True):
     n_parts = len(parts)
     with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
         futures = []
@@ -125,7 +167,8 @@ def _run_workers(parts, config, y_start, y_end, method, filter_size, output_dir,
             futures.append(executor.submit(
                 process_part, i, part, config, y_start, y_end, method, filter_size,
                 output_dir, precip_dataset, detection_window_h, n_parts,
-                part_ref, collect_reference))
+                part_ref, collect_reference, detection_threshold,
+                detection_centered, detection_peak_days))
         results = [
             f.result()
             for f in tqdm(concurrent.futures.as_completed(futures),
@@ -165,7 +208,9 @@ def _stamp_precip_dataset(events, precip_dataset):
 
 def extract_events_parallel(y_start, y_end, method, filter_size=None,
                             precip_dataset='hourly', detection_window_h=1.0, max_workers=None,
-                            reference_path=None, save_reference_path=None):
+                            reference_path=None, save_reference_path=None,
+                            detection_threshold=None, detection_centered=True,
+                            detection_peak_days=True):
     """Extract events for all domain cells in parallel and return a DataFrame.
 
     reference_path: str|Path|None
@@ -174,13 +219,24 @@ def extract_events_parallel(y_start, y_end, method, filter_size=None,
     save_reference_path: str|Path|None
         When given (training extraction), the per-cell reference computed on this
         period is saved to that path for later reuse on the test period.
+    detection_threshold: float|None
+        An absolute detection threshold [mm] on the detection window (see
+        Precipitation._extract_events_simple). None uses the per-cell q98.
+    detection_centered: bool
+        Whether the detection window is centred on the step it labels.
+    detection_peak_days: bool
+        Whether to date the events on the intensity peak of each exceeding
+        window (see Precipitation._build_peak_event_dates).
     """
     config = Config()
     parts = _split_parts(config, precip_dataset)
     reference = load_reference(reference_path) if reference_path else None
     collect = save_reference_path is not None
     with tempfile.TemporaryDirectory() as tmp_dir:
-        _run_workers(parts, config, y_start, y_end, method, filter_size, tmp_dir, precip_dataset, detection_window_h, max_workers, reference, collect)
+        _run_workers(parts, config, y_start, y_end, method, filter_size, tmp_dir,
+                     precip_dataset, detection_window_h, max_workers, reference,
+                     collect, detection_threshold, detection_centered,
+                     detection_peak_days)
         events = _merge_parts(tmp_dir, len(parts))
         if collect:
             save_reference(_merge_references(tmp_dir, len(parts)), save_reference_path)
@@ -192,19 +248,25 @@ def extract_events_parallel(y_start, y_end, method, filter_size=None,
 def run_parallel_extraction(y_start, y_end, method, filter_size=None,
                             output_dir="event_parts", output_path='.', precip_dataset='hourly',
                             detection_window_h=1.0, max_workers=None,
-                            reference_path=None, save_reference_path=None):
+                            reference_path=None, save_reference_path=None,
+                            detection_threshold=None, detection_centered=True,
+                            detection_peak_days=True):
     """Extract events in parallel, saving intermediate parts to output_dir and merging to output_path.
 
-    reference_path / save_reference_path: see extract_events_parallel. Training
-    extraction passes save_reference_path to persist the per-cell reference;
-    test extraction passes reference_path to reuse it.
+    reference_path / save_reference_path / detection_threshold /
+    detection_centered / detection_peak_days: see extract_events_parallel. Training extraction
+    passes save_reference_path to persist the per-cell reference; test
+    extraction passes reference_path to reuse it.
     """
     config = Config()
     parts = _split_parts(config, precip_dataset)
     os.makedirs(output_dir, exist_ok=True)
     reference = load_reference(reference_path) if reference_path else None
     collect = save_reference_path is not None
-    _run_workers(parts, config, y_start, y_end, method, filter_size, output_dir, precip_dataset, detection_window_h, max_workers, reference, collect)
+    _run_workers(parts, config, y_start, y_end, method, filter_size, output_dir,
+                 precip_dataset, detection_window_h, max_workers, reference,
+                 collect, detection_threshold, detection_centered,
+                 detection_peak_days)
     logger.info("All parts processed. Saved in '%s'.", output_dir)
     events = _merge_parts(output_dir, len(parts))
     events = _stamp_precip_dataset(events, precip_dataset)

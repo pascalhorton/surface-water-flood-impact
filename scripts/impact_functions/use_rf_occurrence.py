@@ -24,6 +24,13 @@ MODEL = R"C:\Users\phorton\Documents\SWF\outputs\model_rf_2025-08-29_160926.pkl"
 # for the simple method). When set, the test events are normalised against the
 # training distribution instead of the test period. None keeps the old behaviour.
 REFERENCE_PATH = None
+# Event detection settings: must match the ones used to extract the training
+# events (extract_precipitation_events.py), otherwise the test events follow
+# another event definition than the model was trained on.
+DETECTION_WINDOW_H = 1
+DETECTION_THRESHOLD = None  # e.g. 10 with DETECTION_WINDOW_H = 12 for p_12h >= 10mm
+DETECTION_CENTERED = True  # centre the detection window on the step it labels
+DETECTION_PEAK_DAYS = True  # date the events on each exceeding window's peak
 
 config = Config()
 
@@ -50,6 +57,10 @@ def main():
     year_end = config.get('YEAR_END_TEST')
     events = get_events(year_start, year_end, options.event_method,
                         precip_dataset=options.precip_dataset,
+                        detection_window_h=DETECTION_WINDOW_H,
+                        detection_threshold=DETECTION_THRESHOLD,
+                        detection_centered=DETECTION_CENTERED,
+                        detection_peak_days=DETECTION_PEAK_DAYS,
                         reference_path=REFERENCE_PATH)
 
     output_path = (

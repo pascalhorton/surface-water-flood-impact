@@ -77,10 +77,22 @@ class Precipitation:
         )
 
     def extract_events(self, coords_row=None, method='simple', api_days_nb=30, api_reg=0.8,
-                       detection_window_h=1.0, reference=None, collect_reference=None):
+                       detection_window_h=1.0, detection_threshold=None,
+                       detection_centered=True, detection_peak_days=True,
+                       reference=None, collect_reference=None):
         """
         Extract events for one cell (coords_row given) or the whole domain.
 
+        detection_threshold: float|None
+            An absolute detection threshold [mm] on the detection window
+            accumulation (e.g. 10 with detection_window_h=12 for p_12h >= 10mm).
+            None uses the per-cell q98 of that accumulation (default).
+        detection_centered: bool
+            Whether the detection window is centred on the step it labels
+            instead of trailing it (a no-op for a 1-step window).
+        detection_peak_days: bool
+            Whether to date the events on the intensity peak of each exceeding
+            window instead of on the exceedances themselves.
         reference: dict|None
             Mapping cid -> per-cell training reference to normalise against
             (see _extract_events_simple). None re-estimates on the current period.
@@ -91,20 +103,26 @@ class Precipitation:
         # Select timeseries and convert it into a DataFrame
         if coords_row is not None:
             return self._extract_events(coords_row, method, api_days_nb, api_reg,
-                                        detection_window_h, reference, collect_reference)
+                                        detection_window_h, detection_threshold,
+                                        detection_centered, detection_peak_days,
+                                        reference, collect_reference)
 
         list_of_events = []
         coords_df = self.domain.get_coordinates_df()
         for _, coords_row in tqdm(coords_df.iterrows(), total=len(coords_df), desc="Extracting events"):
             events = self._extract_events(coords_row, method, api_days_nb, api_reg,
-                                          detection_window_h, reference, collect_reference)
+                                          detection_window_h, detection_threshold,
+                                          detection_centered, detection_peak_days,
+                                          reference, collect_reference)
             if events is not None:
                 list_of_events.append(events)
 
         return pd.concat(list_of_events, axis=0).reset_index(drop=True)
 
     def _extract_events(self, coords_row, method='simple', api_days_nb=30, api_reg=0.8,
-                        detection_window_h=1.0, reference=None, collect_reference=None):
+                        detection_window_h=1.0, detection_threshold=None,
+                        detection_centered=True, detection_peak_days=True,
+                        reference=None, collect_reference=None):
         cell = self.data.sel(x=coords_row.x, y=coords_row.y)
         times = pd.DatetimeIndex(pd.to_datetime(cell['time'].values))
         precip = np.asarray(cell['precip'].values, dtype='float64').reshape(-1)
@@ -200,7 +218,8 @@ class Precipitation:
             ref_in = reference.get(cid) if reference is not None else None
             events, cell_ref = self._extract_events_simple(
                 times, precip, dt, window_minutes,
-                api_days_nb, api_reg, detection_window_h,
+                api_days_nb, api_reg, detection_window_h, detection_threshold,
+                detection_centered, detection_peak_days,
                 ref=ref_in, build_ref=collect_reference is not None)
             if collect_reference is not None and cell_ref is not None:
                 collect_reference[cid] = cell_ref
@@ -221,8 +240,9 @@ class Precipitation:
         return events
 
     def _extract_events_simple(self, times, precip, dt, window_minutes,
-                               api_days_nb, api_reg,
-                               detection_window_h=1.0, ref=None, build_ref=False):
+                               api_days_nb, api_reg, detection_window_h=1.0,
+                               detection_threshold=None, detection_centered=True,
+                               detection_peak_days=True, ref=None, build_ref=False):
         """
         Simple event extraction on numpy arrays. Reproduces the per-window
         pandas rolling/rank/max results, but takes the per-event maxima on
@@ -245,10 +265,26 @@ class Precipitation:
         api_reg: float
             The API recession constant.
         detection_window_h: float|None
-            The accumulation window [h] on which the q98 detection threshold
+            The accumulation window [h] on which the detection threshold
             is applied (default: 1 h). None means the native time step, i.e.
             for the 5-min dataset the events are detected on the 5-min bursts
             instead of the rolling hourly intensity.
+        detection_threshold: float|None
+            An absolute detection threshold [mm] on that accumulation, e.g.
+            10 with detection_window_h=12 selects the days where p_12h reaches
+            10 mm. None (default) uses the per-cell q98 of the accumulation,
+            i.e. a relative, per-cell threshold. An absolute threshold is
+            period- and cell-independent by construction, so ``ref`` is then
+            not used for the detection (it still drives the ``*_q`` features).
+        detection_centered: bool
+            Whether the detection window is centred on the step it labels
+            instead of trailing it. A no-op for a 1-step window (the default),
+            where the two coincide.
+        detection_peak_days: bool
+            Whether to date the events on the intensity peak of each exceeding
+            window (see _build_peak_event_dates) instead of on the exceedances
+            themselves. False (default) keeps one event per exceedance day,
+            which counts a storm once per day its detection window slides over.
         ref: dict|None
             A per-cell training reference (q98 threshold + CDFs) to normalise
             against, produced by a previous extraction with build_ref=True. When
@@ -274,25 +310,42 @@ class Precipitation:
 
         ref_out = {'windows': {}} if build_ref else None
 
-        # q98 threshold on the precipitation intensity accumulated over the
-        # detection window (right-labelled rolling sum, like the p_*h columns;
-        # a 1-step window keeps the native values untouched) and event dates
+        # Detection threshold on the precipitation intensity accumulated over
+        # the detection window (a 1-step window keeps the native values
+        # untouched): either an absolute value [mm] or the per-cell q98 of that
+        # accumulation. The window is right-labelled like the p_*h columns,
+        # unless centred: a centred window flags the steps the rain falls
+        # around, a trailing one flags the steps it accumulated before, which
+        # lags the storm by up to the window length.
         if detection_window_h is None:
             w_det = 1
         else:
             w_det = max(1, int(round(detection_window_h / dt)))
         if w_det == 1:
             detection = precip
+        elif detection_centered:
+            detection = pd.Series(precip).rolling(
+                w_det, center=True).sum().to_numpy()
         else:
             detection = pd.Series(precip).rolling(w_det).sum().to_numpy()
+        # Span of the detection window relative to the step it labels
+        if detection_centered:
+            lo_off, hi_off = -(w_det // 2), w_det - 1 - w_det // 2
+        else:
+            lo_off, hi_off = -(w_det - 1), 0
         detection_valid = np.isfinite(detection)
         if not detection_valid.any():
             return None, None
-        if ref is not None:
+        if detection_threshold is not None:
+            # Already period-independent: the reference does not apply here.
+            threshold = float(detection_threshold)
+        elif ref is not None:
             threshold = ref['q98']
         else:
             threshold = np.quantile(detection[detection_valid], 0.98)
         if build_ref:
+            # The detection threshold actually applied on this cell (the q98 of
+            # the detection window unless an absolute threshold was given).
             ref_out['q98'] = float(threshold)
 
         window_hours = [1, 2, 4, 6, 12, 24, 48, 72]
@@ -323,8 +376,12 @@ class Precipitation:
                 ref_out['windows'][name] = build_cdf(
                     win_sums[:, k][np.isfinite(win_sums[:, k])])
 
-        exceed_times = pd.Series(times[detection >= threshold])
-        events = self._build_simple_event_dates(exceed_times)
+        exceed = detection >= threshold
+        if detection_peak_days:
+            events = self._build_peak_event_dates(
+                times, precip_filled, exceed, lo_off, hi_off)
+        else:
+            events = self._build_simple_event_dates(pd.Series(times[exceed]))
         if len(events) == 0:
             # Still return the reference (built from the full series, not events)
             # so that cells without training events are covered at test time.
@@ -462,6 +519,64 @@ class Precipitation:
         candidate_days = exceed_times.dt.floor('D')
 
         event_days = pd.Series(pd.to_datetime(candidate_days.to_numpy()))
+        event_days = event_days.drop_duplicates().sort_values().reset_index(drop=True)
+
+        return event_days.to_frame(name='e_date')
+
+    @staticmethod
+    def _build_peak_event_dates(times, precip_filled, exceed, lo_off, hi_off):
+        """Date the events on the intensity peak of each exceeding window.
+
+        Dating an event on the exceedance itself counts one storm several
+        times: the detection window keeps the accumulation above the threshold
+        while it slides over the storm, so a run of steps is flagged and it
+        readily straddles midnight. Every one of those windows is however the
+        same storm, and points at the same intensity peak: taking the day of
+        that peak instead collapses them to one event.
+
+        The rule adapts to what the window actually covers, without any
+        merging heuristic: windows over a single storm share its peak and give
+        one day, whereas a long spell whose windows peak on different days
+        keeps one event per distinct peak day.
+
+        Parameters
+        ----------
+        times: pd.DatetimeIndex
+            The time axis of the cell.
+        precip_filled: np.ndarray
+            The precipitation values with NaN replaced by -inf.
+        exceed: np.ndarray
+            The boolean mask of the detection exceedances.
+        lo_off, hi_off: int
+            The span of the detection window relative to the step it labels
+            (e.g. -6 and +5 for a centred 12-step window).
+
+        Returns
+        -------
+        pd.DataFrame
+            The unique, sorted event days.
+        """
+        idx = np.flatnonzero(exceed)
+        if idx.size == 0:
+            return pd.DataFrame({'e_date': pd.DatetimeIndex([])})
+
+        n = precip_filled.size
+        offsets = np.arange(lo_off, hi_off + 1)
+        peaks = np.empty(idx.size, dtype='int64')
+        # Chunked so that the (n_exceed x window) lookup stays bounded: at the
+        # 5-min resolution a long window over a whole period would otherwise
+        # materialise hundreds of MB.
+        chunk = max(1, 2_000_000 // offsets.size)
+        for s in range(0, idx.size, chunk):
+            sel = idx[s:s + chunk]
+            # Clipping repeats the edge value, which cannot beat the true
+            # maximum of the window and maps back to the edge index anyway.
+            pos = np.clip(sel[:, None] + offsets[None, :], 0, n - 1)
+            j = precip_filled[pos].argmax(axis=1)
+            peaks[s:s + sel.size] = pos[np.arange(sel.size), j]
+
+        peaks = np.unique(peaks)
+        event_days = pd.Series(times[peaks]).dt.floor('D')
         event_days = event_days.drop_duplicates().sort_values().reset_index(drop=True)
 
         return event_days.to_frame(name='e_date')
