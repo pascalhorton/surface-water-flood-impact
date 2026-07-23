@@ -136,9 +136,19 @@ class ImpactRFOptions(ImpactBasicOptions):
         trial: optuna.trial.Trial
             The trial.
         hp_to_optimize: list
-            The hyperparameters to optimize. Can be the string 'default'
+            The hyperparameters to optimize. Can be the string 'default'.
             Options are: 'weight_denominator', 'n_estimators', 'criterion',
             'max_depth', 'min_samples_split', 'min_samples_leaf', 'max_features'.
+
+            The 'default' set leaves out two hyperparameters that do not help
+            the RF under the threshold-free (average precision) objective:
+            - 'n_estimators': more trees only lower the ensemble variance, never
+              hurting generalisation, so tuning it against a noisy validation
+              score can only mis-select. Fix it high instead (default 800).
+            - 'weight_denominator': it shifts the probability *level*, i.e. the
+              operating point, which the rank-based objective cannot see and
+              which tune_probability_threshold() owns downstream anyway.
+            Both stay available if listed explicitly, but are off by default.
 
         Returns
         -------
@@ -152,7 +162,7 @@ class ImpactRFOptions(ImpactBasicOptions):
 
         if isinstance(hp_to_optimize, str) and hp_to_optimize == 'default':
             hp_to_optimize = [
-                'weight_denominator', 'n_estimators', 'criterion', 'max_depth',
+                'criterion', 'max_depth',
                 'min_samples_split', 'min_samples_leaf', 'max_features']
 
         if 'weight_denominator' in hp_to_optimize:
@@ -167,14 +177,19 @@ class ImpactRFOptions(ImpactBasicOptions):
                         else self.REGRESSOR_CRITERIA)
             self.criterion = trial.suggest_categorical('criterion', criteria)
         if 'max_depth' in hp_to_optimize:
+            # Trees on this data are fully grown well before depth 40, so the
+            # useful (regularising) action is at the low end: log scale.
             self.max_depth = trial.suggest_int(
-                'max_depth', 5, 100)
+                'max_depth', 3, 40, log=True)
         if 'min_samples_split' in hp_to_optimize:
             self.min_samples_split = trial.suggest_int(
-                'min_samples_split', 2, 100)
+                'min_samples_split', 2, 50)
         if 'min_samples_leaf' in hp_to_optimize:
+            # The main regulariser for a rare positive class: large leaves
+            # smooth the probabilities. Wide, log-scaled range so the optimum
+            # is not truncated (the previous 1-100 ceiling was hit at 90).
             self.min_samples_leaf = trial.suggest_int(
-                'min_samples_leaf', 1, 100)
+                'min_samples_leaf', 1, 500, log=True)
         if 'max_features' in hp_to_optimize:
             self.max_features = trial.suggest_float(
                 'max_features', 0.1, 1.0)
