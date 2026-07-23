@@ -7,16 +7,29 @@ the same single-pixel precipitation series the CNN sees, and a linear ridge
 classifier is trained on (a) the MiniRocket features, (b) the tabular
 features, and (c) both. Comparing the three answers whether the raw series
 carries signal beyond the tabular event summaries.
+
+The full dataset (millions of events at a prevalence below 0.2%) does not fit
+in a dense feature matrix, so the negatives are subsampled (all positives are
+kept). ROC-AUC and the ranking of the three variants are unaffected by that
+subsampling; precision, CSI and F1 refer to the subsampled prevalence, which
+is reported in the results, and are not comparable to the CNN scores.
+
+Script-specific arguments (in addition to the usual CNN options):
+    --minirocket-features N   Number of MiniRocket features (default 2520).
+    --max-negatives N         Negatives kept per split (default 50000, 0 = all).
 """
 
+import argparse
 import logging
 import random
+import sys
 
 import numpy as np
 import pandas as pd
-from sklearn.linear_model import RidgeClassifierCV
-from sklearn.pipeline import make_pipeline
+from sklearn.linear_model import RidgeClassifier
+from sklearn.metrics import average_precision_score
 from sklearn.preprocessing import StandardScaler
+from tqdm import tqdm
 
 from swafi.config import Config
 from swafi.events import load_events_from_pickle
@@ -31,13 +44,14 @@ from swafi.utils.verification import (
 
 logger = logging.getLogger(__name__)
 
-NUM_FEATURES = 9996
 BATCH_SIZE_EXTRACT = 1024
+ALPHAS = np.logspace(-1, 4, 6)
 
 config = Config()
 
 
 def main():
+    script_args = _parse_script_args()
     setup_logging(script_name='train_minirocket_occurrence')
     options = ImpactCnnOptions()
     options.parse_args()
@@ -46,12 +60,18 @@ def main():
     assert options.use_precip, "MiniRocket needs the precipitation series."
     assert options.precip_window_size == options.precip_resolution, \
         "MiniRocket is univariate; use a single-pixel window."
+    assert not options.use_dem, "The DEM channel is not used by MiniRocket."
     assert not options.use_poisson_head, \
         "The Poisson head does not apply to the ridge classifier."
 
-    if options.random_state is not None:
-        random.seed(options.random_state)
-        np.random.seed(options.random_state)
+    seed = options.random_state if options.random_state is not None else 42
+    random.seed(seed)
+    np.random.seed(seed)
+    rng = np.random.default_rng(seed)
+
+    logger.info("MiniRocket features: %d; negatives kept per split: %s",
+                script_args.minirocket_features,
+                script_args.max_negatives or 'all')
 
     if options.dataset == 'mobiliar':
         year_start = config.get('YEAR_START_MOBILIAR')
@@ -87,18 +107,26 @@ def main():
         cnn._create_data_generator_test()
         splits['test'] = cnn.dg_test
 
-    logger.info("Extracting precipitation series per split.")
-    series, static, targets = {}, {}, {}
+    series, static, targets, prevalence = {}, {}, {}, {}
     for name, dg in splits.items():
-        series[name], static[name], targets[name] = _materialize(dg)
-        logger.info("%s: %d events, series length %d",
-                    name, len(targets[name]), series[name].shape[1])
+        idxs = _select_indices(dg.y, script_args.max_negatives, rng)
+        logger.info("Extracting the precipitation series (%s: %d of %d events).",
+                    name, len(idxs), len(dg.y))
+        series[name], static[name], targets[name] = _materialize(dg, idxs)
+        prevalence[name] = float(np.mean(targets[name] > 0))
+        logger.info("%s: %d events, series length %d, prevalence %.3f%%",
+                    name, len(targets[name]), series[name].shape[1],
+                    100 * prevalence[name])
 
     logger.info("Fitting MiniRocket on the training series.")
-    rocket = MiniRocket(num_features=NUM_FEATURES,
-                        random_state=options.random_state)
+    rocket = MiniRocket(num_features=script_args.minirocket_features,
+                        random_state=seed)
     rocket.fit(series['train'])
+    n_total = sum(len(t) for t in targets.values())
+    logger.info("Transforming all splits (%.1f GB of features).",
+                n_total * rocket.num_features * 4 / 1e9)
     rocket_feats = {name: rocket.transform(s) for name, s in series.items()}
+    series.clear()
 
     variants = {'series': rocket_feats}
     if has_tabular:
@@ -111,13 +139,14 @@ def main():
         logger.info("=" * 60)
         logger.info("Variant: %s (%d features)",
                     variant, feats['train'].shape[1])
-        clf = make_pipeline(
-            StandardScaler(),
-            RidgeClassifierCV(alphas=np.logspace(-3, 3, 10),
-                              class_weight='balanced'))
-        clf.fit(feats['train'], targets['train'])
 
-        scores = {name: clf.decision_function(f) for name, f in feats.items()}
+        scaler = StandardScaler().fit(feats['train'])
+        scaled = {name: scaler.transform(f) for name, f in feats.items()}
+        clf = _fit_ridge(scaled['train'], targets['train'],
+                         scaled['valid'], targets['valid'])
+
+        scores = {name: clf.decision_function(f) for name, f in scaled.items()}
+        del scaled
         threshold = _find_best_f1_threshold(scores['valid'], targets['valid'])
         logger.info("Decision threshold from validation (F1): %.4f", threshold)
 
@@ -132,23 +161,64 @@ def main():
             df_tmp['split'] = [name]
             store_classic_scores(tp, tn, fp, fn, df_tmp)
             df_tmp['ROC_AUC'] = [assess_roc_auc(y_obs, scores[name])]
+            df_tmp['PR_AUC'] = [average_precision_score(y_obs, scores[name])]
+            # Precision-based scores refer to this (subsampled) prevalence.
+            df_tmp['prevalence'] = [prevalence[name]]
             df_res = pd.concat([df_res, df_tmp])
+            logger.info("ROC AUC: %.4f, PR AUC: %.4f",
+                        df_tmp['ROC_AUC'].iloc[0], df_tmp['PR_AUC'].iloc[0])
 
         tag = variant.replace('+', '_')
         cnn._save_results_csv(
             df_res, f'minirocket_{tag}_{options.run_name}')
 
 
-def _materialize(dg):
+def _parse_script_args():
     """
-    Extract the full (series, static, target) arrays from a data generator,
-    in dataset order.
+    Parse the arguments specific to this script and remove them from sys.argv,
+    leaving the usual CNN options to the options parser.
     """
-    n = len(dg.y)
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument(
+        '--minirocket-features', type=int, default=2520,
+        help='The number of MiniRocket features (rounded down to a multiple '
+             'of 84). More features need proportionally more memory: the '
+             'dense matrix is (nb events x nb features) in float32.')
+    parser.add_argument(
+        '--max-negatives', type=int, default=50000,
+        help='The number of negative events kept per split (0 = all). All '
+             'positives are always kept.')
+    args, remaining = parser.parse_known_args()
+    sys.argv = [sys.argv[0]] + remaining
+
+    return args
+
+
+def _select_indices(y, max_negatives, rng):
+    """
+    Select the events to extract: all positives and a random sample of the
+    negatives (a dense feature matrix for the full dataset does not fit in
+    memory).
+    """
+    y = np.asarray(y).squeeze()
+    idxs_pos = np.where(y > 0)[0]
+    idxs_neg = np.where(y == 0)[0]
+    if max_negatives and len(idxs_neg) > max_negatives:
+        idxs_neg = rng.choice(idxs_neg, size=max_negatives, replace=False)
+
+    # Sorted: the extraction reads the events in dataset order.
+    return np.sort(np.concatenate([idxs_pos, idxs_neg]))
+
+
+def _materialize(dg, idxs):
+    """
+    Extract the (series, static, target) arrays for the given event indices
+    from a data generator.
+    """
     all_series, all_static, all_y = [], [], []
-    for start in range(0, n, BATCH_SIZE_EXTRACT):
-        idxs = np.arange(start, min(start + BATCH_SIZE_EXTRACT, n))
-        x, y = dg._generate_batch(idxs)
+    chunks = range(0, len(idxs), BATCH_SIZE_EXTRACT)
+    for start in tqdm(chunks, desc="Extracting the precipitation series"):
+        x, y = dg._generate_batch(idxs[start:start + BATCH_SIZE_EXTRACT])
         x_static = None
         if isinstance(x, tuple):
             x_3d, x_static = x[0], x[1]
@@ -164,7 +234,31 @@ def _materialize(dg):
     series = np.concatenate(all_series)
     static = np.concatenate(all_static) if all_static else None
     y = np.concatenate(all_y).astype(int)
+
     return series, static, y
+
+
+def _fit_ridge(x_train, y_train, x_valid, y_valid):
+    """
+    Fit a ridge classifier, selecting the regularization strength on the
+    validation split (ROC-AUC). The lsqr solver is iterative: unlike the
+    default cross-validated ridge, it does not decompose the design matrix,
+    which is not feasible at this number of samples and features.
+    """
+    best_clf, best_auc, best_alpha = None, -np.inf, None
+    for alpha in ALPHAS:
+        clf = RidgeClassifier(alpha=alpha, class_weight='balanced',
+                              solver='lsqr')
+        clf.fit(x_train, y_train)
+        auc = assess_roc_auc(y_valid, clf.decision_function(x_valid))
+        logger.info("alpha=%.4g -> validation ROC AUC=%.4f", alpha, auc)
+        if auc > best_auc:
+            best_clf, best_auc, best_alpha = clf, auc, alpha
+
+    logger.info("Selected alpha=%.4g (validation ROC AUC=%.4f)",
+                best_alpha, best_auc)
+
+    return best_clf
 
 
 def _find_best_f1_threshold(scores, y_obs):
@@ -183,6 +277,7 @@ def _find_best_f1_threshold(scores, y_obs):
         f1 = 2 * tp / (2 * tp + fp + fn + eps)
         if f1 > best_f1:
             best_f1, best_thr = f1, thr
+
     return best_thr
 
 

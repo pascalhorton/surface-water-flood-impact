@@ -234,7 +234,8 @@ class PrecipitationArchive(Precipitation):
     def standardize(self, mean, std):
         """
         Standardize the precipitation data (lazily; computed at read time on the
-        selected chunks only).
+        selected chunks only). Idempotent: the train/valid/test data generators
+        share the same precipitation object and each request the transform.
 
         Parameters
         ----------
@@ -243,6 +244,10 @@ class PrecipitationArchive(Precipitation):
         std: np.array
             The standard deviations (per pixel)
         """
+        if '_std' in self._transform_tag:
+            logger.debug("Precipitation already standardized; skipping.")
+            return
+
         mean = self._as_spatial_da(mean)
         std = self._as_spatial_da(std)
         precip = self.data[self.precip_var]
@@ -253,13 +258,18 @@ class PrecipitationArchive(Precipitation):
     def normalize(self, q99):
         """
         Normalize the precipitation data (lazily; computed at read time on the
-        selected chunks only).
+        selected chunks only). Idempotent: the train/valid/test data generators
+        share the same precipitation object and each request the transform.
 
         Parameters
         ----------
         q99: np.array
             The 99th quantile (per pixel)
         """
+        if '_norm' in self._transform_tag:
+            logger.debug("Precipitation already normalized; skipping.")
+            return
+
         q99 = self._as_spatial_da(q99)
         precip = self.data[self.precip_var]
         # Precipitation (raw or log1p-transformed) is non-negative, so the lower
@@ -271,8 +281,14 @@ class PrecipitationArchive(Precipitation):
     def log_transform(self):
         """
         Log-transform the precipitation data (lazily; computed at read time on
-        the selected chunks only).
+        the selected chunks only). Idempotent: the train/valid/test data
+        generators share the same precipitation object and each request the
+        transform.
         """
+        if '_log' in self._transform_tag:
+            logger.debug("Precipitation already log-transformed; skipping.")
+            return
+
         precip = self.data[self.precip_var]
         self.data[self.precip_var] = np.log1p(precip).astype('float32')
         self._transform_tag += '_log'
