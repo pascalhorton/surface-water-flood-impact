@@ -8,7 +8,7 @@ from swafi.config import Config
 from swafi.impact_lgbm import ImpactLGBM
 from swafi.impact_lgbm_options import ImpactLGBMOptions
 from swafi.events import load_events_from_pickle
-from swafi.utils.optuna import get_or_create_optuna_study
+from swafi.utils.optuna import get_or_create_optuna_study, save_best_tabular_model
 from swafi.utils.logging_setup import setup_logging
 
 logger = logging.getLogger(__name__)
@@ -106,6 +106,10 @@ def optimize_model_with_optuna(options, events):
     logger.info("  Params: ")
     for key, value in best_trial.params.items():
         logger.info("    %s: %s", key, value)
+
+    if options.optuna_save_best:
+        save_best_tabular_model(options, events, study, _setup_model, 'lgbm',
+                                dir_output=config.get('OUTPUT_DIR'))
 
 
 if __name__ == '__main__':

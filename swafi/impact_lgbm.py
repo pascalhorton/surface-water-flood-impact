@@ -5,6 +5,7 @@ from .impact import Impact
 
 import copy
 import logging
+import os
 import pickle
 
 has_lightgbm = False
@@ -61,8 +62,18 @@ class ImpactLGBM(Impact):
 
         filename = f'{dir_output}/{base_name}_{self.options.run_name}.pkl'
 
-        with open(filename, 'wb') as f:
-            pickle.dump({'model': self.model, 'features': self.features}, f)
+        payload = {
+            'model': self.model,
+            'features': self.features,
+            'probability_threshold': self.probability_threshold,
+        }
+
+        # Write to a temporary file then atomically replace, so a reader (or a
+        # concurrent writer) never sees a partially written model.
+        tmp_filename = f'{filename}.{os.getpid()}.tmp'
+        with open(tmp_filename, 'wb') as f:
+            pickle.dump(payload, f)
+        os.replace(tmp_filename, filename)
 
         logger.info("Model saved: %s", filename)
 
@@ -84,6 +95,7 @@ class ImpactLGBM(Impact):
 
         self.model = payload['model']
         self.features = payload['features']
+        self.probability_threshold = payload.get('probability_threshold', 0.5)
 
         logger.info("Model loaded: %s", filename)
 
