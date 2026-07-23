@@ -540,6 +540,33 @@ class Impact:
                         100 * len(self.y_valid) / y_len,
                         100 * len(self.y_test) / y_len)
 
+    def merge_valid_test_into_train(self):
+        """
+        Merge the validation (and test) splits back into the training set, so a
+        subsequent fit() uses the whole period. The validation and test splits
+        are emptied.
+
+        Intended for a final, deployment model refit on all the available data
+        once the hyperparameters and the decision threshold have been selected
+        on the held-out split: assessment and threshold tuning must therefore
+        already be done, as no held-out data remains afterwards.
+        """
+        self.x_train = np.concatenate(
+            [self.x_train, self.x_valid, self.x_test], axis=0)
+        self.y_train = np.concatenate(
+            [self.y_train, self.y_valid, self.y_test], axis=0)
+        self.events_train = np.concatenate(
+            [self.events_train, self.events_valid, self.events_test], axis=0)
+
+        # Empty the held-out splits, keeping their shape and dtype.
+        self.x_valid, self.x_test = self.x_train[:0], self.x_train[:0]
+        self.y_valid, self.y_test = self.y_train[:0], self.y_train[:0]
+        self.events_valid = self.events_train[:0]
+        self.events_test = self.events_train[:0]
+
+        logger.info("Merged all splits into the training set: %d samples.",
+                    len(self.y_train))
+
     def normalize_features(self):
         """
         Normalize the features.

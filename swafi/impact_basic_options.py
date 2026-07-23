@@ -60,6 +60,11 @@ class ImpactBasicOptions:
         Optuna study name.
     optuna_random_sampler : bool
         Use the random sampler for Optuna.
+    optuna_save_best : bool
+        After the study, refit the best trial and save the resulting model.
+        Off by default so that a parallel array of workers only runs trials;
+        a single finalisation job (with --optuna-save-best, optionally
+        --optuna-trials-nb 0) then refits and saves the best model once.
     """
     def __init__(self):
         self.parser = argparse.ArgumentParser(description="SWAFI")
@@ -85,6 +90,7 @@ class ImpactBasicOptions:
         self.optuna_trials_nb = None
         self.optuna_study_name = None
         self.optuna_random_sampler = None
+        self.optuna_save_best = None
 
     def copy(self):
         """
@@ -220,6 +226,11 @@ class ImpactBasicOptions:
         self.parser.add_argument(
             '--optuna-random-sampler', action=argparse.BooleanOptionalAction,
             default=False, help='Use the random sampler for Optuna')
+        self.parser.add_argument(
+            '--optuna-save-best', action='store_true',
+            help='After the study, refit the best trial and save the model. '
+                 'Run this in a single finalisation job (not in every array '
+                 'worker), optionally with --optuna-trials-nb 0 to skip new trials')
 
     def parse_args(self):
         """
@@ -259,6 +270,7 @@ class ImpactBasicOptions:
         self.optuna_trials_nb = args.optuna_trials_nb
         self.optuna_study_name = args.optuna_study_name
         self.optuna_random_sampler = args.optuna_random_sampler
+        self.optuna_save_best = args.optuna_save_best
 
     def print_options(self):
         """
@@ -293,6 +305,7 @@ class ImpactBasicOptions:
             logger.info("- optuna_study_name:  %s", self.optuna_study_name)
             logger.info("- optuna_trials_nb:  %s", self.optuna_trials_nb)
             logger.info("- optuna_random_sampler:  %s", self.optuna_random_sampler)
+            logger.info("- optuna_save_best:  %s", self.optuna_save_best)
 
     def get_events_filename(self, extension='.pickle'):
         """

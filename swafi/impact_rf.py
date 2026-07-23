@@ -6,6 +6,7 @@ from .impact import Impact
 
 import hashlib
 import logging
+import os
 import pickle
 import copy
 from sklearn.metrics import f1_score
@@ -72,8 +73,13 @@ class ImpactRandomForest(Impact):
             'probability_threshold': self.probability_threshold,
         }
 
-        with open(filename, 'wb') as f:
+        # Write to a temporary file then atomically replace, so a reader (or a
+        # concurrent writer, e.g. several array workers) never sees a partially
+        # written model. The temp file is unique per process to avoid clashes.
+        tmp_filename = f'{filename}.{os.getpid()}.tmp'
+        with open(tmp_filename, 'wb') as f:
             pickle.dump(payload, f)
+        os.replace(tmp_filename, filename)
 
         logger.info("Model saved: %s", filename)
 
