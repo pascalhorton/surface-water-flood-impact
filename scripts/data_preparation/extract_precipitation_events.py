@@ -10,11 +10,11 @@ from swafi.utils.event_extraction import detection_tag, run_parallel_extraction
 
 PRECIP_DATASET = 'hourly'  # 'hourly' (CombiPrecip netCDF) or '5min' (zarr store)
 METHOD = 'simple'
-DETECTION_WINDOW_H = 1  # Accumulation window [h] for the detection threshold (None = native time step)
+DETECTION_WINDOW_H = 12  # Accumulation window [h] for the detection threshold (None = native time step)
 # Absolute detection threshold [mm] on that accumulation, e.g. DETECTION_WINDOW_H = 12
 # with DETECTION_THRESHOLD = 10 selects the days reaching p_12h >= 10mm. None uses
 # the per-cell q98 of the accumulation window (relative, period-dependent) instead.
-DETECTION_THRESHOLD = None
+DETECTION_THRESHOLD = 10
 # Centre the detection window on the step it labels, and date the events on the
 # intensity peak of each exceeding window rather than on the exceedances
 # themselves (which counts a storm once per day its window slides over).
