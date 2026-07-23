@@ -27,8 +27,8 @@ REFERENCE_PATH = None
 # Event detection settings: must match the ones used to extract the training
 # events (extract_precipitation_events.py), otherwise the test events follow
 # another event definition than the model was trained on.
-DETECTION_WINDOW_H = 1
-DETECTION_THRESHOLD = None  # e.g. 10 with DETECTION_WINDOW_H = 12 for p_12h >= 10mm
+DETECTION_WINDOW_H = 12
+DETECTION_THRESHOLD = 10  # e.g. 10 with DETECTION_WINDOW_H = 12 for p_12h >= 10mm
 DETECTION_CENTERED = True  # centre the detection window on the step it labels
 DETECTION_PEAK_DAYS = True  # date the events on each exceeding window's peak
 
