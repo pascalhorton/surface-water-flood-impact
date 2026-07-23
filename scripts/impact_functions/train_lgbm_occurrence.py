@@ -8,7 +8,7 @@ from swafi.config import Config
 from swafi.impact_lgbm import ImpactLGBM
 from swafi.impact_lgbm_options import ImpactLGBMOptions
 from swafi.events import load_events_from_pickle
-from swafi.utils.optuna import get_or_create_optuna_study, save_best_tabular_model
+from swafi.utils.optuna import get_or_create_optuna_study, save_best_model
 from swafi.utils.logging_setup import setup_logging
 
 logger = logging.getLogger(__name__)
@@ -93,7 +93,13 @@ def optimize_model_with_optuna(options, events):
         end_time = time.time()
         logger.info("Model fitting took %.2f seconds", end_time - start_time)
 
-        score = lgbm_trial.compute_f1_score(lgbm_trial.x_valid, lgbm_trial.y_valid)
+        # Threshold-free objective (area under the PR curve), consistent with
+        # the RF search and well suited to the rare positive class. The base
+        # class has no compute_f1_score; average precision is the right metric
+        # here anyway (a fixed-threshold F1 is a noisy, operating-point-tied
+        # objective, and the threshold is tuned separately afterwards).
+        score = lgbm_trial.compute_average_precision(
+            lgbm_trial.x_valid, lgbm_trial.y_valid)
         return score
 
     study = get_or_create_optuna_study(options)
@@ -108,8 +114,11 @@ def optimize_model_with_optuna(options, events):
         logger.info("    %s: %s", key, value)
 
     if options.optuna_save_best:
-        save_best_tabular_model(options, events, study, _setup_model, 'lgbm',
-                                dir_output=config.get('OUTPUT_DIR'))
+        # Only the split model is saved. No whole-period deployment refit: the
+        # LightGBM fit() early-stops on the validation split, which that refit
+        # would empty (kept RF-only for now).
+        save_best_model(options, events, study, _setup_model, 'lgbm',
+                        dir_output=config.get('OUTPUT_DIR'))
 
 
 if __name__ == '__main__':

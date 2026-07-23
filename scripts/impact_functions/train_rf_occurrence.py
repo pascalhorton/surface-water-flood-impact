@@ -8,7 +8,7 @@ from swafi.config import Config
 from swafi.impact_rf import ImpactRandomForest
 from swafi.impact_rf_options import ImpactRFOptions
 from swafi.events import load_events_from_pickle
-from swafi.utils.optuna import get_or_create_optuna_study, save_best_tabular_model
+from swafi.utils.optuna import get_or_create_optuna_study, save_best_model
 from swafi.utils.logging_setup import setup_logging
 
 logger = logging.getLogger(__name__)
@@ -133,8 +133,45 @@ def optimize_model_with_optuna(options, events, dir_plots=None):
         logger.info("    %s: %s", key, value)
 
     if options.optuna_save_best:
-        save_best_tabular_model(options, events, study, _setup_model, 'rf',
-                                dir_output=dir_plots)
+        model, threshold, base_name = save_best_model(
+            options, events, study, _setup_model, 'rf', dir_output=dir_plots)
+        _refit_and_save_full_period(model, threshold, base_name, dir_plots)
+
+
+def _refit_and_save_full_period(model, threshold, base_name, dir_output):
+    """
+    Refit the best RF on the whole period (training + validation) and save it as
+    the deployment model, reusing the threshold tuned on the split model.
+
+    RF-specific on purpose: it is only sound because the RF fit() does not
+    early-stop on the validation split, so merging that split back into the
+    training set leaves a valid fit. Models that early-stop (LightGBM, the deep
+    learning ones) would lose their early-stopping set and must not use this.
+
+    Parameters
+    ----------
+    model : ImpactRandomForest
+        The fitted split model, with its splits still populated.
+    threshold : float
+        The decision threshold tuned on the validation split.
+    base_name : str
+        The base name of the split model; the full-period one appends '_full'.
+    dir_output : str
+        The directory where to save the model and plots.
+    """
+    logger.info("Refitting the best RF on the whole period (deployment model).")
+    model.merge_valid_test_into_train()
+    model.compute_balanced_class_weights()
+    model.compute_corrected_class_weights(
+        weight_denominator=model.options.weight_denominator)
+    model.fit()
+    model.probability_threshold = threshold
+    model.plot_feature_importance(
+        tag='feature_importance_full_' + model.options.run_name,
+        dir_output=dir_output)
+    model.save_model(dir_output=dir_output, base_name=base_name + '_full')
+    logger.info("Full-period model saved in %s (threshold %.4f from the split "
+                "model).", dir_output, threshold)
 
 
 if __name__ == '__main__':

@@ -70,8 +70,9 @@ class ImpactLGBMOptions(ImpactBasicOptions):
             '--weight-denominator', type=int, default=10,
             help='The weight denominator to reduce the negative class weights')
         self.parser.add_argument(
-            '--n-estimators', type=int, default=1000,
-            help='The number of boosting rounds')
+            '--n-estimators', type=int, default=3000,
+            help='The maximum number of boosting rounds (a cap: early stopping '
+                 'selects the effective count, so keep it high rather than tuning it)')
         self.parser.add_argument(
             '--learning-rate', type=float, default=0.05,
             help='The learning rate (shrinkage)')
@@ -129,6 +130,16 @@ class ImpactLGBMOptions(ImpactBasicOptions):
             'num_leaves', 'max_depth', 'min_child_samples', 'subsample',
             'colsample_bytree', 'reg_alpha', 'reg_lambda'.
 
+            The 'default' set leaves out two hyperparameters that do not help
+            the search:
+            - 'n_estimators': the fit uses early stopping, which already selects
+              the effective number of rounds, so tuning the cap only truncates
+              the low-cap trials. Fix it high instead (default 3000).
+            - 'weight_denominator': it shifts the probability level, i.e. the
+              operating point, which the average-precision objective cannot see
+              and which tune_probability_threshold() owns downstream anyway.
+            Both stay available if listed explicitly, but are off by default.
+
         Returns
         -------
         bool
@@ -141,8 +152,7 @@ class ImpactLGBMOptions(ImpactBasicOptions):
 
         if isinstance(hp_to_optimize, str) and hp_to_optimize == 'default':
             hp_to_optimize = [
-                'weight_denominator', 'n_estimators', 'learning_rate',
-                'num_leaves', 'max_depth', 'min_child_samples',
+                'learning_rate', 'num_leaves', 'max_depth', 'min_child_samples',
                 'subsample', 'colsample_bytree', 'reg_alpha', 'reg_lambda']
 
         if 'weight_denominator' in hp_to_optimize:
@@ -156,7 +166,10 @@ class ImpactLGBMOptions(ImpactBasicOptions):
         if 'max_depth' in hp_to_optimize:
             self.max_depth = trial.suggest_int('max_depth', 3, 15)
         if 'min_child_samples' in hp_to_optimize:
-            self.min_child_samples = trial.suggest_int('min_child_samples', 5, 200)
+            # The main leaf-size regulariser for the rare positive class: wide,
+            # log-scaled range so large (smoothing) leaves are reachable.
+            self.min_child_samples = trial.suggest_int(
+                'min_child_samples', 5, 500, log=True)
         if 'subsample' in hp_to_optimize:
             self.subsample = trial.suggest_float('subsample', 0.5, 1.0)
         if 'colsample_bytree' in hp_to_optimize:

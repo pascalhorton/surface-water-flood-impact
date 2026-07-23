@@ -69,17 +69,13 @@ def _plot_importance_if_available(model, run_name, dir_output):
         logger.warning("Could not plot the feature importance: %s", exc)
 
 
-def save_best_tabular_model(options, events, study, setup_model, model_kind,
-                            dir_output):
+def save_best_model(options, events, study, setup_model, model_kind, dir_output):
     """
-    Refit the best trial of a tabular model (RF, LightGBM) and save two models:
+    Refit the best trial of the study and save the resulting (split) model.
 
-    1. the split model, fit on the chronological training split and assessed on
-       the held-out validation split (the honest performance estimate), with its
-       decision threshold tuned on that validation split;
-    2. the full-period model, refit with the same hyperparameters on the whole
-       period (training + validation) for deployment, reusing the threshold of
-       the split model (no held-out data remains to tune it on).
+    The model is fit on the chronological training split and assessed on the
+    held-out validation split (the honest performance estimate), with its
+    decision threshold tuned on that validation split.
 
     The best trial only stores the tuned hyperparameters; the fixed ones
     (n_estimators, weight_denominator, ...) are taken from the base options.
@@ -87,6 +83,12 @@ def save_best_tabular_model(options, events, study, setup_model, model_kind,
     refitting reproduces the trial's model exactly. The decision threshold was
     not tuned during the search (the objectives are threshold-free / at a fixed
     threshold), so it is tuned here on the validation split.
+
+    Applicable to the tabular models (RF, LightGBM), i.e. those exposing
+    ``fit()``, ``tune_probability_threshold()`` and ``save_model()``. It only
+    ever saves the split model; a deployment model refit on the whole period is
+    left to the caller (see ``refit_and_save_full_period``), as it is only sound
+    for a model whose fit() does not early-stop on the validation split.
 
     Parameters
     ----------
@@ -102,7 +104,14 @@ def save_best_tabular_model(options, events, study, setup_model, model_kind,
     model_kind : str
         Short model tag used in the file names and result tags ('rf', 'lgbm').
     dir_output : str
-        The directory where to save the models, results and plots.
+        The directory where to save the model, results and plots.
+
+    Returns
+    -------
+    tuple(Impact, float, str)
+        The fitted model (with its splits still populated), the tuned decision
+        threshold, and the base name used for the saved file. These let the
+        caller refit and save further models (e.g. the full-period one).
     """
     best_trial = study.best_trial
     logger.info("Refitting the best model (trial %s, value %.5f) to save it.",
@@ -121,8 +130,8 @@ def save_best_tabular_model(options, events, study, setup_model, model_kind,
     base_name = (f'model_{model_kind}_{options_best.dataset}_'
                  f'{options_best.event_method}_{options_best.precip_dataset}')
 
-    # 1. Split model: fit on the training split, assess and tune the threshold
-    # on the held-out validation split.
+    # Fit on the training split, assess and tune the threshold on the held-out
+    # validation split.
     model = setup_model(options_best, events)
     model.fit()
     threshold = model.tune_probability_threshold()
@@ -132,19 +141,6 @@ def save_best_tabular_model(options, events, study, setup_model, model_kind,
         save_results=True, file_tag=f'{model_kind}_{options_best.run_name}')
     _plot_importance_if_available(model, options_best.run_name, dir_output)
     model.save_model(dir_output=dir_output, base_name=base_name)
-    logger.info("Split model saved in %s", dir_output)
+    logger.info("Best (split) model saved in %s", dir_output)
 
-    # 2. Full-period model: refit the same hyperparameters on the whole period
-    # for deployment, keeping the threshold selected on the validation split
-    # (no held-out data remains to tune or assess it on).
-    logger.info("Refitting the best model on the whole period (deployment model).")
-    model.merge_valid_test_into_train()
-    model.compute_balanced_class_weights()
-    model.compute_corrected_class_weights(
-        weight_denominator=options_best.weight_denominator)
-    model.fit()
-    model.probability_threshold = threshold
-    _plot_importance_if_available(model, 'full_' + options_best.run_name, dir_output)
-    model.save_model(dir_output=dir_output, base_name=base_name + '_full')
-    logger.info("Full-period model saved in %s (threshold %.4f from the split "
-                "model).", dir_output, threshold)
+    return model, threshold, base_name

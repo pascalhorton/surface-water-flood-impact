@@ -112,6 +112,9 @@ class ImpactLGBM(Impact):
                 max_depth=self.options.max_depth,
                 min_child_samples=self.options.min_child_samples,
                 subsample=self.options.subsample,
+                # Bagging is disabled unless the frequency is > 0, so subsample
+                # would otherwise be silently ignored.
+                subsample_freq=1,
                 colsample_bytree=self.options.colsample_bytree,
                 reg_alpha=self.options.reg_alpha,
                 reg_lambda=self.options.reg_lambda,
@@ -123,10 +126,12 @@ class ImpactLGBM(Impact):
                 lgb.early_stopping(self.options.early_stopping_rounds, verbose=True),
                 lgb.log_evaluation(100),
             ]
+            # Average precision (area under the PR curve) is the early-stopping
+            # signal, more informative than ROC-AUC for the rare positive class.
             self.model.fit(
                 self.x_train, self.y_train,
                 eval_set=[(self.x_valid, self.y_valid)],
-                eval_metric='auc',
+                eval_metric='average_precision',
                 callbacks=callbacks,
             )
         elif self.target_type == 'damage_ratio':
@@ -138,6 +143,8 @@ class ImpactLGBM(Impact):
                 max_depth=self.options.max_depth,
                 min_child_samples=self.options.min_child_samples,
                 subsample=self.options.subsample,
+                # Bagging is disabled unless the frequency is > 0.
+                subsample_freq=1,
                 colsample_bytree=self.options.colsample_bytree,
                 reg_alpha=self.options.reg_alpha,
                 reg_lambda=self.options.reg_lambda,
