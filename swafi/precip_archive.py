@@ -31,6 +31,36 @@ CDF_NB_LEVELS = 40
 CDF_MAX_LOG_EXCEEDANCE = 4.0
 
 
+def time_step_to_minutes(time_step_h):
+    """
+    Integer minutes for a time step given in hours.
+
+    Used for the pandas frequency strings and the derived-store identity, so
+    that a sub-hourly step is exact regardless of the float the caller passes
+    (e.g. both 5/60 and 0.0833 map to 5). The step must be a whole number of
+    minutes.
+
+    Parameters
+    ----------
+    time_step_h: float
+        The time step [h].
+
+    Returns
+    -------
+    int
+        The time step [min].
+    """
+    minutes = time_step_h * 60
+    minutes_rounded = int(round(minutes))
+    # Tolerant to one second, so a step meant as a whole number of minutes but
+    # typed as a rounded decimal of an hour (0.0833 for 5/60) is accepted.
+    assert abs(minutes - minutes_rounded) < 1 / 60, \
+        (f"The time step ({time_step_h} h) must be a whole number of minutes "
+         f"(e.g. 0.0833 = 5/60 for 5 min).")
+    assert minutes_rounded > 0, "The time step must be > 0."
+    return minutes_rounded
+
+
 def get_cdf_levels(spread, nb_levels=CDF_NB_LEVELS):
     """
     Percentile levels of the CDF transform, and the output step between two
@@ -637,7 +667,13 @@ class PrecipitationArchive(Precipitation):
         time_step: int|float
             The target time step [h]
         """
-        if resolution == self.resolution and time_step == self.time_step:
+        # Compared in minutes so that a native step passed as a slightly
+        # imprecise float (e.g. 0.0833 for 5/60 h) is recognised as native and
+        # does not trigger a needless rebuild.
+        target_minutes = time_step_to_minutes(time_step)
+        current_minutes = (time_step_to_minutes(self.time_step)
+                           if self.time_step is not None else None)
+        if resolution == self.resolution and target_minutes == current_minutes:
             return
 
         # The name must carry the period: the base data is year-sliced, so the
@@ -645,7 +681,7 @@ class PrecipitationArchive(Precipitation):
         t_first = pd.Timestamp(self.data[self.time_axis_dim].values[0])
         t_last = pd.Timestamp(self.data[self.time_axis_dim].values[-1])
         name = (f"precip_{self.dataset_name.lower()}"
-                f"_r{resolution:g}_t{time_step:g}h"
+                f"_r{resolution:g}_t{target_minutes}min"
                 f"_{t_first.year}-{t_last.year}.zarr")
         derived_path = self.tmp_dir / name
         done_marker = Path(str(derived_path) + '.done')
@@ -684,9 +720,11 @@ class PrecipitationArchive(Precipitation):
             # native 5-min files and in the hourly netCDF product), so the bins must
             # be right-closed and right-labelled: the step labelled T sums the native
             # steps over (T - target, T].
-            if self.time_step is not None and self.time_step != self.native_time_step:
+            if self.time_step is not None and \
+                    time_step_to_minutes(self.time_step) != \
+                    time_step_to_minutes(self.native_time_step):
                 data = data.resample(
-                    time=f'{self.time_step}h',
+                    time=f'{time_step_to_minutes(self.time_step)}min',
                     closed='right',
                     label='right',
                 ).sum(dim='time')

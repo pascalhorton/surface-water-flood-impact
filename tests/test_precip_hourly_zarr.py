@@ -156,7 +156,7 @@ def test_derived_daily_store(built_store):
                                rtol=1e-5)
 
     # The derived store is materialized once and reused (name carries the period)
-    derived_path = cpc.tmp_dir / 'precip_combiprecip_r1_t24h_2021-2021.zarr'
+    derived_path = cpc.tmp_dir / 'precip_combiprecip_r1_t1440min_2021-2021.zarr'
     assert (derived_path / 'zarr.json').exists()
 
 

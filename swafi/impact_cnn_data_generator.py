@@ -2,7 +2,7 @@
 Class to generate the data for the CNN model.
 """
 from .impact_dl_data_generator import ImpactDlDataGenerator
-from .precip_archive import get_cdf_levels
+from .precip_archive import get_cdf_levels, time_step_to_minutes
 
 import logging
 import numpy as np
@@ -42,8 +42,10 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
             The window size for the 3D predictors [km].
         precip_resolution: int
             The desired grid resolution of the precipitation data [km].
-        precip_time_step: int
-            The desired time step of the precipitation data [h].
+        precip_time_step: float
+            The desired time step of the precipitation data [h]. May be
+            sub-hourly (e.g. 5/60 for a 5-min step), but must be a whole number
+            of minutes that divides the day evenly.
         precip_days_before: int
             The number of days before the event to include in the 3D predictors.
         precip_days_after: int
@@ -152,8 +154,15 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
 
         time_dim_size = 0
         if self.X_precip is not None:
+            # Steps per day, derived from the same integer-minutes step used to
+            # build the derived store, so the two always agree (a step of
+            # 1440/minutes must divide the day evenly).
+            minutes = time_step_to_minutes(self.precip_time_step)
+            assert 1440 % minutes == 0, \
+                f"The time step ({minutes} min) must divide the day evenly."
+            steps_per_day = 1440 // minutes
             time_dim_size += self.precip_days_after + self.precip_days_before + 1
-            time_dim_size *= int(24 / self.precip_time_step)  # Time step
+            time_dim_size *= steps_per_day
             time_dim_size += 1  # Because the 1st and last time steps are included.
         self.time_dim_size = time_dim_size
 
@@ -192,7 +201,7 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
         if self.X_precip is None:
             return
 
-        time_step = f'{self.precip_time_step}h'
+        time_step = f'{time_step_to_minutes(self.precip_time_step)}min'
         dates = pd.to_datetime(self.event_props[:, 0])
         self.event_props[:, 0] = dates.round(time_step)
 

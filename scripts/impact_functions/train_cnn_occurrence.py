@@ -17,7 +17,7 @@ from swafi.config import Config
 from swafi.impact_cnn import ImpactCnn
 from swafi.impact_cnn_options import ImpactCnnOptions
 from swafi.events import load_events_from_pickle
-from swafi.precip_combiprecip import CombiPrecip
+from swafi.utils.use_common import create_precipitation
 from swafi.utils.optuna import get_or_create_optuna_study
 from swafi.utils.logging_setup import setup_logging
 
@@ -66,8 +66,12 @@ def main():
                 warnings.filterwarnings("ignore", category=UserWarning)  # pyproj
                 dem = rxr.open_rasterio(config.get('DEM_PATH'), masked=True).squeeze()
 
-        # Precipitation from the zarr store (config key PATH_PRECIP_HOURLY_ZARR)
-        precip = CombiPrecip(year_start, year_end)
+        # Precipitation source: the 5-min store (PATH_PRECIP_5MIN_ZARR) when the
+        # events were extracted from it, otherwise the hourly store
+        # (PATH_PRECIP_HOURLY_ZARR). Only the 5-min store can resolve a
+        # sub-hourly --precip-time-step.
+        precip = create_precipitation(
+            options.precip_dataset, year_start, year_end)
 
     if not options.optimize_with_optuna:
         cnn = _setup_model(options, events, precip, dem)
