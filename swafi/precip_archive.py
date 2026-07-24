@@ -3,6 +3,7 @@ Class to handle the precipitation archive data.
 """
 import hashlib
 import logging
+import warnings
 from pathlib import Path
 
 import dask
@@ -17,6 +18,56 @@ from .precip import Precipitation
 config = Config()
 
 logger = logging.getLogger(__name__)
+
+# CDF (percentile) transform. The per-pixel distribution is estimated on the wet
+# time steps only: precipitation is zero-inflated, so a percentile taken over all
+# steps would place every dry step at ~0.9 and squeeze the whole signal into the
+# top tenth of the output range.
+CDF_WET_THRESHOLD = 0.1  # [mm per time step] below this, a step counts as dry
+CDF_NB_LEVELS = 40
+# Rarest resolved wet value, as -log10 of its exceedance probability among wet
+# steps (4 -> a 1-in-10'000 wet step). Also the maximum output value of the
+# 'return_period' spread.
+CDF_MAX_LOG_EXCEEDANCE = 4.0
+
+
+def get_cdf_levels(spread, nb_levels=CDF_NB_LEVELS):
+    """
+    Percentile levels of the CDF transform, and the output step between two
+    consecutive levels.
+
+    The levels are spaced so that the transform output is simply the number of
+    levels the value exceeds, times the step: the output scale is built into the
+    level grid rather than applied afterwards.
+
+    Parameters
+    ----------
+    spread: str
+        How the percentiles are spread over the output range:
+        - 'return_period': the output is -log10 of the exceedance probability
+          among wet steps, i.e. the log10 of the return period expressed in wet
+          steps, in [0, CDF_MAX_LOG_EXCEEDANCE]. The upper tail (where damaging
+          events live) gets most of the range instead of being packed against 1.
+        - 'none': the output is the percentile itself, in [0, 1]. Uniformly
+          distributed over the wet steps, but the extremes are compressed.
+    nb_levels: int
+        The number of levels of the CDF table.
+
+    Returns
+    -------
+    np.array, float
+        The percentile levels (increasing, starting at 0), and the output step.
+    """
+    if spread == 'return_period':
+        step = CDF_MAX_LOG_EXCEEDANCE / nb_levels
+        exponents = np.arange(nb_levels) * step
+        return 1.0 - np.power(10.0, -exponents), step
+    if spread == 'none':
+        step = 1.0 / nb_levels
+        return np.arange(nb_levels) * step, step
+
+    raise ValueError(f"Unknown CDF spread: {spread}. "
+                     f"Options are: 'return_period', 'none'")
 
 
 class PrecipitationArchive(Precipitation):
@@ -375,6 +426,107 @@ class PrecipitationArchive(Precipitation):
             np.save(tmp_filename, quantiles)
 
         return quantiles
+
+    def compute_cdf_table_per_pixel(self, levels, wet_threshold=CDF_WET_THRESHOLD):
+        """
+        Compute, for each pixel, the precipitation value at each percentile level
+        of its wet-step distribution (the value grid inverted by cdf_transform).
+
+        Parameters
+        ----------
+        levels: np.array
+            The percentile levels, from get_cdf_levels().
+        wet_threshold: float
+            Time steps at or below this value are excluded from the distribution
+            (and map to 0 by the transform).
+
+        Returns
+        -------
+        np.array
+            The value grid, (nb_levels, nb_rows, nb_cols). Pixels with no wet
+            step hold +inf, so that the transform maps them to 0.
+        """
+        levels = np.asarray(levels, dtype='float64')
+        hash_tag = self._compute_cache_hash(
+            b'cdftable' + levels.tobytes() + str(wet_threshold).encode())
+        filename = f"precip_{self.dataset_name.lower()}_cdf_{hash_tag}.npy"
+        tmp_filename = self.tmp_dir / filename
+
+        if tmp_filename.exists():
+            logger.info("Precipitation CDF table loaded from file %s.",
+                        tmp_filename)
+            return np.load(tmp_filename)
+
+        precip = self.data[self.precip_var]
+        n_rows = precip.sizes[self.y_axis_dim]
+        n_cols = precip.sizes[self.x_axis_dim]
+
+        # Compute by spatial blocks: each block loads the whole time series for
+        # its pixels (needed for the quantiles) while bounding memory.
+        table = np.zeros((len(levels), n_rows, n_cols))
+        for i in tqdm(np.arange(0, n_rows, self.mem_nb_pixels),
+                      desc="Computing the CDF table per pixel"):
+            for j in np.arange(0, n_cols, self.mem_nb_pixels):
+                block = self._get_spatial_block(precip, i, j)
+                # Masked in place: a copy would double the memory of a block
+                # holding the whole time series of its pixels.
+                block[block <= wet_threshold] = np.nan
+                with warnings.catch_warnings():
+                    # Pixels without any wet step: handled right below.
+                    warnings.simplefilter('ignore', category=RuntimeWarning)
+                    table[:, i:i + block.shape[1], j:j + block.shape[2]] = \
+                        np.nanquantile(block, levels, axis=0)
+
+        nb_dry_pixels = int(np.isnan(table[0]).sum())
+        if nb_dry_pixels:
+            logger.warning("%d pixels have no wet time step (above %s); they "
+                           "are mapped to 0.", nb_dry_pixels, wet_threshold)
+        table = np.where(np.isfinite(table), table, np.inf)
+
+        if not tmp_filename.exists():
+            np.save(tmp_filename, table)
+
+        return table
+
+    def cdf_transform(self, levels, table, step):
+        """
+        Replace each value by its rank in the wet-step distribution of its own
+        pixel (lazily; computed at read time on the selected chunks only).
+
+        This is the transform the ``*_q`` event features use, applied to the
+        precipitation series itself: it makes intensities comparable between
+        pixels with different climatologies. Dry steps map to 0. Idempotent: the
+        train/valid/test data generators share the same precipitation object and
+        each request the transform.
+
+        Parameters
+        ----------
+        levels: np.array
+            The percentile levels, from get_cdf_levels().
+        table: np.array
+            The per-pixel value grid, from compute_cdf_table_per_pixel().
+        step: float
+            The output step between two consecutive levels, from
+            get_cdf_levels().
+        """
+        if '_cdf' in self._transform_tag:
+            logger.debug("Precipitation already CDF-transformed; skipping.")
+            return
+
+        precip = self.data[self.precip_var]
+
+        # The output is the number of levels the value exceeds, times the step.
+        # Accumulated one level at a time so that no (time, level, y, x) array is
+        # ever materialized.
+        counts = None
+        for values in table:
+            # Cast before accumulating: '+' on booleans is a logical or.
+            exceeds = (precip > self._as_spatial_da(values)).astype('float32')
+            counts = exceeds if counts is None else counts + exceeds
+
+        self.data[self.precip_var] = (counts * step).astype('float32')
+        self._transform_tag += f'_cdf{len(levels)}'
+        self._drop_preloaded()
 
     def get_data_chunk(self, t_start, t_end, x_start, x_end, y_start, y_end, cid=None):
         """

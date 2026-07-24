@@ -2,6 +2,7 @@
 Class to generate the data for the CNN model.
 """
 from .impact_dl_data_generator import ImpactDlDataGenerator
+from .precip_archive import get_cdf_levels
 
 import logging
 import numpy as np
@@ -18,7 +19,8 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
                  tmp_dir=None, transform_static='standardize', transform_precip='normalize',
                  log_transform_precip=True, mean_static=None, std_static=None,
                  mean_precip=None, std_precip=None, min_static=None,
-                 max_static=None, q99_precip=None,
+                 max_static=None, q99_precip=None, cdf_precip=None,
+                 precip_cdf_spread='return_period',
                  mean_dem=None, std_dem=None, min_dem=None, max_dem=None,
                  batch_pos_ratio=None, log_exposure=None, debug=False):
         """
@@ -70,6 +72,12 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
             The max of the static data.
         q99_precip: np.array
             The 99th percentile of the precipitation data.
+        cdf_precip: np.array
+            The per-pixel CDF table of the precipitation data (from the training
+            generator), used when transform_precip is 'cdf'.
+        precip_cdf_spread: str
+            How the percentiles are spread over the output range when
+            transform_precip is 'cdf' ('return_period' or 'none').
         mean_dem: np.array
             The mean of the DEM data (from training generator).
         std_dem: np.array
@@ -105,6 +113,9 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
         self.mean_precip = mean_precip
         self.std_precip = std_precip
         self.q99_precip = q99_precip
+        self.cdf_precip = cdf_precip
+        self.precip_cdf_spread = precip_cdf_spread
+        self.cdf_levels, self.cdf_step = get_cdf_levels(precip_cdf_spread)
 
         self.mean_dem = mean_dem
         self.std_dem = std_dem
@@ -126,6 +137,8 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
             self._standardize_precip_inputs()
         elif transform_precip == 'normalize':
             self._normalize_precip_inputs()
+        elif transform_precip == 'cdf':
+            self._cdf_transform_precip_inputs()
 
         self.on_epoch_end()  # Shuffle the data
 
@@ -159,6 +172,16 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
     def _normalize_precip_inputs(self):
         if self.X_precip is not None:
             self.X_precip.normalize(self.q99_precip)
+        self._normalize_dem_input()
+
+    def _cdf_transform_precip_inputs(self):
+        if self.X_precip is not None:
+            self.X_precip.cdf_transform(
+                self.cdf_levels, self.cdf_precip, self.cdf_step)
+        # The DEM is not precipitation: it keeps the min-max normalization.
+        self._normalize_dem_input()
+
+    def _normalize_dem_input(self):
         if self.X_dem is not None:
             self.X_dem = (self.X_dem - self.min_dem) / (self.max_dem - self.min_dem)
 
@@ -182,7 +205,7 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
                     logger.info('Computing DEM predictor statistics')
                     self.mean_dem = self.X_dem.mean(('x', 'y')).compute().values
                     self.std_dem = self.X_dem.std(('x', 'y')).compute().values
-            elif self.transform_precip == 'normalize':
+            elif self.transform_precip in ['normalize', 'cdf']:
                 if self.min_dem is None or self.max_dem is None:
                     logger.info('Computing DEM predictor statistics')
                     self.min_dem = self.X_dem.min(('x', 'y')).compute().values
@@ -193,8 +216,14 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
 
         # Log transform the precipitation
         if self.log_transform_precip:
-            logger.info('Log-transforming precipitation')
-            self.X_precip.log_transform()
+            if self.transform_precip == 'cdf':
+                # The CDF transform ranks the values, so any increasing transform
+                # applied first leaves its output unchanged.
+                logger.info('Skipping the log transform: it has no effect on '
+                            'the CDF transform (rank-preserving)')
+            else:
+                logger.info('Log-transforming precipitation')
+                self.X_precip.log_transform()
 
         # Load or compute the precipitation statistics
         if self.transform_precip == 'standardize':
@@ -205,6 +234,11 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
             if self.q99_precip is not None:
                 return
             self.q99_precip = self.X_precip.compute_quantile_per_pixel(0.99)
+        elif self.transform_precip == 'cdf':
+            if self.cdf_precip is not None:
+                return
+            self.cdf_precip = self.X_precip.compute_cdf_table_per_pixel(
+                self.cdf_levels)
 
     def __getitem__(self, i):
         """Generate one batch of data"""

@@ -156,6 +156,7 @@ class ImpactCnn(ImpactDl):
             transform_static=self.options.transform_static,
             transform_precip=self.options.transform_precip,
             log_transform_precip=self.options.log_transform_precip,
+            precip_cdf_spread=self.options.precip_cdf_spread,
             mean_static=mean_static,
             std_static=std_static,
             min_static=min_static,
@@ -196,6 +197,7 @@ class ImpactCnn(ImpactDl):
             transform_static=self.options.transform_static,
             transform_precip=self.options.transform_precip,
             log_transform_precip=self.options.log_transform_precip,
+            precip_cdf_spread=self.options.precip_cdf_spread,
             batch_pos_ratio=self.options.batch_pos_ratio,
             log_exposure=self.exposure_train,
             debug=DEBUG,
@@ -238,6 +240,8 @@ class ImpactCnn(ImpactDl):
             min_static=self.dg_train.min_static,
             max_static=self.dg_train.max_static,
             q99_precip=self.dg_train.q99_precip,
+            cdf_precip=self.dg_train.cdf_precip,
+            precip_cdf_spread=self.options.precip_cdf_spread,
             mean_dem=self.dg_train.mean_dem,
             std_dem=self.dg_train.std_dem,
             min_dem=self.dg_train.min_dem,
@@ -271,6 +275,8 @@ class ImpactCnn(ImpactDl):
             min_static=self.dg_train.min_static,
             max_static=self.dg_train.max_static,
             q99_precip=self.dg_train.q99_precip,
+            cdf_precip=self.dg_train.cdf_precip,
+            precip_cdf_spread=self.options.precip_cdf_spread,
             mean_dem=self.dg_train.mean_dem,
             std_dem=self.dg_train.std_dem,
             min_dem=self.dg_train.min_dem,
@@ -348,6 +354,9 @@ class ImpactCnn(ImpactDl):
             std_precip=self.dg_train.std_precip,
             q99_precip=self.dg_train.q99_precip,
         )
+        # The CDF table is not stored in the model: it is a (levels, y, x) grid,
+        # far too large for the model config. Inference reloads it from its cache
+        # in TMP_DIR (or recomputes it from the precipitation store).
 
     def set_precipitation(self, precipitation):
         """

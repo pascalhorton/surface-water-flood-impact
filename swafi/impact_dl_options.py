@@ -35,7 +35,11 @@ class ImpactDlOptions(ImpactBasicOptions):
         Whether to log-transform the precipitation or not.
     transform_precip: str
         The transformation to apply to the precipitation data.
-        Options are: 'standardize', 'normalize'.
+        Options are: 'standardize', 'normalize', 'cdf'.
+    precip_cdf_spread: str
+        How the CDF transform spreads the percentiles over the output range.
+        Options are: 'return_period', 'none'. Only used with transform_precip
+        set to 'cdf'.
     transform_static: str
         The transformation to apply to the static data.
         Options are: 'standardize', 'normalize'.
@@ -86,6 +90,7 @@ class ImpactDlOptions(ImpactBasicOptions):
         self.use_precip = None
         self.log_transform_precip = None
         self.transform_precip = None
+        self.precip_cdf_spread = None
         self.transform_static = None
 
         # Training options
@@ -154,7 +159,20 @@ class ImpactDlOptions(ImpactBasicOptions):
             '--transform-precip',
             type=str,
             default='normalize',
-            help='The transformation to apply to the precipitation data'
+            choices=['standardize', 'normalize', 'cdf'],
+            help='The transformation to apply to the precipitation data: '
+                 'per-pixel mean/std (standardize), per-pixel division by the '
+                 '99th percentile (normalize), or per-pixel rank in the wet-step '
+                 'distribution (cdf, as for the *_q event features)'
+        )
+        self.parser.add_argument(
+            '--precip-cdf-spread',
+            type=str,
+            default='return_period',
+            choices=['return_period', 'none'],
+            help='How the CDF transform spreads the percentiles over the output '
+                 'range: -log10 of the exceedance probability, which keeps the '
+                 'extremes apart (return_period), or the raw percentile (none)'
         )
         self.parser.add_argument(
             '--transform-static',
@@ -349,6 +367,7 @@ class ImpactDlOptions(ImpactBasicOptions):
         self.use_precip = args.use_precip
         self.log_transform_precip = args.log_transform_precip
         self.transform_precip = args.transform_precip
+        self.precip_cdf_spread = args.precip_cdf_spread
         self.transform_static = args.transform_static
         self.batch_size = args.batch_size
         self.batch_pos_ratio = args.batch_pos_ratio
@@ -415,7 +434,7 @@ class ImpactDlOptions(ImpactBasicOptions):
         if self.use_precip:
             if 'transform_precip' in hp_to_optimize:
                 self.transform_precip = trial.suggest_categorical(
-                    'transform_precip', ['standardize', 'normalize'])
+                    'transform_precip', ['standardize', 'normalize', 'cdf'])
             if 'log_transform_precip' in hp_to_optimize:
                 self.log_transform_precip = trial.suggest_categorical(
                     'log_transform_precip', [True, False])
@@ -478,6 +497,8 @@ class ImpactDlOptions(ImpactBasicOptions):
 
         if self.use_precip:
             logger.info("- transform_precip:  %s", self.transform_precip)
+            if self.transform_precip == 'cdf':
+                logger.info("- precip_cdf_spread:  %s", self.precip_cdf_spread)
             logger.info("- log_transform_precip:  %s", self.log_transform_precip)
 
         logger.info("- loss_function:  %s", self.loss_function)
@@ -524,7 +545,13 @@ class ImpactDlOptions(ImpactBasicOptions):
         assert self.weight_denominator is not None, "weight_denominator is not set"
         assert isinstance(self.use_precip, bool), "use_precip is not set"
         assert isinstance(self.log_transform_precip, bool), "log_transform_precip is not set"
-        assert self.transform_precip in ['standardize', 'normalize'], "transform_precip is not set"
+        assert self.transform_precip in ['standardize', 'normalize', 'cdf'], \
+            "transform_precip is not set"
+        if self.precip_cdf_spread is None:
+            # Options deserialized from models saved before this flag existed
+            self.precip_cdf_spread = 'return_period'
+        assert self.precip_cdf_spread in ['return_period', 'none'], \
+            "precip_cdf_spread is not set"
         assert self.transform_static in ['standardize', 'normalize'], "transform_static is not set"
         assert self.batch_size is not None, "batch_size is not set"
         assert self.epochs is not None, "epochs is not set"

@@ -122,6 +122,10 @@ class ImpactTxDataGenerator(ImpactDlDataGenerator):
             self._standardize_precip_inputs()
         elif transform_precip == 'normalize':
             self._normalize_precip_inputs()
+        else:
+            raise NotImplementedError(
+                f"transform_precip '{transform_precip}' is not implemented for "
+                f"the transformer model (only for the CNN).")
 
         self.on_epoch_end()  # Shuffle the data
 
