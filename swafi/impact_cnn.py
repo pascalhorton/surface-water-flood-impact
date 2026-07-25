@@ -376,7 +376,8 @@ class ImpactCnn(ImpactDl):
 
         precipitation.prepare_data(
             resolution=self.options.precip_resolution,
-            time_step=self.options.precip_time_step
+            # prepare_data works in hours; the option is in minutes.
+            time_step=self.options.precip_time_step / 60
         )
 
         # Check the shape of the precipitation and the DEM

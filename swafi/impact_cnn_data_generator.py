@@ -2,7 +2,7 @@
 Class to generate the data for the CNN model.
 """
 from .impact_dl_data_generator import ImpactDlDataGenerator
-from .precip_archive import get_cdf_levels, time_step_to_minutes
+from .precip_archive import get_cdf_levels
 
 import logging
 import numpy as np
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 class ImpactCnnDataGenerator(ImpactDlDataGenerator):
     def __init__(self, event_props, x_static, x_precip, x_dem, y=None, batch_size=32,
                  shuffle=True, precip_window_size=2, precip_resolution=1,
-                 precip_time_step=12, precip_days_before=1, precip_days_after=1,
+                 precip_time_step=60, precip_days_before=1, precip_days_after=1,
                  tmp_dir=None, transform_static='standardize', transform_precip='normalize',
                  log_transform_precip=True, mean_static=None, std_static=None,
                  mean_precip=None, std_precip=None, min_static=None,
@@ -42,10 +42,9 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
             The window size for the 3D predictors [km].
         precip_resolution: int
             The desired grid resolution of the precipitation data [km].
-        precip_time_step: float
-            The desired time step of the precipitation data [h]. May be
-            sub-hourly (e.g. 5/60 for a 5-min step), but must be a whole number
-            of minutes that divides the day evenly.
+        precip_time_step: int
+            The desired time step of the precipitation data [min]. Must divide
+            the day evenly (e.g. 5, 10, 15, 30, 60).
         precip_days_before: int
             The number of days before the event to include in the 3D predictors.
         precip_days_after: int
@@ -154,10 +153,9 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
 
         time_dim_size = 0
         if self.X_precip is not None:
-            # Steps per day, derived from the same integer-minutes step used to
-            # build the derived store, so the two always agree (a step of
-            # 1440/minutes must divide the day evenly).
-            minutes = time_step_to_minutes(self.precip_time_step)
+            # The time step is in minutes; a step of 1440/minutes must divide the
+            # day evenly so the daily grid (and the derived store) are exact.
+            minutes = self.precip_time_step
             assert 1440 % minutes == 0, \
                 f"The time step ({minutes} min) must divide the day evenly."
             steps_per_day = 1440 // minutes
@@ -201,7 +199,7 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
         if self.X_precip is None:
             return
 
-        time_step = f'{time_step_to_minutes(self.precip_time_step)}min'
+        time_step = f'{self.precip_time_step}min'
         dates = pd.to_datetime(self.event_props[:, 0])
         self.event_props[:, 0] = dates.round(time_step)
 

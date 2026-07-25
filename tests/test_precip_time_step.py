@@ -62,16 +62,17 @@ def test_resample_native_step_is_noop():
     np.testing.assert_array_equal(out['precip'].to_numpy().ravel(), np.arange(12))
 
 
-@pytest.mark.parametrize("days_before, days_after, step_h, expected", [
-    (2, 1, 1, 4 * 24 + 1),        # hourly, the historical default
-    (0, 0, 5 / 60, 288 + 1),      # one day at 5-min resolution
-    (2, 1, 0.5, 4 * 48 + 1),      # 30-min steps over four days
+@pytest.mark.parametrize("days_before, days_after, step_min, expected", [
+    (2, 1, 60, 4 * 24 + 1),       # hourly, the historical default
+    (0, 0, 5, 288 + 1),           # one day at 5-min resolution
+    (2, 1, 30, 4 * 48 + 1),       # 30-min steps over four days
 ])
-def test_time_dim_size(days_before, days_after, step_h, expected):
+def test_time_dim_size(days_before, days_after, step_min, expected):
+    # The generator takes the time step in minutes.
     g = ImpactCnnDataGenerator.__new__(ImpactCnnDataGenerator)
     g.X_precip = object()
     g.time_dim_size = None
     g.precip_days_before = days_before
     g.precip_days_after = days_after
-    g.precip_time_step = step_h
+    g.precip_time_step = step_min
     assert g.get_time_dim_size() == expected

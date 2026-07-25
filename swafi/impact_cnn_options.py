@@ -2,7 +2,6 @@
 Class to define the options for the CNN-based impact function.
 """
 from swafi.impact_dl_options import ImpactDlOptions
-from swafi.precip_archive import time_step_to_minutes
 
 import copy
 import logging
@@ -31,8 +30,9 @@ class ImpactCnnOptions(ImpactDlOptions):
         The precipitation window size [km].
     precip_resolution: int
         The precipitation resolution [km].
-    precip_time_step: float
-        The precipitation time step [h].
+    precip_time_step: int
+        The precipitation time step [min]. Must divide the day evenly. A
+        sub-hourly step (< 60) requires the 5min dataset.
     precip_days_before: int
         The number of days before the event to use for the precipitation.
     precip_days_after: int
@@ -181,13 +181,11 @@ class ImpactCnnOptions(ImpactDlOptions):
         )
         self.parser.add_argument(
             '--precip-time-step',
-            type=float,
-            default=1,
-            help='The precipitation time step [h]. May be sub-hourly, given in '
-                 'hours as a whole number of minutes dividing the day evenly '
-                 '(e.g. 0.5 for 30 min, or 0.0833 = 5/60 for the native 5-min '
-                 'step of the 5min dataset). Sub-hourly steps require '
-                 '--precip-dataset 5min.'
+            type=int,
+            default=60,
+            help='The precipitation time step [min]. Must divide the day evenly '
+                 '(e.g. 5, 10, 15, 30, 60). A sub-hourly step (< 60) requires '
+                 '--precip-dataset 5min; the native 5-min step is 5.'
         )
         self.parser.add_argument(
             '--precip-days-before',
@@ -427,7 +425,7 @@ class ImpactCnnOptions(ImpactDlOptions):
             self.precip_resolution = choices[precip_resolution_index]
         if 'precip_time_step' in hp_to_optimize:
             self.precip_time_step = trial.suggest_categorical(
-                'precip_time_step', [1, 2, 4, 6, 12, 24])
+                'precip_time_step', [60, 120, 240, 360, 720, 1440])
         if 'precip_days_before' in hp_to_optimize:
             self.precip_days_before = trial.suggest_int(
                 'precip_days_before', 1, 10)
@@ -512,7 +510,7 @@ class ImpactCnnOptions(ImpactDlOptions):
         if self.use_precip:
             logger.info("- precip_window_size:  %s", self.precip_window_size)
             logger.info("- precip_resolution:  %s", self.precip_resolution)
-            logger.info("- precip_time_step:  %s", self.precip_time_step)
+            logger.info("- precip_time_step [min]:  %s", self.precip_time_step)
             logger.info("- precip_days_before:  %s", self.precip_days_before)
             logger.info("- precip_days_after:  %s", self.precip_days_after)
             logger.info("- use_spatial_dropout:  %s", self.use_spatial_dropout)
@@ -551,17 +549,26 @@ class ImpactCnnOptions(ImpactDlOptions):
             assert self.precip_days_before >= 0, "precip_days_before must be >= 0"
             assert self.precip_days_after >= 0, "precip_days_after must be >= 0"
 
-            # The time step must be a whole number of minutes dividing the day
-            # evenly (so the daily time grid, and the derived store, are exact).
-            minutes = time_step_to_minutes(self.precip_time_step)
+            # The time step is in minutes and must divide the day evenly (so the
+            # daily time grid, and the derived store, are exact).
+            minutes = self.precip_time_step
+            assert isinstance(minutes, int) and minutes > 0, \
+                "precip_time_step must be a positive integer number of minutes"
             assert 1440 % minutes == 0, \
                 (f"precip_time_step ({minutes} min) must divide the day evenly "
-                 f"(e.g. 5, 10, 15, 30 min or an integer number of hours)")
-            if minutes < 60 and self.precip_dataset != '5min':
-                logger.warning(
-                    "A sub-hourly time step (%d min) needs the 5-min data; "
-                    "the hourly dataset cannot resolve it. Use --precip-dataset "
-                    "5min.", minutes)
+                 f"(e.g. 5, 10, 15, 30, 60)")
+            # The step is built by summing native steps, so it must be a whole
+            # multiple of the dataset's native resolution: 5 min for the 5min
+            # dataset, 60 min for the (already hourly) hourly dataset. This also
+            # rejects, loudly, models trained before the minutes convention
+            # (which stored the step in hours: an old value of 1 now reads as
+            # 1 min and fails here instead of silently meaning 1 min).
+            native_minutes = 5 if self.precip_dataset == '5min' else 60
+            assert minutes % native_minutes == 0, (
+                f"precip_time_step ({minutes} min) must be a multiple of the "
+                f"{native_minutes}-min native step of the '{self.precip_dataset}' "
+                f"dataset. Models trained before the minutes convention stored "
+                f"this in hours: multiply the old value by 60.")
 
         if not self.use_precip:
             if self.use_dem:
