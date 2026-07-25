@@ -17,7 +17,8 @@ from swafi.config import Config
 from swafi.impact_cnn import ImpactCnn
 from swafi.impact_cnn_options import ImpactCnnOptions
 from swafi.events import load_events_from_pickle
-from swafi.utils.use_common import create_precipitation
+from swafi.precip_combiprecip import CombiPrecip
+from swafi.precip_combiprecip_5min import CombiPrecip5min
 from swafi.utils.optuna import get_or_create_optuna_study
 from swafi.utils.logging_setup import setup_logging
 
@@ -70,8 +71,10 @@ def main():
         # events were extracted from it, otherwise the hourly store
         # (PATH_PRECIP_HOURLY_ZARR). Only the 5-min store can resolve a
         # sub-hourly --precip-time-step.
-        precip = create_precipitation(
-            options.precip_dataset, year_start, year_end)
+        if options.precip_dataset == '5min':
+            precip = CombiPrecip5min(year_start, year_end)
+        else:
+            precip = CombiPrecip(year_start, year_end)
 
     if not options.optimize_with_optuna:
         cnn = _setup_model(options, events, precip, dem)
