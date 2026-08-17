@@ -150,7 +150,9 @@ class DamagesGvz(Damages):
         """
         Extract all contract data.
         """
-        exposure_file = directory + f'/gvz_exposure_{self.year_start}-{self.year_end}.nc'
+        exposure_file = glob.glob(directory + '/gvz_exposure_*.nc')
+        assert len(exposure_file) == 1
+        exposure_file = str(exposure_file[0])
         assert Path(exposure_file).is_file(), f"Exposure file {exposure_file} not found."
         data = self._parse_exposure_files([exposure_file])
 
@@ -194,7 +196,9 @@ class DamagesGvz(Damages):
         """
         Extracts all claims data.
         """
-        file = directory + f'/gvz_flood_claims_{self.year_start}-{self.year_end}.nc'
+        file = glob.glob(directory + '/gvz_flood_claims_*.nc')
+        assert len(file) == 1
+        file = str(file[0])
         assert Path(file).is_file(), f"Claim file {file} not found."
         self._parse_claim_files([file])
 
