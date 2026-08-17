@@ -2,8 +2,8 @@ import optuna
 import pandas as pd
 
 # Location of the database file
-study_name = "ann_101"
-filepath = Rf'C:\Data\Projects\2024 SWF\Analyses\05 ANNs and CNNs\__08 New ANN\GVZ\Run 2\{study_name}.log'
+study_name = "rf_04"
+filepath = Rf'C:\Data\Projects\2024 SWF\Analyses\04 Random forest v2\02 Optuna runs\Mobiliar\Classic events\{study_name}.log'
 
 # Load the study from the file
 lock_obj = optuna.storages.journal.JournalFileOpenLock(filepath)  # For Windows
