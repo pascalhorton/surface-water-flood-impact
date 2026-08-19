@@ -305,7 +305,7 @@ class ImpactTxDataGenerator(ImpactDlDataGenerator):
                 empty_block = self._create_empty_precip_block(-diff)
                 x_precip_ev = np.concatenate([x_precip_ev, empty_block], axis=-1)
 
-        return x_precip_ev
+        return self._sanitize_precip(x_precip_ev)
 
     def _extract_precipitation_daily(self, event):
         # Temporal selection
@@ -346,4 +346,4 @@ class ImpactTxDataGenerator(ImpactDlDataGenerator):
                 empty_block = self._create_empty_precip_block(-diff)
                 x_precip_ev = np.concatenate([x_precip_ev, empty_block], axis=-1)
 
-        return x_precip_ev
+        return self._sanitize_precip(x_precip_ev)

@@ -140,8 +140,10 @@ class ImpactDlOptions(ImpactBasicOptions):
         self.parser.add_argument(
             '--weight-denominator',
             type=int,
-            default=20,
-            help='The weight denominator to reduce the negative class weights'
+            default=1,
+            help='Extra divisor applied to the positive class weight, on top of '
+                 'the correction for --factor-neg-reduction. 1 keeps the balanced '
+                 'weighting; values above 1 favour the negative class.'
         )
         self.parser.add_argument(
             '--use-precip',

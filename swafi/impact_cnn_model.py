@@ -278,7 +278,15 @@ class ModelCnn(keras.models.Model):
 
             # Temporal pooling
             pooling = getattr(self.options, 'tcn_pooling', 'max')
-            if pooling == 'mean':
+            if pooling == 'mean_max':
+                # Max alone keeps peak intensity and discards duration; the mean
+                # carries accumulation. Both matter for surface water flooding,
+                # so concatenate them rather than choosing.
+                x = keras.layers.Concatenate(name='temporal_mean_max')([
+                    keras.layers.GlobalAveragePooling1D(name='temporal_mean')(x),
+                    keras.layers.GlobalMaxPooling1D(name='temporal_max')(x),
+                ])
+            elif pooling == 'mean':
                 x = keras.layers.GlobalAveragePooling1D(name='temporal_mean')(x)
             elif pooling == 'last':
                 x = keras.layers.Lambda(

@@ -156,13 +156,21 @@ class ImpactDl(Impact):
             pass
 
         # Time a single batch fetch to separate data-loading slowness from model compute issues.
+        first_batch = None
         try:
             t0 = datetime.datetime.now()
-            _ = self.dg_train[0]
+            first_batch = self.dg_train[0]
             dt_s = (datetime.datetime.now() - t0).total_seconds()
             logger.info("First training batch materialization time: %.2f s", dt_s)
         except Exception as exc:
             logger.warning("Could not time first training batch materialization: %s", exc)
+
+        # Fail fast on non-finite inputs: training on NaN produces a full run of
+        # plots and scores that look like results but carry no information.
+        if first_batch is not None:
+            self._check_batch_is_finite(first_batch, 'first training batch')
+        if self.dg_val is not None and len(self.dg_val):
+            self._check_batch_is_finite(self.dg_val[0], 'first validation batch')
 
         # Early stopping callbacks — ResumableEarlyStopping restores best/wait on resume
         es_monitor = self.options.early_stopping_metric
@@ -177,7 +185,16 @@ class ImpactDl(Impact):
         if resuming:
             early_stopping_no_skill.wait = resume_meta['no_skill_wait']
 
-        callbacks = [early_stopping_main, early_stopping_no_skill]
+        # Abort immediately on a non-finite loss rather than burning the full
+        # epoch budget on NaN weights and writing plots that look like results.
+        terminate_on_nan = keras.callbacks.TerminateOnNaN()
+
+        # Report what the network is actually being fed, once per epoch.
+        precip_monitor = PrecipInputMonitor(
+            {'train': self.dg_train, 'valid': self.dg_val})
+
+        callbacks = [terminate_on_nan, early_stopping_main,
+                     early_stopping_no_skill, precip_monitor]
         if debug:
             callbacks.append(BatchHeartbeat(every_n_batches=100))
         if ckpt_mgr is not None:
@@ -257,6 +274,45 @@ class ImpactDl(Impact):
         # Plot the training history
         if do_plot:
             self._plot_training_history(hist, dir_plots, show_plots, tag)
+
+    @staticmethod
+    def _check_batch_is_finite(batch, label):
+        """
+        Raise if any model input in the batch contains NaN or inf.
+
+        A single non-finite value turns the whole forward pass non-finite, the
+        weights follow within an epoch, and every metric afterwards degenerates
+        to a constant. Catching it here costs one batch instead of a full run.
+
+        Parameters
+        ----------
+        batch: tuple
+            A (inputs, targets) pair as returned by a data generator.
+        label: str
+            Description of the batch, for the error message.
+
+        Raises
+        ------
+        ValueError
+            If any input array holds a non-finite value.
+        """
+        inputs = batch[0] if isinstance(batch, (tuple, list)) else batch
+        if not isinstance(inputs, (tuple, list)):
+            inputs = (inputs,)
+
+        for i, array in enumerate(inputs):
+            array = np.asarray(array)
+            if not np.issubdtype(array.dtype, np.floating):
+                continue
+            nb_non_finite = int((~np.isfinite(array)).sum())
+            if nb_non_finite:
+                raise ValueError(
+                    f"{label}: model input {i} holds {nb_non_finite} non-finite "
+                    f"value(s) out of {array.size} (shape {array.shape}). Training "
+                    f"on these produces a NaN loss and meaningless scores. Check the "
+                    f"source data for gaps and the transform divisors for zeros.")
+
+        logger.info("%s: all model inputs are finite.", label)
 
     def reduce_negatives_for_training(self, factor):
         """
@@ -381,6 +437,9 @@ class ImpactDl(Impact):
             store_classic_scores(tp, tn, fp, fn, df_tmp)
             roc = assess_roc_auc(y_obs, y_pred)
             df_tmp['ROC_AUC'] = [roc]
+            degenerate = self._flag_degenerate_predictions(
+                y_pred, roc, tp, tn, fp, fn, period_name)
+            df_tmp['degenerate'] = [degenerate]
         else:
             rmse = np.sqrt(np.mean((y_obs - y_pred) ** 2))
             logger.info("RMSE: %s", rmse)
@@ -491,6 +550,14 @@ class ImpactDl(Impact):
                     from_logits=False
                 )
                 logger.info("Using Focal Loss (alpha=%.3f, gamma=2.0)", alpha)
+                if alpha < 0.5:
+                    logger.warning(
+                        "Focal alpha=%.3f puts more weight on negatives than on "
+                        "positives. Combined with gamma=2, which further damps the "
+                        "gradient of the rare positives, the model is likely to "
+                        "settle on a constant prediction. Lower "
+                        "--weight-denominator, or use --loss-function wbce while "
+                        "debugging.", alpha)
 
             elif loss_type == 'bfce':  # binary focal cross-entropy
                 # Convert pos_weight to alpha for focal loss
@@ -561,6 +628,13 @@ class ImpactDl(Impact):
             schedule = WarmupCosineDecay(lr, total_steps, warmup_steps)
         else:  # 'constant' or 'reduce_on_plateau' (callback drives LR reduction)
             schedule = lr
+            if getattr(self.options, 'lr_warmup_epochs', 0):
+                logger.warning(
+                    "lr_warmup_epochs=%s is ignored under lr_method='%s'; warmup "
+                    "only applies to 'cosine_decay_warmup'. Without it the first "
+                    "epoch runs at the full learning rate (%s), which is where "
+                    "these models saturate.",
+                    self.options.lr_warmup_epochs, lr_method, lr)
 
         if self.options.optimizer_name == 'adamw':
             optimizer = keras.optimizers.AdamW(
@@ -888,6 +962,34 @@ class CustomEarlyStopping(keras.callbacks.Callback):
                             epoch + 1, self.monitor, self.min_value, self.patience)
         else:
             self.wait = 0
+
+
+class PrecipInputMonitor(keras.callbacks.Callback):
+    """
+    Log the precipitation input statistics collected by the data generators at
+    the end of every epoch.
+
+    A model that never leaves its initial prediction looks the same in the
+    learning curves whether the cause is the loss weighting, the architecture or
+    the inputs themselves. Printing the range and the non-finite share of what
+    reaches the network separates those cases in the first epoch.
+
+    Parameters
+    ----------
+    generators: dict
+        Split name -> data generator. Generators without the monitoring hooks
+        are skipped.
+    """
+
+    def __init__(self, generators):
+        super().__init__()
+        self.generators = {k: v for k, v in generators.items() if v is not None}
+
+    def on_epoch_end(self, epoch, logs=None):
+        for label, dg in self.generators.items():
+            log_fn = getattr(dg, 'log_precip_monitor', None)
+            if log_fn is not None:
+                log_fn(label=f"[epoch {epoch}, {label}]")
 
 
 class BatchHeartbeat(keras.callbacks.Callback):

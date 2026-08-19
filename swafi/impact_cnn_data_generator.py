@@ -2,7 +2,7 @@
 Class to generate the data for the CNN model.
 """
 from .impact_dl_data_generator import ImpactDlDataGenerator
-from .precip_archive import get_cdf_levels
+from .precip_archive import TRANSFORM_DIVISOR_FLOOR, get_cdf_levels
 
 import logging
 import numpy as np
@@ -128,6 +128,7 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
 
         self._adapt_event_times()
         self._compute_predictor_statistics()
+        self._set_dry_fill_value()
 
         if transform_static == 'standardize':
             self._standardize_static_inputs()
@@ -247,6 +248,42 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
             self.cdf_precip = self.X_precip.compute_cdf_table_per_pixel(
                 self.cdf_levels)
 
+    def _set_dry_fill_value(self):
+        """
+        Determine the value that a dry time step takes once the active transform
+        has been applied. Used to fill missing time steps and to replace
+        non-finite values, so that both read as 'no rain' rather than as some
+        arbitrary amount of rain.
+
+        Exact for 'normalize' and 'cdf', where 0 mm maps to 0. For 'standardize'
+        the dry value is -mean/std and therefore varies per pixel; a single
+        scalar cannot represent it, so the domain average is used. It is far
+        closer than the raw 0 it replaces, which sits at the pixel's
+        climatological mean.
+        """
+        self.dry_fill_value = 0.0
+
+        if self.X_precip is None or self.transform_precip != 'standardize':
+            return
+
+        if self.mean_precip is None or self.std_precip is None:
+            return
+
+        mean = np.asarray(self.mean_precip, dtype='float64')
+        std = np.asarray(self.std_precip, dtype='float64')
+        std = np.where(np.isfinite(std) & (std >= TRANSFORM_DIVISOR_FLOOR),
+                       std, TRANSFORM_DIVISOR_FLOOR)
+        dry = -mean / std
+        dry = dry[np.isfinite(dry)]
+
+        if dry.size:
+            self.dry_fill_value = float(dry.mean())
+
+        logger.info(
+            "Dry fill value for the '%s' transform: %.4g "
+            "(domain average of -mean/std; padding and non-finite values use it)",
+            self.transform_precip, self.dry_fill_value)
+
     def __getitem__(self, i):
         """Generate one batch of data"""
         return self._generate_batch(self._get_batch_idxs(i))
@@ -360,7 +397,7 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
 
                 x_precip_ev = np.concatenate([empty_block, x_precip_ev], axis=0)
 
-        return x_precip_ev
+        return self._sanitize_precip(x_precip_ev)
 
     def _extract_dem_patch(self, event, pixels_nb):
         """ Extract and size-correct the DEM patch for a single event. Returns (H, W). """

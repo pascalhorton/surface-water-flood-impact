@@ -703,10 +703,25 @@ class Impact:
 
         self.class_weight = {0: self.weights[0],
                              1: self.weights[1] / effective_denom}
+        ratio = self.class_weight[1] / self.class_weight[0]
         logger.info(
             "Class weights: neg=%.4f, pos=%.4f (ratio pos/neg=%.2f)",
-            self.class_weight[0], self.class_weight[1],
-            self.class_weight[1] / self.class_weight[0])
+            self.class_weight[0], self.class_weight[1], ratio)
+
+        # compute_balanced_class_weights() already divided the positive weight by
+        # factor_neg_reduction, so weights[1] is the value that balances the
+        # subsampled training generator. effective_denom is therefore exactly the
+        # factor by which the negatives are made to outweigh the positives.
+        if effective_denom > 1:
+            logger.warning(
+                "Negatives carry about %.0f× the loss mass of the positives "
+                "(effective denominator %.1f) on a problem with %d positives and "
+                "%d negatives. The constant 'no event' prediction sits close to "
+                "the loss minimum, and the model may collapse onto it. Set "
+                "--weight-denominator 1 for balanced weighting (currently %s).",
+                effective_denom, effective_denom,
+                int(np.sum(self.y_train > 0)), int(np.sum(self.y_train == 0)),
+                weight_denominator)
 
     def show_target_stats(self):
         # Count the number of events with and without damages
@@ -802,6 +817,50 @@ class Impact:
         df_options.to_csv(file_name_options, index=False)
         logger.info("Results saved to %s", file_name)
 
+    @staticmethod
+    def _flag_degenerate_predictions(y_pred, roc, tp, tn, fp, fn, period_name):
+        """
+        Detect a model that carries no information and say so next to its scores.
+
+        The decision threshold is tuned to maximise F1 on validation. When the
+        model emits a near-constant probability, that optimum is 'label
+        everything positive', which produces a confusion matrix with a perfect
+        recall and a full complement of false positives - numbers that describe
+        the threshold search rather than the model. The ROC-AUC is the column
+        that gives it away, so the check keys on that and on the collapsed
+        confusion matrix, and marks the row.
+
+        Parameters
+        ----------
+        y_pred: np.array
+            The predicted probabilities.
+        roc: float
+            The ROC-AUC on this split.
+        tp, tn, fp, fn: int
+            The confusion matrix entries.
+        period_name: str
+            The split name, for the log message.
+
+        Returns
+        -------
+        bool
+            True when the predictions carry no usable ranking information.
+        """
+        spread = float(np.nanmax(y_pred) - np.nanmin(y_pred)) if y_pred.size else 0.0
+        no_ranking = not np.isfinite(roc) or abs(roc - 0.5) < 0.01
+        all_one_class = (tn + fp == 0) or (tp + fn == 0) or (tn == 0) or (fp + tp == 0)
+        degenerate = no_ranking or (all_one_class and spread < 1e-6)
+
+        if degenerate:
+            logger.warning(
+                "Split '%s': the model produces no usable ranking (ROC-AUC=%.4f, "
+                "prediction spread=%.3g). The confusion matrix above reflects the "
+                "F1-optimal threshold applied to a near-constant output, not model "
+                "skill - do not compare those columns across runs.",
+                period_name, roc, spread)
+
+        return degenerate
+
     def _assess_model(self, x, y, period_name, df_res):
         """
         Assess the model on a single period.
@@ -825,6 +884,8 @@ class Impact:
             store_classic_scores(tp, tn, fp, fn, df_tmp)
             roc = assess_roc_auc(y, y_pred_prob)
             df_tmp['ROC_AUC'] = [roc]
+            df_tmp['degenerate'] = [self._flag_degenerate_predictions(
+                y_pred_prob, roc, tp, tn, fp, fn, period_name)]
         else:
             y_pred = self.model.predict(x)
             rmse = np.sqrt(np.mean((y - y_pred) ** 2))

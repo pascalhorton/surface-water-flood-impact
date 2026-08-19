@@ -274,9 +274,11 @@ class ImpactCnnOptions(ImpactDlOptions):
         self.parser.add_argument(
             '--tcn-pooling',
             type=str,
-            default='max',
-            choices=['mean', 'max', 'last', 'attention'],
-            help='Temporal pooling strategy after TCN: max (default), mean, last timestep, or learned attention'
+            default='mean_max',
+            choices=['mean', 'max', 'mean_max', 'last', 'attention'],
+            help='Temporal pooling strategy after TCN: max (default), mean, '
+                 'mean_max (concatenates both, keeping peak intensity and '
+                 'accumulation), last timestep, or learned attention'
         )
         self.parser.add_argument(
             '--preload-precip',
@@ -481,7 +483,7 @@ class ImpactCnnOptions(ImpactDlOptions):
                 'dropout_rate_tcn', 0.0, 0.3)
         if 'tcn_pooling' in hp_to_optimize:
             self.tcn_pooling = trial.suggest_categorical(
-                'tcn_pooling', ['mean', 'max', 'last', 'attention'])
+                'tcn_pooling', ['mean', 'max', 'mean_max', 'last', 'attention'])
 
         return True
 

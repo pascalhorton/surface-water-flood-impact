@@ -30,6 +30,14 @@ CDF_NB_LEVELS = 40
 # 'return_period' spread.
 CDF_MAX_LOG_EXCEEDANCE = 4.0
 
+# Floor applied to the per-pixel divisors of the standardize/normalize transforms
+# [mm per time step]. A pixel that is almost always dry - common at sub-hourly
+# resolution, where the wet fraction can fall below 1% - otherwise yields a zero
+# standard deviation or a zero 99th percentile, and the division sends the whole
+# time series of that pixel to inf/NaN. The value is small enough to leave any
+# genuinely wet pixel untouched.
+TRANSFORM_DIVISOR_FLOOR = 1e-3
+
 
 def time_step_to_minutes(time_step_h):
     """
@@ -329,6 +337,7 @@ class PrecipitationArchive(Precipitation):
             logger.debug("Precipitation already standardized; skipping.")
             return
 
+        std = self._floor_divisor(std, 'standard deviation')
         mean = self._as_spatial_da(mean)
         std = self._as_spatial_da(std)
         precip = self.data[self.precip_var]
@@ -351,6 +360,7 @@ class PrecipitationArchive(Precipitation):
             logger.debug("Precipitation already normalized; skipping.")
             return
 
+        q99 = self._floor_divisor(q99, '99th quantile')
         q99 = self._as_spatial_da(q99)
         precip = self.data[self.precip_var]
         # Precipitation (raw or log1p-transformed) is non-negative, so the lower
@@ -623,6 +633,42 @@ class PrecipitationArchive(Precipitation):
             self.y_axis_dim: slice(i, i + self.mem_nb_pixels),
             self.x_axis_dim: slice(j, j + self.mem_nb_pixels),
         }).compute().values
+
+    @staticmethod
+    def _floor_divisor(values, label):
+        """
+        Clip a per-pixel divisor away from zero before it is used to rescale the
+        precipitation. Pixels that are dry over the whole record yield a divisor
+        of 0 (or NaN, when the statistic was computed on an empty selection), and
+        dividing by it turns the entire time series of that pixel into inf/NaN,
+        which then propagates silently through the network and shows up only as a
+        NaN loss many epochs later.
+
+        Parameters
+        ----------
+        values: np.array
+            The per-pixel divisor (standard deviation or quantile).
+        label: str
+            Name of the statistic, for the warning message.
+
+        Returns
+        -------
+        np.array
+            The divisor, with every entry at or above TRANSFORM_DIVISOR_FLOOR.
+        """
+        values = np.asarray(values, dtype='float64')
+        degenerate = ~np.isfinite(values) | (values < TRANSFORM_DIVISOR_FLOOR)
+        nb_degenerate = int(degenerate.sum())
+
+        if nb_degenerate:
+            logger.warning(
+                "%d of %d pixels have a %s below %s (dry over the whole record); "
+                "clipping to that floor so the transform stays finite.",
+                nb_degenerate, values.size, label, TRANSFORM_DIVISOR_FLOOR)
+
+        values = np.where(degenerate, TRANSFORM_DIVISOR_FLOOR, values)
+
+        return values
 
     def _as_spatial_da(self, values):
         """Wrap a per-pixel (y, x) array so it broadcasts against the data."""

@@ -65,6 +65,7 @@ class ImpactDlDataGenerator(keras.utils.Sequence):
         super().__init__()
         self.warning_counter = 0
         self.tmp_dir = tmp_dir
+        self._reset_precip_monitor()
         self.event_props = event_props
         self.y = y
         self.log_exposure = log_exposure
@@ -264,12 +265,118 @@ class ImpactDlDataGenerator(keras.utils.Sequence):
                     self.max_static = np.max(self.X_static, axis=0)
 
     def _create_empty_precip_block(self, shape):
-        """Create an empty precipitation block. Log-transform if needed."""
-        empty_block = np.zeros(shape)
-        if self.log_transform_precip:
-            empty_block = (np.log1p(empty_block)).astype('float32')
+        """
+        Create a block standing in for missing time steps, in the same units as
+        the surrounding data.
 
-        return empty_block
+        The block represents dry conditions, so it must carry whatever value the
+        active transform maps 'no rain' to - not a raw zero. Under 'normalize'
+        and 'cdf' the two coincide (0 mm maps to 0), but under 'standardize' dry
+        sits at -mean/std, and filling with 0 instead tells the network that the
+        missing steps saw the pixel's climatological mean rainfall.
+        """
+        return np.full(shape, self.get_dry_fill_value(), dtype='float32')
+
+    def get_dry_fill_value(self):
+        """
+        The value a dry time step takes after the active precipitation transform.
+
+        Returns
+        -------
+        float
+            The fill value to use for missing time steps.
+        """
+        return getattr(self, 'dry_fill_value', 0.0)
+
+    def _reset_precip_monitor(self):
+        """Reset the per-epoch statistics collected on the precipitation inputs."""
+        self._precip_monitor = {
+            'patches': 0,
+            'patches_with_nan': 0,
+            'values': 0,
+            'values_non_finite': 0,
+            'min': np.inf,
+            'max': -np.inf,
+            'sum': 0.0,
+        }
+
+    def _sanitize_precip(self, block):
+        """
+        Replace non-finite values in a precipitation patch and record what the
+        network is being fed.
+
+        Missing radar time steps and unguarded per-pixel divisions both surface
+        here as NaN/inf. Left alone they poison the forward pass, the loss goes
+        non-finite within an epoch, and every downstream metric degenerates
+        without anything in the logs saying why. The DEM path has always been
+        sanitized this way; the precipitation path was not.
+
+        Parameters
+        ----------
+        block: np.array
+            The precipitation patch, in transformed units.
+
+        Returns
+        -------
+        np.array
+            The patch, with non-finite values replaced by the dry fill value.
+        """
+        block = np.asarray(block, dtype='float32')
+        finite = np.isfinite(block)
+        nb_non_finite = block.size - int(finite.sum())
+
+        mon = self._precip_monitor
+        mon['patches'] += 1
+        mon['values'] += block.size
+        mon['values_non_finite'] += nb_non_finite
+
+        if nb_non_finite:
+            mon['patches_with_nan'] += 1
+            block = np.where(finite, block, self.get_dry_fill_value())
+            block = block.astype('float32')
+
+        if block.size:
+            mon['min'] = min(mon['min'], float(block.min()))
+            mon['max'] = max(mon['max'], float(block.max()))
+            mon['sum'] += float(block.sum())
+
+        return block
+
+    def log_precip_monitor(self, label=''):
+        """
+        Log the precipitation input statistics gathered since the last reset, then
+        reset them. Called once per epoch so that a scaling or missing-data
+        problem is visible in the first epoch rather than inferred from a flat
+        loss curve afterwards.
+
+        Parameters
+        ----------
+        label: str
+            A prefix identifying the split, for the log message.
+        """
+        mon = self._precip_monitor
+        if not mon['patches'] or not mon['values']:
+            return
+
+        share_non_finite = mon['values_non_finite'] / mon['values']
+        mean = mon['sum'] / mon['values']
+        prefix = f"{label} " if label else ""
+
+        logger.info(
+            "%sprecipitation inputs: min=%.4g, max=%.4g, mean=%.4g "
+            "(%d patches, %d values)",
+            prefix, mon['min'], mon['max'], mean, mon['patches'], mon['values'])
+
+        if mon['values_non_finite']:
+            logger.warning(
+                "%s%d of %d precipitation values (%.3f%%) were non-finite and "
+                "replaced by the dry fill value %.4g; %d of %d patches affected. "
+                "Check the source data and the transform divisors.",
+                prefix, mon['values_non_finite'], mon['values'],
+                100 * share_non_finite, self.get_dry_fill_value(),
+                mon['patches_with_nan'], mon['patches'])
+
+        self._reset_precip_monitor()
 
     def _analyze_precip_shape_difference(self, event, precip_ev, data_length,
                                          expected_length):
