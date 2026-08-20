@@ -356,6 +356,7 @@ class ImpactLstm(ImpactDl):
         )
         self.model.build_model()
 
+        precip_x, precip_y = self._get_precip_axes()
         self.model.set_feature_stats(
             mean_static=self.dg_train.mean_static,
             std_static=self.dg_train.std_static,
@@ -364,4 +365,6 @@ class ImpactLstm(ImpactDl):
             mean_precip=self.dg_train.mean_precip,
             std_precip=self.dg_train.std_precip,
             q99_precip=self.dg_train.q99_precip,
+            precip_x=precip_x,
+            precip_y=precip_y,
         )

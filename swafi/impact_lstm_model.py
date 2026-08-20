@@ -63,10 +63,13 @@ class ModelLstm(keras.models.Model):
         self.mean_precip = None
         self.std_precip = None
         self.q99_precip = None
+        self.precip_x = None
+        self.precip_y = None
 
     def set_feature_stats(self, mean_static=None, std_static=None,
                           min_static=None, max_static=None,
-                          mean_precip=None, std_precip=None, q99_precip=None):
+                          mean_precip=None, std_precip=None, q99_precip=None,
+                          precip_x=None, precip_y=None):
         self.mean_static = mean_static
         self.std_static = std_static
         self.min_static = min_static
@@ -74,6 +77,10 @@ class ModelLstm(keras.models.Model):
         self.mean_precip = mean_precip
         self.std_precip = std_precip
         self.q99_precip = q99_precip
+        # Axes of the precipitation domain the statistics were computed on, so
+        # that inference can restrict itself to it.
+        self.precip_x = precip_x
+        self.precip_y = precip_y
 
     @staticmethod
     def _serialize_array(value):
@@ -114,6 +121,8 @@ class ModelLstm(keras.models.Model):
             "mean_precip": self._serialize_array(self.mean_precip),
             "std_precip": self._serialize_array(self.std_precip),
             "q99_precip": self._serialize_array(self.q99_precip),
+            "precip_x": self._serialize_array(self.precip_x),
+            "precip_y": self._serialize_array(self.precip_y),
         }
         return {**base_config, **config}
 
@@ -146,6 +155,8 @@ class ModelLstm(keras.models.Model):
         instance.mean_precip = cls._deserialize_array(config.get("mean_precip", None))
         instance.std_precip = cls._deserialize_array(config.get("std_precip", None))
         instance.q99_precip = cls._deserialize_array(config.get("q99_precip", None))
+        instance.precip_x = cls._deserialize_array(config.get("precip_x", None))
+        instance.precip_y = cls._deserialize_array(config.get("precip_y", None))
 
         build_cfg = config.get("build_config", None)
         if build_cfg is not None:

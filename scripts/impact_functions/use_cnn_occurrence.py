@@ -16,8 +16,9 @@ from swafi.impact_dl import WeightedBinaryCrossEntropy, CriticalSuccessIndex
 from swafi.utils.logging_setup import setup_logging
 from swafi.utils.use_common import (
     assess, get_contracts_number, get_damages, get_damages_xr,
-    get_events, get_precip_stats, create_prediction_dataset, create_precipitation,
-    ensure_precip_dataset, GridPredictionWriter, predict_events_in_chunks,
+    get_events, resolve_precip_reference, filter_events_to_precip_domain,
+    create_prediction_dataset, create_precipitation, ensure_precip_dataset,
+    GridPredictionWriter, predict_events_in_chunks,
 )
 
 logger = logging.getLogger(__name__)
@@ -87,8 +88,14 @@ def main():
         cnn.select_features(cnn.options.replace_simple_features)
         features = cnn.get_all_features(cnn.options.simple_feature_classes)
 
-    # None when the model carries the statistics it was trained with.
-    precip_stats = get_precip_stats(cnn_model, options)
+    # None when the statistics stored in the model are used; the precipitation
+    # is then cropped to the domain the model was trained on, and so are the
+    # events (no external reference to cover a wider one).
+    precip_stats, cropped = resolve_precip_reference(
+        cnn_model, options, cnn.precipitation_hf)
+    if cropped:
+        events = filter_events_to_precip_domain(
+            events, cnn.precipitation_hf, options)
     dg = cnn.get_data_generator_inference(
         events=events,
         features=features,

@@ -69,6 +69,25 @@ class ImpactDl(Impact):
         self.optimize_decision_threshold = optimize_decision_threshold
         self.decision_threshold = 0.5
 
+    def _get_precip_axes(self):
+        """
+        Return the (x, y) axes of the precipitation domain currently loaded.
+
+        Stored with the training statistics so that inference can restrict
+        itself to the domain those statistics describe.
+
+        Returns
+        -------
+        np.array|None, np.array|None
+            The x and y axes, or None when no precipitation is used.
+        """
+        precip = self.precipitation_hf
+        if precip is None or precip.data is None:
+            return None, None
+
+        return (precip.data[precip.x_axis_dim].to_numpy(),
+                precip.data[precip.y_axis_dim].to_numpy())
+
     def _stats_on_precip_grid(self, precip_stats, name):
         """
         Read a per-pixel precipitation statistic on the grid of the precipitation

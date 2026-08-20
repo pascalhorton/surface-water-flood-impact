@@ -305,17 +305,26 @@ def create_precipitation(precip_dataset, year_start, year_end):
     raise ValueError(f"Unknown precipitation dataset: {precip_dataset}")
 
 
-def get_precip_stats(model, options):
-    """Return the precipitation statistics to use at inference, or None.
+def resolve_precip_reference(model, options, precip=None):
+    """Settle which precipitation statistics to normalize the inputs with.
 
     Models trained with the current code carry the statistics they were trained
-    with (see ImpactCnn._define_model), and those are the ones to normalize with:
-    a different reference would scale the inputs differently than during
-    training. None tells the data generator to use them.
+    with (see ImpactCnn._define_model), and those are the ones to use: a
+    different reference would scale the inputs differently than during training.
 
-    Older models have none stored. They fall back to the file pointed at by the
-    PATH_PRECIP_STATS config entry, because without any reference the generator
-    computes the statistics on the data it is given, i.e. on the test period.
+    They only describe the domain they were computed on, though. Training crops
+    the precipitation to the bounding box of the claims (reduce_spatial_domain),
+    so predicting over a wider domain needs a reference covering it. Two ways
+    out, in this order:
+
+    - an external reference, the file pointed at by the PATH_PRECIP_STATS config
+      entry, which keeps the full domain predictable;
+    - otherwise, cropping the precipitation back to the domain the model was
+      trained on, which makes its own statistics apply again but restricts the
+      predictions to that domain.
+
+    The same applies to models saved before the statistics were stored in them,
+    except that those can only use the external reference.
 
     Parameters
     ----------
@@ -324,12 +333,22 @@ def get_precip_stats(model, options):
     options : ImpactDlOptions
         The model options (the active precipitation transform decides which
         statistics are needed).
+    precip : PrecipitationArchive|None
+        The precipitation being predicted. Cropped in place when the domain of
+        the model is used. Not checked when None.
 
     Returns
     -------
-    xr.Dataset|None
-        The statistics dataset, which the caller must close, or None to use the
-        ones embedded in the model.
+    xr.Dataset|None, bool
+        The external statistics (which the caller must close) or None to use the
+        ones embedded in the model, and whether the precipitation was cropped to
+        the domain of the model.
+
+    Raises
+    ------
+    ValueError
+        If the statistics of the model do not cover the grid being predicted and
+        neither way out is available.
     """
     needed = {
         'standardize': ('mean_precip', 'std_precip'),
@@ -339,24 +358,128 @@ def get_precip_stats(model, options):
     if not needed:
         # 'cdf' (and anything else) does not read per-pixel statistics from a
         # file: the CDF table is too large to store and is cached in TMP_DIR.
-        return None
+        return None, False
 
-    if all(getattr(model, name, None) is not None for name in needed):
-        logger.info("Using the precipitation statistics stored in the model.")
-        return None
+    if not all(getattr(model, name, None) is not None for name in needed):
+        reason = (f"The model carries no precipitation statistics for the "
+                  f"'{options.transform_precip}' transform")
+        can_crop = False
+    else:
+        stored_shape = np.asarray(getattr(model, needed[0])).shape
+        grid_shape = _get_precip_grid_shape(precip)
+        if grid_shape is None or stored_shape == grid_shape:
+            logger.info("Using the precipitation statistics stored in the model.")
+            return None, False
+        reason = (f"The statistics stored in the model are on the {stored_shape} "
+                  f"domain it was trained on, not on the {grid_shape} domain "
+                  f"being predicted")
+        can_crop = (getattr(model, 'precip_x', None) is not None and
+                    getattr(model, 'precip_y', None) is not None)
 
     stats_path = config.get('PATH_PRECIP_STATS', None, False)
-    if not stats_path:
+    if stats_path:
+        logger.info("%s: reading them from %s.", reason, stats_path)
+        return xr.open_dataset(stats_path), False
+
+    if can_crop:
+        logger.info("%s: cropping the precipitation to the domain of the model.",
+                    reason)
+        crop_precip_to_model_domain(model, precip)
+        return None, True
+
+    if 'no precipitation statistics' in reason:
+        # No reference at all: the generator computes them on the data it is
+        # given, which is the period being predicted.
         logger.warning(
-            "The model carries no precipitation statistics for the '%s' "
-            "transform and PATH_PRECIP_STATS is not set: they will be computed "
-            "on the data being predicted, which is not what the model was "
-            "trained with.", options.transform_precip)
+            "%s and PATH_PRECIP_STATS is not set: they will be computed on the "
+            "data being predicted, which is not what the model was trained "
+            "with.", reason)
+        return None, False
+
+    raise ValueError(
+        f"{reason}. The model does not carry the axes of its training domain "
+        f"either, so the precipitation cannot be cropped to it: set "
+        f"PATH_PRECIP_STATS to the statistics of the full domain (written by "
+        f"scripts/data_preparation/compute_precipitation_statistics.py).")
+
+
+def crop_precip_to_model_domain(model, precip):
+    """Restrict the precipitation to the domain the model was trained on.
+
+    Parameters
+    ----------
+    model : ModelCnn|ModelLstm
+        The loaded model, carrying the axes of its training domain.
+    precip : PrecipitationArchive
+        The precipitation to crop, in place.
+
+    Raises
+    ------
+    ValueError
+        If the training domain is not covered by the precipitation store.
+    """
+    x_axis = np.asarray(model.precip_x)
+    y_axis = np.asarray(model.precip_y)
+
+    # Cells missing from the store would be filled with NaNs by the reindexing.
+    for axis, dim in ((x_axis, precip.x_axis_dim), (y_axis, precip.y_axis_dim)):
+        missing = np.setdiff1d(axis, precip.data[dim].to_numpy())
+        if missing.size:
+            raise ValueError(
+                f"The training domain of the model is not covered by the "
+                f"precipitation store: {missing.size} of its {axis.size} "
+                f"'{dim}' cells are missing (e.g. {missing[0]}).")
+
+    precip.select_subdomain(x_axis, y_axis)
+    logger.info("Precipitation cropped to x: %s-%s, y: %s-%s (%s x %s cells).",
+                x_axis.min(), x_axis.max(), y_axis.min(), y_axis.max(),
+                y_axis.size, x_axis.size)
+
+
+def filter_events_to_precip_domain(events, precip, options):
+    """Drop the events whose precipitation window is not fully in the domain.
+
+    Used after cropping to the training domain of a model: training kept a
+    margin of half a window around the claims (reduce_spatial_domain), so events
+    closer than that to the edge would be given windows padded with NaNs, which
+    read as 'no rain' rather than as missing.
+
+    Parameters
+    ----------
+    events : pd.DataFrame
+        The events, with their 'x' and 'y' coordinates.
+    precip : PrecipitationArchive
+        The (already cropped) precipitation.
+    options : ImpactDlOptions
+        The model options, for the precipitation window size.
+
+    Returns
+    -------
+    pd.DataFrame
+        The events that can be predicted.
+    """
+    margin = options.precip_window_size * 1000 / 2
+    x_axis = precip.data[precip.x_axis_dim].to_numpy()
+    y_axis = precip.data[precip.y_axis_dim].to_numpy()
+
+    keep = (events['x'].between(x_axis.min() + margin, x_axis.max() - margin) &
+            events['y'].between(y_axis.min() + margin, y_axis.max() - margin))
+    nb_dropped = int((~keep).sum())
+
+    if nb_dropped:
+        logger.info("Dropped %s of %s events outside the precipitation domain.",
+                    nb_dropped, len(events))
+
+    return events[keep]
+
+
+def _get_precip_grid_shape(precip):
+    """Return the (y, x) shape of the precipitation grid, or None."""
+    if precip is None or getattr(precip, 'data', None) is None:
         return None
 
-    logger.info("Reading the precipitation statistics from %s.", stats_path)
-
-    return xr.open_dataset(stats_path)
+    return (precip.data[precip.y_axis_dim].size,
+            precip.data[precip.x_axis_dim].size)
 
 
 def get_events(year_start, year_end, event_method,
