@@ -61,10 +61,21 @@ class CombiPrecip(PrecipitationArchive):
 
         files = sorted(glob(f"{self.data_path}/*.nc"))
         self._check_files(files)
+        # The files are chronological and non-overlapping (checked above), so they
+        # are stacked along their time axis directly. Letting xarray infer the
+        # order (combine='by_coords') aligns the files instead, which pads the
+        # mismatching time labels with NaNs. The dimension is still named
+        # REFERENCE_TS at this point; it is renamed to 'time' below.
         self.data = xr.open_mfdataset(
             files,
             parallel=False,
-            chunks={'time': 1000}
+            combine='nested',
+            concat_dim='REFERENCE_TS',
+            data_vars='minimal',
+            coords='minimal',
+            compat='override',
+            join='override',
+            chunks={'REFERENCE_TS': 1000}
         )
         self.data = self.data.rename_vars({'CPC': 'precip'})
         self.data = self.data.rename({'REFERENCE_TS': 'time'})
