@@ -7,6 +7,8 @@ from .impact_tx_model import ModelTransformer
 from .impact_tx_data_generator import ImpactTxDataGenerator
 
 import copy
+import logging
+import numpy as np
 import pandas as pd
 
 has_optuna = False
@@ -18,6 +20,8 @@ except ImportError:
 
 DEBUG = False
 
+logger = logging.getLogger(__name__)
+
 
 class ImpactTransformer(ImpactDl):
     """
@@ -25,16 +29,16 @@ class ImpactTransformer(ImpactDl):
 
     Parameters
     ----------
-    events: Events
-        The events object.
     options: ImpactTransformerOptions
         The model options.
+    events: Events
+        The events object.
     reload_trained_models: bool
         Whether to reload the previously trained models or not.
     """
 
-    def __init__(self, events, options, reload_trained_models=False):
-        super().__init__(events, options, reload_trained_models)
+    def __init__(self, options, events=None, reload_trained_models=False):
+        super().__init__(options, events, reload_trained_models)
 
         if not self.options.is_ok():
             raise ValueError("Options are not ok.")
@@ -66,16 +70,17 @@ class ImpactTransformer(ImpactDl):
             transform_static=self.options.transform_static,
             transform_precip=self.options.transform_precip,
             log_transform_precip=self.options.log_transform_precip,
-            debug=DEBUG
+            batch_pos_ratio=self.options.batch_pos_ratio,
+            debug=DEBUG,
         )
 
         if self.options.use_precip and self.precipitation_hf is not None:
-            print("Preloading all high-frequency precipitation data.")
+            logger.info("Preloading all high-frequency precipitation data.")
             all_cids = self.df['cid'].unique()
             self.precipitation_hf.preload_all_cid_data(all_cids)
 
         if self.options.use_precip and self.precipitation_daily is not None:
-            print("Preloading all daily precipitation data.")
+            logger.info("Preloading all daily precipitation data.")
             all_cids = self.df['cid'].unique()
             self.precipitation_daily.preload_all_cid_data(all_cids)
 
@@ -154,12 +159,17 @@ class ImpactTransformer(ImpactDl):
             input_high_freq_prec_size = self.dg_train.get_precip_hf_length()
             input_daily_prec_size = self.dg_train.get_precip_daily_length()
 
+        n_pos = np.sum(self.y_train > 0)
+        n_neg = np.sum(self.y_train == 0)
+        output_bias_init = float(np.log(n_pos / n_neg))
+
         self.model = ModelTransformer(
             task=self.target_type,
             options=self.options,
             input_daily_prec_size=input_daily_prec_size,
             input_high_freq_prec_size=input_high_freq_prec_size,
             input_attributes_size=input_attributes_size,
+            output_bias_init=output_bias_init,
         )
 
     def set_precipitation_hf(self, precipitation):
@@ -175,7 +185,7 @@ class ImpactTransformer(ImpactDl):
             return
 
         if not self.options.use_precip:
-            print("Precipitation is not used and is therefore not loaded.")
+            logger.info("Precipitation is not used and is therefore not loaded.")
             return
 
         time_step = self.options.precip_hf_time_step / 60
@@ -196,7 +206,7 @@ class ImpactTransformer(ImpactDl):
             return
 
         if not self.options.use_precip:
-            print("Precipitation is not used and is therefore not loaded.")
+            logger.info("Precipitation is not used and is therefore not loaded.")
             return
 
         precipitation.prepare_data(time_step=24)
@@ -215,11 +225,11 @@ class ImpactTransformer(ImpactDl):
         if self.precipitation_hf is not None:
             x_axis = self.precipitation_hf.get_x_axis_for_bounds(x_min, x_max)
             y_axis = self.precipitation_hf.get_y_axis_for_bounds(y_min, y_max)
-            self.precipitation_hf.generate_pickles_for_subdomain(x_axis, y_axis)
+            self.precipitation_hf.select_subdomain(x_axis, y_axis)
         if self.precipitation_daily is not None:
             x_axis = self.precipitation_daily.get_x_axis_for_bounds(x_min, x_max)
             y_axis = self.precipitation_daily.get_y_axis_for_bounds(y_min, y_max)
-            self.precipitation_daily.generate_pickles_for_subdomain(x_axis, y_axis)
+            self.precipitation_daily.select_subdomain(x_axis, y_axis)
 
     def remove_events_without_precipitation_data(self):
         """
@@ -228,16 +238,23 @@ class ImpactTransformer(ImpactDl):
         if self.precipitation_hf is None and self.precipitation_daily is None:
             return
 
-        # Extract events dates
-        events = self.df[['e_start', 'e_end', 'date_claim']].copy()
-        events.rename(columns={'date_claim': 'date'}, inplace=True)
+        if 'e_start' in self.df.columns:
+            # Extract events dates
+            events = self.df[['e_start', 'e_end', 'date_claim']].copy()
+            events.rename(columns={'date_claim': 'date'}, inplace=True)
 
-        # Fill NaN values with the mean of the event start and end date (as date, not datetime)
-        events['date'] = events['date'].fillna(events[['e_start', 'e_end']].mean(axis=1))
-        
-        events['e_start'] = pd.to_datetime(events['e_start']).dt.date
-        events['e_end'] = pd.to_datetime(events['e_end']).dt.date
-        events['date'] = pd.to_datetime(events['date']).dt.date
+            # Fill NaN values with the mean of the event start and end date (as date, not datetime)
+            events['date'] = events['date'].fillna(events[['e_start', 'e_end']].mean(axis=1))
+
+            events['e_start'] = pd.to_datetime(events['e_start']).dt.date
+            events['e_end'] = pd.to_datetime(events['e_end']).dt.date
+            events['date'] = pd.to_datetime(events['date']).dt.date
+        elif 'e_date' in self.df.columns:
+            events = self.df[['e_date']].copy()
+            events.rename(columns={'e_date': 'date'}, inplace=True)
+            events['date'] = pd.to_datetime(events['date']).dt.date
+        else:
+            raise ValueError("No event date column found in the dataframe.")
 
         # Precipitation period
         p_hf_start = pd.to_datetime(f'{self.precipitation_hf.year_start}-01-01').date()

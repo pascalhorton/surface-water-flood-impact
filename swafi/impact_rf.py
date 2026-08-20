@@ -5,6 +5,8 @@ Class to compute the impact function.
 from .impact import Impact
 
 import hashlib
+import logging
+import os
 import pickle
 import copy
 from sklearn.metrics import f1_score
@@ -21,6 +23,8 @@ except ImportError:
 from .utils.plotting import plot_random_forest_feature_importance
 from .utils.verification import compute_confusion_matrix, compute_score_binary
 
+logger = logging.getLogger(__name__)
+
 
 class ImpactRandomForest(Impact):
     """
@@ -28,16 +32,14 @@ class ImpactRandomForest(Impact):
 
     Parameters
     ----------
-    events: Events
-        The events object.
     options: ImpactOptions
         The model options.
+    events: Events
+        The events object.
     """
 
-    def __init__(self, events, options):
-        super().__init__(events, options)
-
-        self.n_jobs = 5
+    def __init__(self, options, events=None):
+        super().__init__(options, events)
 
     def copy(self):
         """
@@ -65,40 +67,57 @@ class ImpactRandomForest(Impact):
 
         filename = f'{dir_output}/{base_name}_{self.options.run_name}.pkl'
 
-        with open(filename, 'wb') as f:
-            pickle.dump(self.model, f)
+        payload = {
+            'model': self.model,
+            'features': self.features,
+            'probability_threshold': self.probability_threshold,
+        }
 
-        print(f"Model saved: {filename}")
+        # Write to a temporary file then atomically replace, so a reader (or a
+        # concurrent writer, e.g. several array workers) never sees a partially
+        # written model. The temp file is unique per process to avoid clashes.
+        tmp_filename = f'{filename}.{os.getpid()}.tmp'
+        with open(tmp_filename, 'wb') as f:
+            pickle.dump(payload, f)
+        os.replace(tmp_filename, filename)
 
-    def _define_model(self):
+        logger.info("Model saved: %s", filename)
+
+    def load_model(self, dir_output, base_name):
         """
-        Define the model.
+        Load the model. Supports both the payload format (dict with 'model'
+        and 'features') and the legacy format (bare sklearn model, without the
+        feature list).
+
+        Parameters
+        ----------
+        dir_output: str
+            The directory where the model is saved.
+        base_name: str
+            The base name used for the file.
         """
-        if self.target_type == 'occurrence':
-            self.model = RandomForestClassifier(
-                n_estimators=self.options.n_estimators,
-                max_depth=self.options.max_depth,
-                min_samples_split=self.options.min_samples_split,
-                min_samples_leaf=self.options.min_samples_leaf,
-                max_features=self.options.max_features,
-                class_weight=self.class_weight,
-                random_state=self.random_state,
-                n_jobs=self.n_jobs)
-        elif self.target_type == 'damage_ratio':
-            self.model = RandomForestRegressor(
-                n_estimators=self.options.n_estimators,
-                max_depth=self.options.max_depth,
-                min_samples_split=self.options.min_samples_split,
-                min_samples_leaf=self.options.min_samples_leaf,
-                max_features=self.options.max_features,
-                random_state=self.random_state,
-                n_jobs=self.n_jobs)
-        else:
-            raise ValueError(f"Unknown target type: {self.target_type}")
+        filename = f'{dir_output}/{base_name}_{self.options.run_name}.pkl'
+
+        with open(filename, 'rb') as f:
+            payload = pickle.load(f)
+
+        if isinstance(payload, dict):
+            self.model = payload['model']
+            self.features = payload.get('features', [])
+            self.probability_threshold = payload.get('probability_threshold', 0.5)
+        else:  # Legacy format: bare sklearn model
+            logger.warning(
+                "Legacy model file without feature list: %s. The features "
+                "cannot be checked against the current options; retrain to "
+                "save the payload format.", filename)
+            self.model = payload
+
+        logger.info("Model loaded: %s", filename)
 
     def compute_f1_score(self, x_valid, y_valid):
         """
-        Compute the F1 score on the given set.
+        Compute the F1 score on the given set, using the tuned decision threshold
+        (default 0.5).
 
         Parameters
         ----------
@@ -114,9 +133,9 @@ class ImpactRandomForest(Impact):
         """
         epsilon = 1e-7  # a small constant to avoid division by zero
 
-        y_pred = self.model.predict(x_valid)
+        y_pred_prob = self.model.predict_proba(x_valid)[:, 1]
 
-        y_pred_class = (y_pred > 0.5).astype(int)
+        y_pred_class = (y_pred_prob >= self.probability_threshold).astype(int)
         tp, tn, fp, fn = compute_confusion_matrix(y_valid, y_pred_class)
         f1 = 2 * tp / (2 * tp + fp + fn + epsilon)
 
@@ -146,3 +165,42 @@ class ImpactRandomForest(Impact):
         plot_random_forest_feature_importance(
             self.model, self.features, importances, fig_filename,
             dir_output=dir_output, n_features=20)
+
+    def set_model(self, model):
+        """
+        Set the model.
+
+        Parameters
+        ----------
+        model: RandomForestClassifier|RandomForestRegressor
+            The model to set.
+        """
+        self.model = model
+
+    def _define_model(self):
+        """
+        Define the model.
+        """
+        if self.target_type == 'occurrence':
+            self.model = RandomForestClassifier(
+                n_estimators=self.options.n_estimators,
+                criterion=self.options.criterion,
+                max_depth=self.options.max_depth,
+                min_samples_split=self.options.min_samples_split,
+                min_samples_leaf=self.options.min_samples_leaf,
+                max_features=self.options.max_features,
+                class_weight=self.class_weight,
+                random_state=self.random_state,
+                n_jobs=self.options.n_jobs)
+        elif self.target_type == 'damage_ratio':
+            self.model = RandomForestRegressor(
+                n_estimators=self.options.n_estimators,
+                criterion=self.options.criterion,
+                max_depth=self.options.max_depth,
+                min_samples_split=self.options.min_samples_split,
+                min_samples_leaf=self.options.min_samples_leaf,
+                max_features=self.options.max_features,
+                random_state=self.random_state,
+                n_jobs=self.options.n_jobs)
+        else:
+            raise ValueError(f"Unknown target type: {self.target_type}")

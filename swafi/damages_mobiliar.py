@@ -58,8 +58,8 @@ class DamagesMobiliar(Damages):
             'priv_int_struc']  # Private, internal, structure
 
         self.exposure_tags = [
-            'KMU_ES_FH',
-            'KMU_ES_GB',
+            'KMU_ES_FH',  # Fahrhabe (Hausrat) -> content
+            'KMU_ES_GB',  # Gebäude -> building structure
             'KMU_W_FH',
             'KMU_W_GB',
             'Privat_ES_FH',
@@ -96,7 +96,9 @@ class DamagesMobiliar(Damages):
             'Wasser_Privat_GB']
 
         self._create_exposure_claims_df()
-        self._load_from_dump('damages_mobiliar.pickle')
+        # Use the resolved years (the constructor arguments may be None)
+        self._load_from_dump(
+            f'damages_mobiliar_{self.year_start}-{self.year_end}.pickle')
 
         if dir_exposure is not None:
             self.load_exposure(dir_exposure)
@@ -218,7 +220,7 @@ class DamagesMobiliar(Damages):
         """
         Parse the provided exposure files.
         """
-        all_data = None
+        all_data = []
         for year in range(self.year_start, self.year_end + 1):
             file = [s for s in files if f'_{year}' in s]
             if len(file) != 1:
@@ -230,11 +232,8 @@ class DamagesMobiliar(Damages):
                 self._check_extent(dataset, file)
                 data = dataset.read()
                 self._check_shape(data[0, :, :], file)
-                if all_data is None:
-                    all_data = data
-                else:
-                    all_data = np.append(all_data, data, axis=0)
-        return all_data
+                all_data.append(data)
+        return np.concatenate(all_data, axis=0)
 
     def _extract_claim_data(self, directory):
         """
@@ -255,8 +254,17 @@ class DamagesMobiliar(Damages):
         df_claims = df_claims.astype('int32')
         df_claims['date_claim'] = pd.to_datetime(df_claims['date_claim'])
 
+        # Collect the daily cases and concatenate once (a concat per file
+        # copies the growing dataframe and scales quadratically)
+        cases = []
         for i_file in tqdm(range(len(files)), desc=f"Extracting {category}"):
             file = files[i_file]
+            date = self._extract_date_from_filename(file)
+            if date < datetime(self.year_start, 1, 1).date():
+                continue
+            if date > datetime(self.year_end, 12, 31).date():
+                continue
+
             with rasterio.open(file) as dataset:
                 self.domain.check_projection(dataset, file)
                 self.domain.check_resolution(dataset, file)
@@ -269,12 +277,14 @@ class DamagesMobiliar(Damages):
                     continue
 
                 indices, values = self._extract_non_null_claims(data[0, :, :])
-                date = self._extract_date_from_filename(file)
                 df_case = pd.DataFrame(columns=['date_claim', 'mask_index', category])
                 df_case['date_claim'] = [date] * len(indices)
                 df_case['mask_index'] = indices
                 df_case[category] = values
-                df_claims = pd.concat([df_claims, df_case])
+                cases.append(df_case)
+
+        if cases:
+            df_claims = pd.concat([df_claims] + cases)
 
         self._store_in_claims_dataframe(df_claims)
 

@@ -1,36 +1,40 @@
 """
 This script analyzes the precipitation data characteristics for each claim.
 """
+import logging
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from tqdm import tqdm
 
 from swafi.config import Config
 from swafi.precip_combiprecip import CombiPrecip
 from swafi.damages_mobiliar import DamagesMobiliar
 from swafi.damages_gvz import DamagesGvz
+from swafi.utils.logging_setup import setup_logging
+
+logger = logging.getLogger(__name__)
 
 config = Config(output_dir='analysis_precip_claims')
 
 DATASET = 'mobiliar'  # 'mobiliar' or 'gvz'
-PRECIP_DAYS_BEFORE = 2
-PRECIP_DAYS_AFTER = 2
-WITH_INTERNAL_DAMAGES = False
-
+PRECIP_DAYS_BEFORE = 0.5
+PRECIP_DAYS_AFTER = 0.5
+THRESHOLD_24H = None # 10  # Threshold for accumulated precipitation in mm over 24h
+THRESHOLD_Q = 0.98 # 0.98  # Threshold for precipitation intensity quantile (0.0-1.0)
 
 if DATASET == 'mobiliar':
-    if WITH_INTERNAL_DAMAGES:
-        EXPOSURE_CATEGORIES = ['all']
-        CLAIM_CATEGORIES = ['pluvial']
-    else:
-        EXPOSURE_CATEGORIES = ['external']
-        CLAIM_CATEGORIES = ['external', 'pluvial']
+    EXPOSURE_CATEGORIES = ['external']
+    CLAIM_CATEGORIES = ['external', 'pluvial']
 elif DATASET == 'gvz':
     EXPOSURE_CATEGORIES = ['all_buildings']
     CLAIM_CATEGORIES = ['likely_pluvial']
+else:
+    raise ValueError(f"Unknown damage dataset: {DATASET}")
 
 
 def main():
+    setup_logging(script_name='analyze_precipitation_for_claims')
     generate_csv()
     generate_plots()
 
@@ -64,36 +68,44 @@ def generate_csv():
 
     # Load CombiPrecip files
     precip = CombiPrecip(year_start, year_end)
-    precip.prepare_data(config.get('DIR_PRECIP'))
-    print("Preloading all daily precipitation data.")
+    precip.prepare_data()  # Base zarr store from PATH_PRECIP_HOURLY_ZARR
+    logger.info("Preloading all daily precipitation data.")
     precip.preload_all_cid_data(cids)
 
     # Add columns to the claims dataframe
     claims['precip_max'] = None
     claims['precip_max_q'] = None
+    claims['precip_date_max'] = None
     claims['precip_dt'] = None
     claims['precip_06h_max'] = None
     claims['precip_12h_max'] = None
     claims['precip_24h_max'] = None
+    claims['precip_tot'] = None
+    if THRESHOLD_Q is not None:
+        claims[f'precip_thresh_q{THRESHOLD_Q}'] = THRESHOLD_Q
 
     t_start = pd.Timestamp('2005-01-01')
     t_end = pd.Timestamp('2022-12-31')
 
-    for cid in cids:
-        print(f'Processing CID {cid}')
+    for cid in tqdm(cids, total=len(cids), desc="Processing CIDs"):
         precip_cid = precip.cid_time_series.sel(
             time=slice(t_start, t_end),
             cid=cid
         )
 
         if precip_cid is None:
-            print(f'No precipitation data for CID {cid}')
+            logger.warning("No precipitation data for CID %s", cid)
             continue
         precip_cid_q = precip_cid.rank(dim='time', pct=True)
+
+        if THRESHOLD_Q is not None:
+            # Get the intensity value corresponding to the quantile threshold
+            thresh_value = precip_cid.quantile(THRESHOLD_Q).item()
 
         for idx, claim in claims[claims['cid'] == cid].iterrows():
             start = claim['date_claim'] - pd.Timedelta(days=PRECIP_DAYS_BEFORE)
             end = claim['date_claim'] + pd.Timedelta(days=PRECIP_DAYS_AFTER + 1)
+            date_array = pd.date_range(start=start, end=end, freq='h')
             precip_ts = precip_cid.sel(time=slice(start, end))
             precip_ts = precip_ts.to_numpy()
 
@@ -107,10 +119,17 @@ def generate_csv():
             claims.loc[idx, 'precip_max'] = precip_ts.max()
             claims.loc[idx, 'precip_max_q'] = precip_q_ts.max()
 
+            if THRESHOLD_Q is not None:
+                claims.loc[idx, f'precip_thresh_q{THRESHOLD_Q}'] = thresh_value
+
             # Compute centrality of the max precipitation
             if precip_ts.max() > 0:
                 idx_max = precip_ts.argmax()
-                claims.loc[idx, 'precip_dt'] = idx_max - len(precip_ts) // 2
+                date_max = date_array[idx_max]
+                # Consider the claim date at noon
+                date_claim = claim['date_claim'] # + pd.Timedelta(hours=12)
+                claims.loc[idx, 'precip_date_max'] = date_max
+                claims.loc[idx, 'precip_dt'] = (int((date_max - date_claim).total_seconds() / 3600))
 
             # Compute a precipitation sum on rolling windows
             precip_ts_6h = np.convolve(precip_ts, np.ones(6), mode='valid')
@@ -119,6 +138,9 @@ def generate_csv():
             claims.loc[idx, 'precip_12h_max'] = precip_ts_12h.max()
             precip_ts_24h = np.convolve(precip_ts, np.ones(24), mode='valid')
             claims.loc[idx, 'precip_24h_max'] = precip_ts_24h.max()
+
+            # Compute total precipitation in the window
+            claims.loc[idx, 'precip_tot'] = precip_ts.sum()
 
     # Save the claims dataframe
     filename = f'claims_precip_{DATASET}.csv'
@@ -129,6 +151,17 @@ def generate_plots():
     # Load csv
     filename = f'claims_precip_{DATASET}.csv'
     claims = pd.read_csv(config.output_dir / filename)
+    orig_len = len(claims)
+    logger.info("Total number of claims: %s", orig_len)
+    logger.info("Number of claims with positive precipitation: %s", len(claims[claims['precip_max'] > 0]))
+
+    if THRESHOLD_24H is not None:
+        claims = claims[claims['precip_24h_max'] >= THRESHOLD_24H]
+        logger.info("Number of claims after applying 24h threshold of %s mm: %s", THRESHOLD_24H, len(claims))
+
+    if THRESHOLD_Q is not None:
+        claims = claims[claims['precip_max_q'] >= THRESHOLD_Q]
+        logger.info("Number of claims after applying quantile threshold of %s: %s", THRESHOLD_Q, len(claims))
 
     # Copy of the claims with positive precipitation only
     claims_pos = claims[claims['precip_max'] > 0].copy()
@@ -185,7 +218,10 @@ def generate_plots():
     filename = f'hist_precip_dt_{DATASET}.png'
     nbins = int((PRECIP_DAYS_BEFORE + PRECIP_DAYS_AFTER + 1) * 24 / 2)
     claims['precip_dt'].hist(bins=nbins)
-    plt.xlim(-(12 + PRECIP_DAYS_BEFORE * 24), 12 + PRECIP_DAYS_AFTER * 24)
+    #plt.xlim(-(12 + PRECIP_DAYS_BEFORE * 24), 12 + PRECIP_DAYS_AFTER * 24)
+    # Set ticks every 12 hours
+    ticks = np.arange(-(PRECIP_DAYS_BEFORE * 24), (PRECIP_DAYS_AFTER * 24) + 36, 12)
+    plt.xticks(ticks)
     plt.title('Time to max intensity')
     plt.xlabel('Time to max intensity [h]')
     plt.grid(axis='x')
@@ -252,6 +288,29 @@ def generate_plots():
     plt.tight_layout()
     plt.savefig(config.output_dir / filename)
     plt.close()
+
+    # Plot a histogram of the total precipitation (all)
+    filename = f'hist_precip_tot_{DATASET}_all.png'
+    claims['precip_tot'].hist(bins=50)
+    plt.title('Total precipitation in window (all)')
+    plt.xlabel('Total precipitation [mm]')
+    plt.grid(axis='x')
+    plt.tight_layout()
+    plt.savefig(config.output_dir / filename)
+    plt.close()
+
+    # Extract the value for the threshold
+    if THRESHOLD_Q is not None:
+        claims_thresh = claims.drop_duplicates(subset=['cid'])
+        # Plot as a histogram
+        filename = f'hist_precip_thresh_q{THRESHOLD_Q}_{DATASET}.png'
+        claims_thresh[f'precip_thresh_q{THRESHOLD_Q}'].hist(bins=15)
+        plt.title(f'Precipitation intensity threshold for quantile {THRESHOLD_Q}')
+        plt.xlabel('Precipitation intensity [mm/h]')
+        plt.grid(axis='x')
+        plt.tight_layout()
+        plt.savefig(config.output_dir / filename)
+        plt.close()
 
 
 if __name__ == '__main__':

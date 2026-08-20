@@ -2,32 +2,25 @@
 Class to handle the precipitation data from CombiPrecip.
 """
 
+import logging
 from glob import glob
+from pathlib import Path
+
+import pandas as pd
 import xarray as xr
+from tqdm import tqdm
 
 from .config import Config
 from .precip_archive import PrecipitationArchive
+from .utils.zarr_store import (ensure_zarr_store, finalize_zarr_store,
+                               write_time_region)
 
 config = Config()
 
+logger = logging.getLogger(__name__)
+
 
 class CombiPrecip(PrecipitationArchive):
-    # Missing dates
-    missing = [
-        ('2004-12-31', '2005-01-01'),
-        ('2005-01-16', '2005-01-16'),
-        ('2005-01-21', '2005-01-21'),
-        ('2009-04-29', '2009-04-29'),
-        ('2016-12-06', '2016-12-06'),
-        ('2017-04-07', '2017-04-07'),
-        ('2017-04-12', '2017-04-12'),
-        ('2017-10-06', '2017-10-07'),
-        ('2021-04-07', '2021-04-07'),
-        ('2022-06-27', '2022-06-30'),
-        ('2022-08-16', '2022-08-21'),
-        ('2022-10-17', '2022-10-23'),
-    ]
-
     def __init__(self, year_start=None, year_end=None, cid_file=None):
         """
         The Precipitation class for CombiPrecip data. Must be netCDF files.
@@ -60,7 +53,7 @@ class CombiPrecip(PrecipitationArchive):
         if data_path:
             self.data_path = data_path
         if not self.data_path:
-            self.data_path = config.get('DIR_PRECIP')
+            self.data_path = config.get('DIR_PRECIP_HOURLY')
         if not self.data_path:
             raise FileNotFoundError("The data path was not provided.")
         self.resolution = resolution
@@ -68,31 +61,157 @@ class CombiPrecip(PrecipitationArchive):
 
         files = sorted(glob(f"{self.data_path}/*.nc"))
         self._check_files(files)
-        data = xr.open_mfdataset(
+        # The files are chronological and non-overlapping (checked above), so they
+        # are stacked along their time axis directly. Letting xarray infer the
+        # order (combine='by_coords') aligns the files instead, which pads the
+        # mismatching time labels with NaNs. The dimension is still named
+        # REFERENCE_TS at this point; it is renamed to 'time' below.
+        self.data = xr.open_mfdataset(
             files,
             parallel=False,
-            chunks={'time': 1000}
+            combine='nested',
+            concat_dim='REFERENCE_TS',
+            data_vars='minimal',
+            coords='minimal',
+            compat='override',
+            join='override',
+            chunks={'REFERENCE_TS': 1000}
         )
-        data = data.rename_vars({'CPC': 'precip'})
-        data = data.rename({'REFERENCE_TS': 'time'})
+        self.data = self.data.rename_vars({'CPC': 'precip'})
+        self.data = self.data.rename({'REFERENCE_TS': 'time'})
 
-        return data
+        # Select the data for the given years
+        if self.year_start:
+            self.data = self.data.sel(time=slice(f'{self.year_start}-01-01', None))
+        if self.year_end:
+            self.data = self.data.sel(time=slice(None, f'{self.year_end}-12-31'))
+
+    def open_zarr(self, zarr_path=None):
+        """
+        Open the hourly precipitation data from a zarr store built with
+        build_zarr_store(). The data is opened lazily; only the chunks actually
+        selected are read from disk.
+
+        Parameters
+        ----------
+        zarr_path: str|Path|None
+            The path to the zarr store. Defaults to the PATH_PRECIP_HOURLY_ZARR
+            config entry.
+        """
+        if not zarr_path:
+            zarr_path = config.get('PATH_PRECIP_HOURLY_ZARR', do_raise=False)
+        if not zarr_path or not (Path(zarr_path) / 'zarr.json').exists():
+            where = f"'{zarr_path}'" if zarr_path else "(PATH_PRECIP_HOURLY_ZARR not set)"
+            raise FileNotFoundError(
+                f"The hourly zarr store {where} does not exist. Build it first "
+                f"with scripts/data_preparation/build_precip_hourly_zarr.py "
+                f"(config key PATH_PRECIP_HOURLY_ZARR).")
+
+        super().open_zarr(zarr_path)
 
     def prepare_data(self, data_path=None, resolution=1, time_step=1):
         """
-        Load the precipitation data from the given path.
+        Open the precipitation data from the base zarr store (see
+        build_zarr_store) and switch to the derived store for the requested
+        resolution/time step (materialized once, then reused).
 
         Parameters
         ----------
         data_path: str|None
-            The path to the data files
+            The path to the base zarr store (defaults to the
+            PATH_PRECIP_HOURLY_ZARR config entry)
         resolution: int
             The resolution [km] of the precipitation data (default: 1)
         time_step: int
             The time step [h] of the precipitation data (default: 1)
         """
-        data = self.open_files(data_path, resolution, time_step)
-        self._generate_pickle_files(data)
+        self.open_zarr(data_path)
+        self._use_derived_store(resolution, time_step)
+
+    def build_zarr_store(self, zarr_path=None, data_path=None, margin=5000,
+                         time_chunk=720, spatial_chunk=32):
+        """
+        Convert the hourly netCDF files into a compressed, spatially-chunked
+        zarr store (single pass over the source data). The store is cropped to
+        the CID domain bounding box (plus a margin) and cleaned exactly like the
+        former monthly pickles (duplicate timestamps removed, missing steps
+        linearly interpolated, remaining NaN set to 0).
+
+        The build is resumable: months already written (tracked with marker
+        files in '<zarr_path>.done/') are skipped. The marker directory is
+        removed once the build completes; its absence marks a completed store
+        and makes rerunning the build a no-op.
+
+        Parameters
+        ----------
+        zarr_path: str|Path|None
+            The path of the zarr store to create/complete. Defaults to the
+            PATH_PRECIP_HOURLY_ZARR config entry.
+        data_path: str|None
+            The path to the source netCDF files. Defaults to the DIR_PRECIP_HOURLY
+            config entry.
+        margin: float
+            The margin [m] added around the CID domain extent (default: 5000).
+        time_chunk: int
+            The time chunk size [steps] of the store (default: 720). Small
+            spatial chunks with longer time chunks make both patch reads and
+            full-time-series-per-pixel reads (normalization statistics) cheap.
+        spatial_chunk: int
+            The spatial chunk size [cells] of the store (default: 32).
+        """
+        if not zarr_path:
+            zarr_path = config.get('PATH_PRECIP_HOURLY_ZARR', do_raise=False)
+        if not zarr_path:
+            raise ValueError("No zarr store path given and "
+                             "PATH_PRECIP_HOURLY_ZARR is not set.")
+
+        self.open_files(data_path)
+
+        # Full calendar of the store (timestamps label the END of the hourly
+        # accumulation interval: 00:00 of Jan 1 to 23:00 of Dec 31).
+        t0 = pd.Timestamp(f'{self.year_start}-01-01 00:00')
+        t_end = pd.Timestamp(f'{self.year_end}-12-31 23:00')
+        time_coord = pd.date_range(t0, t_end, freq='h')
+
+        # Crop the grid to the CID domain bounding box (plus margin)
+        x_axis = self.data[self.x_axis_dim].values
+        y_axis = self.data[self.y_axis_dim].values
+        extent = self.domain.cids['extent']
+        x_sel = x_axis[(x_axis >= extent.left - margin) &
+                       (x_axis <= extent.right + margin)]
+        y_sel = y_axis[(y_axis >= extent.bottom - margin) &
+                       (y_axis <= extent.top + margin)]
+
+        zarr_path = Path(zarr_path)
+        done_dir = Path(str(zarr_path) + '.done')
+        if ensure_zarr_store(zarr_path, time_coord, y_sel, x_sel,
+                             (time_chunk, spatial_chunk, spatial_chunk),
+                             done_dir):
+            return
+
+        # Written sequentially month by month (~250 MB in memory per month);
+        # sequential region writes make chunk-straddling months safe.
+        months = pd.date_range(t0, t_end, freq='MS')
+        for month in tqdm(months, desc="Writing months to zarr"):
+            marker = done_dir / month.strftime('%Y-%m')
+            if marker.exists():
+                continue
+
+            m_start = month
+            m_end = min(month + pd.offsets.MonthEnd(0)
+                        + pd.Timedelta(hours=23), t_end)
+            subset = self.data[[self.precip_var]].sel(
+                time=slice(m_start, m_end))
+            subset = self._remove_duplicate_timestamps(subset)
+            subset = self._fill_missing_values(subset, m_start, m_end)
+            subset = subset.sel({self.x_axis_dim: x_sel, self.y_axis_dim: y_sel})
+            values = subset[self.precip_var].compute().values.astype('float32')
+
+            t_offset = int((m_start - t0) / pd.Timedelta(hours=1))
+            write_time_region(zarr_path, values, t_offset)
+            marker.touch()
+
+        finalize_zarr_store(zarr_path, done_dir)
 
     def _check_files(self, files):
         """

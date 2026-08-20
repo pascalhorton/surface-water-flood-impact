@@ -2,8 +2,10 @@
 This script analyzes the properties of the precipitation events with and without claims.
 """
 
+import logging
 from swafi.config import Config
-from swafi.events import load_events_from_pickle
+from swafi.events import get_events_filename, load_events_from_pickle
+from swafi.utils.logging_setup import setup_logging
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -11,6 +13,11 @@ CONFIG = Config()
 
 DATASET = 'mobiliar'  # 'mobiliar' or 'gvz'
 LABEL_EVENT_FILE = 'default_occurrence'
+
+# Events extraction method ('classic' or 'simple') and the precipitation dataset
+# they were extracted from ('hourly' or '5min'; simple method only).
+METHOD = 'simple'
+PRECIP_DATASET = 'hourly'
 DO_PRINT = True
 PLOT_SYNTHESIS = True
 PLOT_INDIVIDUAL = False
@@ -20,9 +27,13 @@ output_dir = config.output_dir
 
 
 def main():
+    setup_logging(script_name='analyze_event_properties_with_damages')
+    logger = logging.getLogger(__name__)
     # Load events
-    events_filename = f'events_{DATASET}_with_target_{LABEL_EVENT_FILE}.pickle'
+    events_filename = get_events_filename(DATASET, LABEL_EVENT_FILE, METHOD,
+                                          PRECIP_DATASET)
     events = load_events_from_pickle(filename=events_filename)
+    events.check_precip_dataset(PRECIP_DATASET)
     events_df = events.events
 
     # Split the events with damages vs those without damage
@@ -98,7 +109,7 @@ def main():
         plot_histo(with_claims, without_claims, 'nb_contracts')
         plot_histo(with_claims, without_claims, 'nb_contracts', log_scale=True)
 
-    print("Done.")
+    logger.info("Done.")
 
 
 def get_common_bins(df1, df2, n_bins=50, max_val=None):

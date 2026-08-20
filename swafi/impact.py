@@ -1,6 +1,8 @@
 """
 Class to compute the impact function.
 """
+import logging
+
 from .config import Config
 
 import pickle
@@ -10,9 +12,12 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import average_precision_score, precision_recall_curve
 
 from .utils.verification import compute_confusion_matrix, print_classic_scores, \
     assess_roc_auc, store_classic_scores
+
+logger = logging.getLogger(__name__)
 
 
 class Impact:
@@ -21,15 +26,15 @@ class Impact:
 
     Parameters
     ----------
-    events: Events
-        The events object.
     options: ImpactBasicOptions|ImpactDlOptions
         The model options.
+    events: Events
+        The events object.
     """
 
-    def __init__(self, events, options):
+    def __init__(self, options, events=None):
         self.options = options
-        self.df = events.events
+        self.df = events.events if events is not None else None
         self.target_type = options.target_type
         self.model = None
         self.events_train = None
@@ -41,9 +46,15 @@ class Impact:
         self.y_train = None
         self.y_test = None
         self.y_valid = None
+        self.exposure_train = None
+        self.exposure_valid = None
+        self.exposure_test = None
         self.features = []
         self.weights = None
         self.class_weight = None
+        self.probability_threshold = 0.5
+        self.x_mean = None
+        self.x_std = None
 
         self.config = Config()
         self.tmp_dir = Path(self.config.get('TMP_DIR'))
@@ -52,7 +63,25 @@ class Impact:
         self.random_state = options.random_state
 
         # Initialize the data properties
-        self._define_potential_features()
+        events_columns = events.events.columns if events is not None else []
+        self._define_potential_features(events_columns)
+
+    def update_potential_features(self, events_columns):
+        """
+        Re-derive the default tabular features from the given events columns.
+
+        Needed when the model was constructed without events (e.g. in the
+        inference scripts): the sub-hourly event features (p_10min_q, ...) are
+        only part of the defaults when present in the events, so the defaults
+        must be re-aligned with the events actually used before selecting
+        features.
+
+        Parameters
+        ----------
+        events_columns: list|pd.Index
+            The column names of the events dataframe.
+        """
+        self._define_potential_features(events_columns)
 
     def select_features(self, features):
         """
@@ -89,15 +118,20 @@ class Impact:
         for feature_class in features_selection:
             self.tabular_features[feature_class] = features_selection[feature_class]
 
-    def load_features(self, feature_types):
+    def get_feature_files(self, feature_types):
         """
-        Load the features from the given feature types.
+        Get the list of feature files to load based on the selected feature types.
 
         Parameters
         ----------
         feature_types: list
             The list of feature types to load. Options are: 'event', 'terrain',
             'swf_map', 'flowacc', 'land_cover', 'runoff_coeff'
+
+        Returns
+        -------
+        list
+            The list of feature files to load.
         """
         feature_files = []
         for feature_type in feature_types:
@@ -125,17 +159,67 @@ class Impact:
             else:
                 raise ValueError(f"Unknown file for feature type: {feature_type}")
 
+        return feature_files
+
+    def get_all_features(self, feature_types):
+        """
+        Get all features from the given feature files.
+
+        Parameters
+        ----------
+        feature_types: list
+            The list of feature types to load. Options are: 'event', 'terrain',
+            'swf_map', 'flowacc', 'land_cover', 'runoff_coeff'
+
+        Returns
+        -------
+        pd.DataFrame
+            The dataframe with all features.
+        """
+        feature_files = self.get_feature_files(feature_types)
+
+        all_features = None
+
+        for f in feature_files:
+            df_features = pd.read_csv(f)
+
+            # Filter out valid column names
+            valid_columns = [col for col in self.features
+                             if col in df_features.columns] + ['cid']
+            df_features = df_features[valid_columns]
+
+            if all_features is None:
+                all_features = df_features
+            else:
+                all_features = all_features.merge(df_features, on='cid', how='left')
+
+        return all_features
+
+    def load_features(self, feature_types, use_pickle=False):
+        """
+        Load the features from the given feature types.
+
+        Parameters
+        ----------
+        feature_types: list
+            The list of feature types to load. Options are: 'event', 'terrain',
+            'swf_map', 'flowacc', 'land_cover', 'runoff_coeff'
+        use_pickle: bool
+            Whether to load the features from a pickle file if it exists. If False,
+            the features will be loaded from the CSV files.
+        """
+        feature_files = self.get_feature_files(feature_types)
+
         # Create unique hash for the data dataframe
         tmp_filename = self._create_data_tmp_file_name(feature_files)
 
         try:
-            if tmp_filename.exists():
-                print(f"Loading data from {tmp_filename}")
+            if use_pickle and tmp_filename.exists():
+                logger.info("Loading data from %s", tmp_filename)
                 self.df = pd.read_pickle(tmp_filename)
             else:
                 raise FileNotFoundError
         except (pickle.UnpicklingError, FileNotFoundError, EOFError, Exception):
-            print(f"Creating dataframe and saving to {tmp_filename}")
             for f in feature_files:
                 df_features = pd.read_csv(f)
 
@@ -146,7 +230,44 @@ class Impact:
 
                 self.df = self.df.merge(df_features, on='cid', how='left')
 
-            self.df.to_pickle(tmp_filename)
+            if use_pickle:
+                logger.info("Saving dataframe to %s", tmp_filename)
+                self.df.to_pickle(tmp_filename)
+
+    def set_events(self, events):
+        """
+        Set the events dataframe.
+
+        Parameters
+        ----------
+        events: pd.DataFrame
+            The events dataframe.
+        """
+        self.df = events
+
+    def set_features(self, features):
+        """
+        Set the features to use for the model.
+
+        Parameters
+        ----------
+        features: pd.DataFrame
+            The features dataframe. Must contain a 'cid' column to merge with the
+            events dataframe.
+        """
+        self.df = self.df.merge(features, on='cid', how='left')
+
+    def set_exposure(self, exposure):
+        """
+        Set the exposure dataframe.
+
+        Parameters
+        ----------
+        exposure: pd.DataFrame
+            The exposure dataframe. Must contain a 'cid' column to merge with the
+            events dataframe.
+        """
+        self.df = self.df.merge(exposure, on='cid', how='left')
 
     def select_nb_contracts_greater_or_equal_to(self, threshold):
         """
@@ -173,30 +294,39 @@ class Impact:
         self.df = self.df[(self.df['nb_claims'] == 0) |
                           (self.df['nb_claims'] >= threshold)]
 
-    def split_sample(self, valid_test_size=0.3, test_size=0.5, ref_date='i_max', stratify_by='day'):
+    def split_sample(self, valid_test_size=0.3, test_size=0, ref_date='i_max_only',
+                     split_mode='chronological'):
         """
-        Split the sample into training, validation and test sets. The split is
-        stratified on the target, i.e. the proportion of events with and without
-        damages will be approximately the same in each split.
+        Split the sample into training, validation and test sets.
 
         Parameters
         ----------
         valid_test_size: float
-            The size of the set for validation and testing (default: 0.4)
+            The size of the set for validation and testing (default: 0.25)
         test_size: float
             The size of the set for testing proportionally to the length of the
-            validation and testing split (default: 0.25)
+            validation and testing split (default: 0)
         ref_date: str
             The reference date to use for the precipitation extraction when claim dates are missing (no damage class).
             Options are:
             - 'middle': missing dates are filled with the mean of the event start and end date.
             - 'end': missing dates are filled with the event end date.
-            - 'i_max' (default): missing dates are filled with the date of the maximum precipitation intensity.
-            - 'i_max_only': only the date of the maximum precipitation intensity is used, claim dates are discarded.
-        stratify_by: str
-            The temporal unit to use for stratification. Options are: 'day' (default) or
-            'month'. If 'day', the stratification is done based on days with any damages.
-            If 'month', the stratification is done based on monthly damage ratios.
+            - 'i_max': missing dates are filled with the date of the maximum precipitation intensity.
+            - 'i_max_only' (default): only the date of the maximum precipitation intensity is used, claim dates are discarded.
+        split_mode: str
+            How to assign the days to the splits. Options are:
+            - 'chronological' (default): the last days of the period are held
+              out. Validation then measures what the model is actually asked to
+              do — generalise to a later period — so both the scores and the
+              probability threshold tuned on it transfer to unseen years.
+            - 'random_days': random days, stratified on whether the day carries
+              a claim. Days from the whole period are interleaved between the
+              splits, so validation shares the climate of the training set and
+              cannot see any drift between periods.
+            - 'random_months': random (year, month) blocks, stratified on the
+              monthly damage ratio.
+            A whole day always lands in a single split, in every mode: the
+            events of one day share a storm across many cells.
         """
         df = self.df.copy()
 
@@ -204,43 +334,80 @@ class Impact:
             self.df = self.df[(self.df['nb_claims'] == 0) |
                               (self.df['nb_claims'] >= self.options.min_nb_claims)]
 
-        # Set the reference date for the precipitation extraction
-        if ref_date == 'middle':
-            df.rename(columns={'date_claim': 'date'}, inplace=True)
-            # Set a time to the claim date (18:00 by default)
-            df['date'] = pd.to_datetime(df['date'], errors='coerce') + pd.Timedelta(hours=18)
-            # Fill NaN values with the mean of the event start and end date
-            df['date'] = df['date'].fillna(df[['e_start', 'e_end']].mean(axis=1))
-        elif ref_date == 'end':
-            df.rename(columns={'date_claim': 'date'}, inplace=True)
-            # Set a time to the claim date (18:00 by default)
-            df['date'] = pd.to_datetime(df['date'], errors='coerce') + pd.Timedelta(hours=18)
-            # Fill NaN values with the event end date
-            df['date'] = df['date'].fillna(df['e_end'])
-        elif ref_date == 'i_max':
-            df.rename(columns={'date_claim': 'date'}, inplace=True)
-            # Set a time to the claim date (18:00 by default)
-            df['date'] = pd.to_datetime(df['date'], errors='coerce') + pd.Timedelta(hours=18)
-            # Fill NaN values with the date of the maximum precipitation intensity
-            df['date'] = df['date'].fillna(df['i_max_date'])
-        elif ref_date == 'i_max_only':
-            df.rename(columns={'i_max_date': 'date'}, inplace=True)
-            df['date'] = pd.to_datetime(df['date'])
+        if 'e_date' in df.columns:
+            # Simple event definition
+            df.rename(columns={'e_date': 'date'}, inplace=True)
         else:
-            raise ValueError(f"Unknown reference date: {ref_date}. "
-                             f"Options are: 'middle', 'i_max'")
 
-        # Transform the dates to a date without time
-        df['e_start'] = pd.to_datetime(df['e_start']).dt.date
-        df['e_end'] = pd.to_datetime(df['e_end']).dt.date
+            # Set the reference date for the precipitation extraction. We force the time to 18:00 to
+            # avoid overfitting on the time of the day.
+            if ref_date == 'middle':
+                df.rename(columns={'date_claim': 'date'}, inplace=True)
+                # Set a time to the claim date (18:00 by default)
+                df['date'] = pd.to_datetime(df['date'], errors='coerce') + pd.Timedelta(hours=18)
+                # Fill NaN values with the mean of the event start and end date
+                fill_datetime = (pd.to_datetime(df['e_start']) + pd.to_datetime(df['e_end'])) / 2
+                fill_datetime = fill_datetime.dt.floor('D') + pd.Timedelta(hours=18)
+                df['date'] = df['date'].fillna(fill_datetime)
+            elif ref_date == 'end':
+                df.rename(columns={'date_claim': 'date'}, inplace=True)
+                # Set a time to the claim date (18:00 by default)
+                df['date'] = pd.to_datetime(df['date'], errors='coerce') + pd.Timedelta(hours=18)
+                # Fill NaN values with the event end date
+                fill_datetime = pd.to_datetime(df['e_end']).dt.floor('D') + pd.Timedelta(hours=18)
+                df['date'] = df['date'].fillna(fill_datetime)
+            elif ref_date == 'i_max':
+                df.rename(columns={'date_claim': 'date'}, inplace=True)
+                # Set a time to the claim date (18:00 by default)
+                df['date'] = pd.to_datetime(df['date'], errors='coerce') + pd.Timedelta(hours=18)
+                # Fill NaN values with the date of the maximum precipitation intensity
+                fill_datetime = pd.to_datetime(df['i_max_date']).dt.floor('D') + pd.Timedelta(hours=18)
+                df['date'] = df['date'].fillna(fill_datetime)
+            elif ref_date == 'i_max_only':
+                df.rename(columns={'i_max_date': 'date'}, inplace=True)
+                df['date'] = pd.to_datetime(df['date'])
+            else:
+                raise ValueError(f"Unknown reference date: {ref_date}. "
+                                 f"Options are: 'middle', 'i_max'")
+
+            # Transform the dates to a date without time
+            df['e_start'] = pd.to_datetime(df['e_start']).dt.date
+            df['e_end'] = pd.to_datetime(df['e_end']).dt.date
 
         # Remove lines with NaN values
         len_before = len(df)
         df.dropna(subset=self.features, inplace=True)
         len_after = len(df)
-        print(f"Number of NaN values removed: {len_before - len_after}")
+        logger.info("Number of NaN values removed: %s", len_before - len_after)
 
-        if stratify_by == 'day':
+        if split_mode == 'chronological':
+            # Hold out the last days of the period. Splitting on the calendar
+            # day (not on the rows) keeps all the events of a day together.
+            days = np.sort(df['date'].dt.floor('D').unique())
+            n_held_out = int(round(len(days) * valid_test_size))
+            assert n_held_out > 0, "The validation split is empty."
+            train_days = days[:len(days) - n_held_out]
+            held_out = days[len(days) - n_held_out:]
+            if test_size == 0:
+                valid_days, test_days = held_out, held_out[:0]
+            else:
+                n_test = int(round(len(held_out) * test_size))
+                valid_days, test_days = held_out[:len(held_out) - n_test], \
+                    held_out[len(held_out) - n_test:]
+
+            day = df['date'].dt.floor('D')
+            train_df = df[day.isin(train_days)]
+            val_df = df[day.isin(valid_days)]
+            test_df = df[day.isin(test_days)]
+
+            for name, days_split in (('train', train_days), ('valid', valid_days),
+                                     ('test', test_days)):
+                if len(days_split) > 0:
+                    logger.info("Split %s: %s to %s (%d days)", name,
+                                pd.Timestamp(days_split[0]).date(),
+                                pd.Timestamp(days_split[-1]).date(), len(days_split))
+
+        elif split_mode == 'random_days':
             # Add a column to flag any claim (1 if there is a damage, 0 otherwise)
             df['damage_class'] = (df['target'] > 0).astype(int)
 
@@ -255,21 +422,25 @@ class Impact:
                 random_state=self.random_state,
                 shuffle=True
             )
-            val_dates, test_dates = train_test_split(
-                temp_dates,
-                test_size=test_size,
-                stratify=date_label_df.loc[
-                    date_label_df['date'].isin(temp_dates), 'damage_class'],
-                random_state=self.random_state,
-                shuffle=True
-            )
+            if test_size == 0:
+                val_df = df[df['date'].isin(temp_dates)]
+                test_df = df.iloc[0:0]
+            else:
+                val_dates, test_dates = train_test_split(
+                    temp_dates,
+                    test_size=test_size,
+                    stratify=date_label_df.loc[
+                        date_label_df['date'].isin(temp_dates), 'damage_class'],
+                    random_state=self.random_state,
+                    shuffle=True
+                )
+                val_df = df[df['date'].isin(val_dates)]
+                test_df = df[df['date'].isin(test_dates)]
 
-            # Filter the original df to get train, validation, and test sets
+            # Filter training set
             train_df = df[df['date'].isin(train_dates)]
-            val_df = df[df['date'].isin(val_dates)]
-            test_df = df[df['date'].isin(test_dates)]
 
-        elif stratify_by == 'month':
+        elif split_mode == 'random_months':
             # Compute the ratio of events with and without damages on an annual basis
             df['year'] = df['date'].dt.year
             df['month'] = df['date'].dt.month
@@ -287,28 +458,34 @@ class Impact:
                 shuffle=True,
                 stratify=events_month['ratio_class']
             )
-            val_slct, test_slct = train_test_split(
-                tmp_slct,
-                test_size=test_size,
-                random_state=self.random_state,
-                shuffle=True,
-                stratify=tmp_slct['ratio_class']
-            )
-
             # Filter the original df to get train, validation, and test sets
             train_df = df[pd.MultiIndex.from_arrays([df['year'], df['month']]).isin(train_slct.index)]
-            val_df = df[pd.MultiIndex.from_arrays([df['year'], df['month']]).isin(val_slct.index)]
-            test_df = df[pd.MultiIndex.from_arrays([df['year'], df['month']]).isin(test_slct.index)]
+            if test_size == 0:
+                val_df = df[pd.MultiIndex.from_arrays([df['year'], df['month']]).isin(tmp_slct.index)]
+                test_df = df.iloc[0:0]
+            else:
+                val_slct, test_slct = train_test_split(
+                    tmp_slct,
+                    test_size=test_size,
+                    random_state=self.random_state,
+                    shuffle=True,
+                    stratify=tmp_slct['ratio_class']
+                )
+                val_df = df[pd.MultiIndex.from_arrays([df['year'], df['month']]).isin(val_slct.index)]
+                test_df = df[pd.MultiIndex.from_arrays([df['year'], df['month']]).isin(test_slct.index)]
 
         else:
-            raise ValueError(f"Unknown stratification method: {stratify_by}. "
-                             f"Options are: 'day', 'month'")
+            raise ValueError(f"Unknown split mode: {split_mode}. Options are: "
+                             f"'chronological', 'random_days', 'random_months'")
 
         self.x_train = train_df[self.features].to_numpy()
         self.x_valid = val_df[self.features].to_numpy()
         self.x_test = test_df[self.features].to_numpy()
 
         y_fields = ['target', 'date', 'x', 'y', 'cid']
+        use_poisson_head = getattr(self.options, 'use_poisson_head', False)
+        if use_poisson_head:
+            y_fields += ['nb_claims', 'nb_contracts']
         self.y_train = train_df[y_fields].to_numpy()
         self.y_valid = val_df[y_fields].to_numpy()
         self.y_test = test_df[y_fields].to_numpy()
@@ -321,26 +498,74 @@ class Impact:
         self.events_valid[:, 0] = pd.to_datetime(self.events_valid[:, 0])
         self.events_test[:, 0] = pd.to_datetime(self.events_test[:, 0])
 
-        val_y_train = self.y_train[:, 0].astype(float)
-        val_y_valid = self.y_valid[:, 0].astype(float)
-        val_y_test = self.y_test[:, 0].astype(float)
-        if self.target_type == 'occurrence':
-            val_y_train = val_y_train.astype(int)
-            val_y_valid = val_y_valid.astype(int)
-            val_y_test = val_y_test.astype(int)
+        if use_poisson_head:
+            # The response is the claim count; log(nb_contracts) is the exposure
+            # offset fed to the model as an extra input.
+            val_y_train = self.y_train[:, 5].astype(float).astype(int)
+            val_y_valid = self.y_valid[:, 5].astype(float).astype(int)
+            val_y_test = self.y_test[:, 5].astype(float).astype(int)
+            self.exposure_train = np.log(self.y_train[:, 6].astype(float))
+            self.exposure_valid = np.log(self.y_valid[:, 6].astype(float))
+            self.exposure_test = np.log(self.y_test[:, 6].astype(float))
+        else:
+            val_y_train = self.y_train[:, 0].astype(float)
+            val_y_valid = self.y_valid[:, 0].astype(float)
+            val_y_test = self.y_test[:, 0].astype(float)
+            if self.target_type == 'occurrence':
+                val_y_train = val_y_train.astype(int)
+                val_y_valid = val_y_valid.astype(int)
+                val_y_test = val_y_test.astype(int)
         self.y_train = val_y_train
         self.y_valid = val_y_valid
         self.y_test = val_y_test
 
         # Print the percentage of events with and without damages
         self.show_target_stats()
-        print(f"Theoretical split ratios: train={100 * (1 - valid_test_size):.1f}%, "
-              f"valid={100 * valid_test_size * (1 - test_size):.1f}%, "
-              f"test={100 * valid_test_size * test_size:.1f}%")
-        y_len = len(self.y_train) + len(self.y_valid) + len(self.y_test)
-        print(f"Actual split ratios: train={100 * len(self.y_train) / y_len:.1f}%, "
-              f"valid={100 * len(self.y_valid) / y_len:.1f}%, "
-              f"test={100 * len(self.y_test) / y_len:.1f}%")
+        if test_size == 0:
+            logger.info("Theoretical split ratios: train=%.1f%%, valid=%.1f%%",
+                        100 * (1 - valid_test_size),
+                        100 * valid_test_size)
+            y_len = len(self.y_train) + len(self.y_valid)
+            logger.info("Actual split ratios: train=%.1f%%, valid=%.1f%%",
+                        100 * len(self.y_train) / y_len,
+                        100 * len(self.y_valid) / y_len)
+        else:
+            logger.info("Theoretical split ratios: train=%.1f%%, valid=%.1f%%, test=%.1f%%",
+                        100 * (1 - valid_test_size),
+                        100 * valid_test_size * (1 - test_size),
+                        100 * valid_test_size * test_size)
+            y_len = len(self.y_train) + len(self.y_valid) + len(self.y_test)
+            logger.info("Actual split ratios: train=%.1f%%, valid=%.1f%%, test=%.1f%%",
+                        100 * len(self.y_train) / y_len,
+                        100 * len(self.y_valid) / y_len,
+                        100 * len(self.y_test) / y_len)
+
+    def merge_valid_test_into_train(self):
+        """
+        Merge the validation (and test) splits back into the training set, so a
+        subsequent fit() uses the whole period. The validation and test splits
+        are emptied.
+
+        Intended for a final, deployment model refit on all the available data
+        once the hyperparameters and the decision threshold have been selected
+        on the held-out split: assessment and threshold tuning must therefore
+        already be done, as no held-out data remains afterwards.
+        """
+        self.x_train = np.concatenate(
+            [self.x_train, self.x_valid, self.x_test], axis=0)
+        self.y_train = np.concatenate(
+            [self.y_train, self.y_valid, self.y_test], axis=0)
+        self.events_train = np.concatenate(
+            [self.events_train, self.events_valid, self.events_test], axis=0)
+
+        # Empty the held-out splits, keeping their shape and dtype.
+        self.x_valid, self.x_test = self.x_train[:0], self.x_train[:0]
+        self.y_valid, self.y_test = self.y_train[:0], self.y_train[:0]
+        self.events_valid = self.events_train[:0]
+        self.events_test = self.events_train[:0]
+
+        logger.info("Merged all splits into the training set: %d samples.",
+                    len(self.y_train))
 
     def normalize_features(self):
         """
@@ -349,13 +574,83 @@ class Impact:
         epsilon = 1e-8  # A small constant to avoid division by zero
 
         # Calculate mean and std only on the training data
-        mean = np.mean(self.x_train, axis=0)
-        std = np.std(self.x_train, axis=0) + epsilon
+        self.x_mean = np.mean(self.x_train, axis=0)
+        self.x_std = np.std(self.x_train, axis=0) + epsilon
 
         # Normalize all splits using training mean and std
-        self.x_train = (self.x_train - mean) / std
-        self.x_valid = (self.x_valid - mean) / std
-        self.x_test = (self.x_test - mean) / std
+        self.x_train = (self.x_train - self.x_mean) / self.x_std
+        self.x_valid = (self.x_valid - self.x_mean) / self.x_std
+        self.x_test = (self.x_test - self.x_mean) / self.x_std
+
+    def compute_average_precision(self, x, y):
+        """
+        Compute the average precision (area under the precision-recall curve) on
+        the given set. This is a threshold-free metric well suited to imbalanced
+        occurrence problems, making it a more stable objective for hyperparameter
+        optimization than the F1 score at a fixed threshold.
+
+        Parameters
+        ----------
+        x: np.array
+            The features.
+        y: np.array
+            The target.
+
+        Returns
+        -------
+        float
+            The average precision score.
+        """
+        if self.target_type != 'occurrence':
+            raise NotImplementedError(
+                "Average precision is only available for occurrence")
+
+        y_prob = self.model.predict_proba(x)[:, 1]
+        return average_precision_score(y, y_prob)
+
+    def tune_probability_threshold(self, x=None, y=None):
+        """
+        Find the decision threshold that maximizes the F1 score on the given set
+        (the validation set by default) and store it in
+        ``self.probability_threshold``. The threshold is subsequently used when
+        turning predicted probabilities into class labels (assessment, inference).
+
+        Parameters
+        ----------
+        x: np.array
+            The features. If None, the validation set is used.
+        y: np.array
+            The target. If None, the validation set is used.
+
+        Returns
+        -------
+        float
+            The selected probability threshold.
+        """
+        if self.target_type != 'occurrence':
+            raise NotImplementedError(
+                "Threshold tuning is only available for occurrence")
+
+        if x is None or y is None:
+            x, y = self.x_valid, self.y_valid
+
+        y_prob = self.model.predict_proba(x)[:, 1]
+
+        precision, recall, thresholds = precision_recall_curve(y, y_prob)
+        # precision/recall have one more element than thresholds (the last point
+        # corresponds to recall=0 with no threshold); drop it before scoring.
+        epsilon = 1e-7
+        f1 = 2 * precision[:-1] * recall[:-1] / (
+                precision[:-1] + recall[:-1] + epsilon)
+
+        best_idx = int(np.argmax(f1))
+        self.probability_threshold = float(thresholds[best_idx])
+
+        logger.info(
+            "Tuned probability threshold: %.4f (valid F1=%.4f)",
+            self.probability_threshold, f1[best_idx])
+
+        return self.probability_threshold
 
     def compute_balanced_class_weights(self, factor_neg_reduction=1):
         """
@@ -379,12 +674,54 @@ class Impact:
     def compute_corrected_class_weights(self, weight_denominator):
         """
         Compute the corrected class weights.
+
+        When batch_pos_ratio is set, the denominator is automatically scaled so
+        that the gradient contributions of positives and negatives are balanced at
+        the batch level. `weight_denominator` then acts as a fine-tuning multiplier
+        around that balanced point (1 = perfectly balanced, >1 = favour negatives).
         """
         if self.target_type != 'occurrence':
             raise NotImplemented("Class weights are only available for occurrence")
 
+        batch_pos_ratio = getattr(self.options, 'batch_pos_ratio', None)
+
+        if batch_pos_ratio is not None:
+            # d_balanced = (p_neg/p_pos) * batch_pos_ratio / (1 - batch_pos_ratio)
+            # gives gradient ratio pos:neg == 1:1 for the given batch composition.
+            n_pos = np.sum(self.y_train > 0)
+            n_neg = np.sum(self.y_train == 0)
+            p_pos = n_pos / len(self.y_train)
+            p_neg = n_neg / len(self.y_train)
+            d_balanced = (p_neg / p_pos) * (batch_pos_ratio / (1.0 - batch_pos_ratio))
+            effective_denom = d_balanced * weight_denominator
+            logger.info(
+                "batch_pos_ratio=%.3f: balanced denominator=%.1f, "
+                "weight_denominator=%.1f -> effective denominator=%.1f",
+                batch_pos_ratio, d_balanced, weight_denominator, effective_denom)
+        else:
+            effective_denom = weight_denominator
+
         self.class_weight = {0: self.weights[0],
-                             1: self.weights[1] / weight_denominator}
+                             1: self.weights[1] / effective_denom}
+        ratio = self.class_weight[1] / self.class_weight[0]
+        logger.info(
+            "Class weights: neg=%.4f, pos=%.4f (ratio pos/neg=%.2f)",
+            self.class_weight[0], self.class_weight[1], ratio)
+
+        # compute_balanced_class_weights() already divided the positive weight by
+        # factor_neg_reduction, so weights[1] is the value that balances the
+        # subsampled training generator. effective_denom is therefore exactly the
+        # factor by which the negatives are made to outweigh the positives.
+        if effective_denom > 1:
+            logger.warning(
+                "Negatives carry about %.0f× the loss mass of the positives "
+                "(effective denominator %.1f) on a problem with %d positives and "
+                "%d negatives. The constant 'no event' prediction sits close to "
+                "the loss minimum, and the model may collapse onto it. Set "
+                "--weight-denominator 1 for balanced weighting (currently %s).",
+                effective_denom, effective_denom,
+                int(np.sum(self.y_train > 0)), int(np.sum(self.y_train == 0)),
+                weight_denominator)
 
     def show_target_stats(self):
         # Count the number of events with and without damages
@@ -392,14 +729,14 @@ class Impact:
             y = getattr(self, f'y_{split}')
             if y is None:
                 raise ValueError(f"Split {split} not defined")
+            if split == 'test' and len(y) == 0:
+                continue
             events_with_damages = y[y > 0]
             events_without_damages = y[y == 0]
-            print(f"Number of events with damages ({split}): "
-                  f"({100 * len(events_with_damages) / len(y):.3f}%)"
-                  f"({len(events_with_damages)})")
-            print(f"Number of events without damages ({split}): "
-                  f"({100 * len(events_without_damages) / len(y):.3f}%)"
-                  f"({len(events_without_damages)})")
+            logger.info("Number of events with damages (%s): (%.3f%%)(%s)",
+                        split, 100 * len(events_with_damages) / len(y), len(events_with_damages))
+            logger.info("Number of events without damages (%s): (%.3f%%)(%s)",
+                        split, 100 * len(events_without_damages) / len(y), len(events_without_damages))
 
     def create_benchmark_model(self, model_type='random'):
         """
@@ -455,10 +792,12 @@ class Impact:
         file_tag: str
             The tag to add to the file name.
         """
+        logger.info("Assessing the model on all periods.")
         df_res = pd.DataFrame(columns=['split'])
         df_res = self._assess_model(self.x_train, self.y_train, 'train', df_res)
         df_res = self._assess_model(self.x_valid, self.y_valid, 'valid', df_res)
-        df_res = self._assess_model(self.x_test, self.y_test, 'test', df_res)
+        if self.y_test is not None and len(self.y_test) > 0:
+            df_res = self._assess_model(self.x_test, self.y_test, 'test', df_res)
 
         if save_results:
             self._save_results_csv(df_res, file_tag)
@@ -476,7 +815,51 @@ class Impact:
         file_name_options = f'{output_dir}/{base_name}_options.csv'
         df_options = pd.DataFrame(self.options.__dict__.items(), columns=['option', 'value'])
         df_options.to_csv(file_name_options, index=False)
-        print(f"Results saved to {file_name}")
+        logger.info("Results saved to %s", file_name)
+
+    @staticmethod
+    def _flag_degenerate_predictions(y_pred, roc, tp, tn, fp, fn, period_name):
+        """
+        Detect a model that carries no information and say so next to its scores.
+
+        The decision threshold is tuned to maximise F1 on validation. When the
+        model emits a near-constant probability, that optimum is 'label
+        everything positive', which produces a confusion matrix with a perfect
+        recall and a full complement of false positives - numbers that describe
+        the threshold search rather than the model. The ROC-AUC is the column
+        that gives it away, so the check keys on that and on the collapsed
+        confusion matrix, and marks the row.
+
+        Parameters
+        ----------
+        y_pred: np.array
+            The predicted probabilities.
+        roc: float
+            The ROC-AUC on this split.
+        tp, tn, fp, fn: int
+            The confusion matrix entries.
+        period_name: str
+            The split name, for the log message.
+
+        Returns
+        -------
+        bool
+            True when the predictions carry no usable ranking information.
+        """
+        spread = float(np.nanmax(y_pred) - np.nanmin(y_pred)) if y_pred.size else 0.0
+        no_ranking = not np.isfinite(roc) or abs(roc - 0.5) < 0.01
+        all_one_class = (tn + fp == 0) or (tp + fn == 0) or (tn == 0) or (fp + tp == 0)
+        degenerate = no_ranking or (all_one_class and spread < 1e-6)
+
+        if degenerate:
+            logger.warning(
+                "Split '%s': the model produces no usable ranking (ROC-AUC=%.4f, "
+                "prediction spread=%.3g). The confusion matrix above reflects the "
+                "F1-optimal threshold applied to a near-constant output, not model "
+                "skill - do not compare those columns across runs.",
+                period_name, roc, spread)
+
+        return degenerate
 
     def _assess_model(self, x, y, period_name, df_res):
         """
@@ -485,26 +868,30 @@ class Impact:
         if self.model is None:
             raise ValueError("Model not defined")
 
-        y_pred = self.model.predict(x)
-
-        print(f"\nSplit: {period_name}")
+        logger.info("\nSplit: %s", period_name)
 
         df_tmp = pd.DataFrame(columns=df_res.columns)
         df_tmp['split'] = [period_name]
 
         # Compute the scores
         if self.target_type == 'occurrence':
+            # Derive the class labels from the probabilities using the tuned
+            # decision threshold (default 0.5, i.e. equivalent to predict()).
+            y_pred_prob = self.model.predict_proba(x)[:, 1]
+            y_pred = (y_pred_prob >= self.probability_threshold).astype(int)
             tp, tn, fp, fn = compute_confusion_matrix(y, y_pred)
             print_classic_scores(tp, tn, fp, fn)
             store_classic_scores(tp, tn, fp, fn, df_tmp)
-            y_pred_prob = self.model.predict_proba(x)
-            roc = assess_roc_auc(y, y_pred_prob[:, 1])
+            roc = assess_roc_auc(y, y_pred_prob)
             df_tmp['ROC_AUC'] = [roc]
+            df_tmp['degenerate'] = [self._flag_degenerate_predictions(
+                y_pred_prob, roc, tp, tn, fp, fn, period_name)]
         else:
+            y_pred = self.model.predict(x)
             rmse = np.sqrt(np.mean((y - y_pred) ** 2))
-            print(f"RMSE: {rmse}")
+            logger.info("RMSE: %s", rmse)
             df_tmp['RMSE'] = [rmse]
-        print(f"----------------------------------------")
+        logger.info("----------------------------------------")
 
         df_res = pd.concat([df_res, df_tmp])
 
@@ -525,20 +912,41 @@ class Impact:
             The unique file name
         """
         # Create unique hash for the data dataframe
-        tag_data = (pickle.dumps(feature_files) + pickle.dumps(self.df.shape) +
-                    pickle.dumps(self.df.columns) + pickle.dumps(self.df.iloc[0]) +
-                    pickle.dumps(self.features))
+        if self.df is not None:
+            tag_data = (pickle.dumps(feature_files) + pickle.dumps(self.df.shape) +
+                        pickle.dumps(self.df.columns) + pickle.dumps(self.df.iloc[0]) +
+                        pickle.dumps(self.features))
+        else:
+            tag_data = pickle.dumps(feature_files) + pickle.dumps(self.features)
+
         df_hashed_name = f'data_{hashlib.md5(tag_data).hexdigest()}.pickle'
         tmp_filename = self.tmp_dir / df_hashed_name
         return tmp_filename
 
-    def _define_potential_features(self):
+    def _define_potential_features(self, events_columns):
         self.tabular_features = {}
 
         if self.options.use_event_attributes:
-            self.tabular_features['event'] = [
-                'i_max_q', 'p_sum_q', 'duration', 'i_mean_q',
-                'api_q', 'nb_contracts']
+            if self.options.event_method=='simple' or 'e_date' in events_columns:
+                self.tabular_features['event'] = []
+                if 'p_5min_q' in events_columns:
+                    self.tabular_features['event'] += [
+                        'p_5min_q', 'p_10min_q',
+                        'p_20min_q', 'p_30min_q']
+
+                self.tabular_features['event'] += [
+                    'p_1h_q', 'p_2h_q', 'p_4h_q', 'p_6h_q',
+                    'p_12h_q', 'p_24h_q', 'p_48h_q', 'p_72h_q',
+                    'api_q', 'nb_contracts']
+            else:
+                self.tabular_features['event'] = [
+                    'i_max_q', 'p_sum_q', 'duration', 'i_mean_q',
+                    'api_q', 'nb_contracts']
+
+            if getattr(self.options, 'use_poisson_head', False):
+                # nb_contracts is the exposure offset; using it as a predictor
+                # too would be double-use.
+                self.tabular_features['event'].remove('nb_contracts')
 
         if self.options.use_static_attributes:
             if not self.options.use_all_static_attributes:

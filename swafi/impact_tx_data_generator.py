@@ -3,7 +3,11 @@ Class to generate the data for the Transformer model.
 """
 from .impact_dl_data_generator import ImpactDlDataGenerator
 
+import logging
 import numpy as np
+
+
+logger = logging.getLogger(__name__)
 
 
 class ImpactTxDataGenerator(ImpactDlDataGenerator):
@@ -14,7 +18,8 @@ class ImpactTxDataGenerator(ImpactDlDataGenerator):
                  log_transform_precip=True, mean_static=None, std_static=None,
                  mean_precip_hf=None, std_precip_hf=None, mean_precip_daily=None,
                  std_precip_daily=None, min_static=None, max_static=None,
-                 q99_precip_hf=None, q99_precip_daily=None, debug=False):
+                 q99_precip_hf=None, q99_precip_daily=None,
+                 batch_pos_ratio=None, debug=False):
         """
         Data generator class.
 
@@ -86,6 +91,7 @@ class ImpactTxDataGenerator(ImpactDlDataGenerator):
                          std_static=std_static,
                          min_static=min_static,
                          max_static=max_static,
+                         batch_pos_ratio=batch_pos_ratio,
                          debug=debug)
         self.precip_hf_dim_size = None
         self.precip_daily_dim_size = None
@@ -116,6 +122,10 @@ class ImpactTxDataGenerator(ImpactDlDataGenerator):
             self._standardize_precip_inputs()
         elif transform_precip == 'normalize':
             self._normalize_precip_inputs()
+        else:
+            raise NotImplementedError(
+                f"transform_precip '{transform_precip}' is not implemented for "
+                f"the transformer model (only for the CNN).")
 
         self.on_epoch_end()  # Shuffle the data
 
@@ -167,7 +177,7 @@ class ImpactTxDataGenerator(ImpactDlDataGenerator):
         if self.X_precip_hf is not None:
             # Log transform the precipitation
             if self.log_transform_precip:
-                print('Log-transforming high-frequency precipitation')
+                logger.info('Log-transforming high-frequency precipitation')
                 self.X_precip_hf.log_transform()
 
             # Load or compute the precipitation statistics
@@ -183,7 +193,7 @@ class ImpactTxDataGenerator(ImpactDlDataGenerator):
         if self.X_precip_daily is not None:
             # Log transform the precipitation
             if self.log_transform_precip:
-                print('Log-transforming daily precipitation')
+                logger.info('Log-transforming daily precipitation')
                 self.X_precip_daily.log_transform()
 
             # Load or compute the precipitation statistics
@@ -198,13 +208,15 @@ class ImpactTxDataGenerator(ImpactDlDataGenerator):
 
     def __getitem__(self, i):
         """Generate one batch of data"""
-        idxs = self.idxs[i * self.batch_size:(i + 1) * self.batch_size]
-
-        return self._generate_batch(idxs)
+        return self._generate_batch(self._get_batch_idxs(i))
 
     def _generate_batch(self, idxs):
         # Select the events
         y = self.y[idxs]
+        # Ensure labels are shaped (batch, 1) for Keras metrics compatibility
+        y = np.asarray(y)
+        if y.ndim == 1:
+            y = np.expand_dims(y, axis=-1)
 
         x_precip_hf = None
         x_precip_daily = None
@@ -284,7 +296,7 @@ class ImpactTxDataGenerator(ImpactDlDataGenerator):
             diff = x_precip_ev.shape[0] - self.get_precip_hf_length()
             if abs(diff / self.get_precip_hf_length()) > 0.1:  # 10% tolerance
                 if self.debug:
-                    print(f"Warning: too many missing timesteps ({diff}).")
+                    logger.warning("Too many missing timesteps (%s).", diff)
 
                 x_precip_ev = self._create_empty_precip_block(
                     self.get_precip_hf_length())
@@ -293,7 +305,7 @@ class ImpactTxDataGenerator(ImpactDlDataGenerator):
                 empty_block = self._create_empty_precip_block(-diff)
                 x_precip_ev = np.concatenate([x_precip_ev, empty_block], axis=-1)
 
-        return x_precip_ev
+        return self._sanitize_precip(x_precip_ev)
 
     def _extract_precipitation_daily(self, event):
         # Temporal selection
@@ -325,7 +337,7 @@ class ImpactTxDataGenerator(ImpactDlDataGenerator):
             diff = x_precip_ev.shape[0] - self.get_precip_daily_length()
             if abs(diff / self.get_precip_daily_length()) > 0.1:
                 if self.debug:
-                    print(f"Warning: too many missing timesteps ({diff}).")
+                    logger.warning("Too many missing timesteps (%s).", diff)
 
                 x_precip_ev = self._create_empty_precip_block(
                     self.get_precip_daily_length())
@@ -334,4 +346,4 @@ class ImpactTxDataGenerator(ImpactDlDataGenerator):
                 empty_block = self._create_empty_precip_block(-diff)
                 x_precip_ev = np.concatenate([x_precip_ev, empty_block], axis=-1)
 
-        return x_precip_ev
+        return self._sanitize_precip(x_precip_ev)

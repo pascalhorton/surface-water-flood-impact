@@ -10,7 +10,10 @@ profile = "black"
 
 [tool.pytest.ini_options]
 minversion = "6.0"
-addopts = ["-ra", "--showlocals", "--strict-markers", "--strict-config"]
+# -p no:zarr: the zarr pytest plugin imports zarr at startup, which makes the
+# netCDF4 import emit a numpy-ABI RuntimeWarning that filterwarnings turns into
+# a collection error.
+addopts = ["-ra", "--showlocals", "--strict-markers", "--strict-config", "-p", "no:zarr"]
 xfail_strict = true
 filterwarnings = ["error"]
 testpaths = ["tests"]

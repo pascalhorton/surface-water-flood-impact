@@ -22,7 +22,7 @@ setup(
     install_requires=[
         'numpy',
         'PyYAML',
-        'pandas==2.*',
+        'pandas',
         'rasterio',
         'tqdm',
         'pyarrow',
@@ -33,6 +33,8 @@ setup(
         'dask',
         'netcdf4',
         'rioxarray',
+        'bottleneck',
+        'pytest'
     ],
     classifiers=[
         "Programming Language :: Python",

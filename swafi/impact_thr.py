@@ -1,6 +1,7 @@
 """
 Class to compute the impact function.
 """
+import logging
 import numpy as np
 import pandas as pd
 
@@ -8,14 +9,16 @@ from .impact import Impact
 from .utils.verification import compute_confusion_matrix, print_classic_scores, \
     store_classic_scores, assess_roc_auc
 
+logger = logging.getLogger(__name__)
+
 
 class ImpactThresholds(Impact):
     """
     The Impact class using simple thresholds.
     """
 
-    def __init__(self, events, options):
-        super().__init__(events, options=options)
+    def __init__(self, options, events=None):
+        super().__init__(options, events)
 
         self.thr_i_max = 0.9
         self.thr_p_sum = 0.99
@@ -39,19 +42,42 @@ class ImpactThresholds(Impact):
         self.thr_p_sum = thr_p_sum
         self.method = method
 
-    def _assess_model(self, x, y, period_name, df_res):
+    def predict(self):
         """
-        Assess the model on a single period.
+        Predict the impact for the events.
+
+        Returns
+        -------
+        np.ndarray
+            The predicted impact values.
         """
+        if self.df is None:
+            raise ValueError("Events are not set.")
+
+        x = self.df[self.tabular_features['event']].to_numpy()
+        y_pred = self._apply(x)
+
+        return y_pred
+
+    def _apply(self, x):
         # Apply the threshold method
-        y_pred = np.zeros(len(y))
+        y_pred = np.zeros(len(x[:, 0]), dtype=int)
         if self.method == 'union':
             y_pred[x[:, 0] >= self.thr_i_max] = 1
             y_pred[x[:, 1] >= self.thr_p_sum] = 1
         elif self.method == 'intersection':
             y_pred[(x[:, 0] >= self.thr_i_max) & (x[:, 1] >= self.thr_p_sum)] = 1
 
-        print(f"\nSplit: {period_name}")
+        return y_pred
+
+    def _assess_model(self, x, y, period_name, df_res):
+        """
+        Assess the model on a single period.
+        """
+        # Apply the threshold method
+        y_pred = self._apply(x)
+
+        logger.info("\nSplit: %s", period_name)
 
         df_tmp = pd.DataFrame(columns=df_res.columns)
         df_tmp['split'] = [period_name]
@@ -63,9 +89,9 @@ class ImpactThresholds(Impact):
             store_classic_scores(tp, tn, fp, fn, df_tmp)
         else:
             rmse = np.sqrt(np.mean((y - y_pred) ** 2))
-            print(f"RMSE: {rmse}")
+            logger.info("RMSE: %s", rmse)
             df_tmp['RMSE'] = [rmse]
-        print(f"----------------------------------------")
+        logger.info("----------------------------------------")
 
         df_res = pd.concat([df_res, df_tmp])
 

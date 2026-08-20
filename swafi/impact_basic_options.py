@@ -4,6 +4,15 @@ Class to define the options for the Transformer-based impact function.
 import argparse
 import datetime
 import copy
+import ast
+import logging
+import pandas as pd
+from typing import List
+
+from .events import get_events_filename
+
+
+logger = logging.getLogger(__name__)
 
 
 class ImpactBasicOptions:
@@ -20,11 +29,18 @@ class ImpactBasicOptions:
         The name of the dataset (mobiliar or gvz).
     event_file_label: str
         The event file label (default: 'default_occurrence').
+    event_method: str|None
+        The event extraction method. Options: 'simple', 'classic'. Default: None.
+    precip_dataset: str
+        The precipitation dataset the events were extracted from. Options:
+        'hourly', '5min'. Default: 'hourly'. The classic event method relies on
+        hourly data by definition.
     target_type : str
         The target type. Options are: 'occurrence', 'damage_ratio'
     random_state: int|None
         The random state to use for the random number generator.
-        Default: None. Set to None to not set the random seed.
+        Default: 42, so that the sample split and the model fit are reproducible
+        and two runs can be compared. Set to None to draw a new seed each run.
     use_event_attributes: bool
         Whether to use event attributes or not.
     use_static_attributes: bool
@@ -44,6 +60,11 @@ class ImpactBasicOptions:
         Optuna study name.
     optuna_random_sampler : bool
         Use the random sampler for Optuna.
+    optuna_save_best : bool
+        After the study, refit the best trial and save the resulting model.
+        Off by default so that a parallel array of workers only runs trials;
+        a single finalisation job (with --optuna-save-best, optionally
+        --optuna-trials-nb 0) then refits and saves the best model once.
     """
     def __init__(self):
         self.parser = argparse.ArgumentParser(description="SWAFI")
@@ -53,9 +74,11 @@ class ImpactBasicOptions:
         self.run_name = None
         self.dataset = None
         self.event_file_label = None
+        self.event_method = None
+        self.precip_dataset = None
         self.min_nb_claims = None
         self.target_type = None
-        self.random_state = None
+        self.random_state = 42
         self.use_event_attributes = None
         self.use_static_attributes = None
         self.use_all_static_attributes = None
@@ -67,6 +90,7 @@ class ImpactBasicOptions:
         self.optuna_trials_nb = None
         self.optuna_study_name = None
         self.optuna_random_sampler = None
+        self.optuna_save_best = None
 
     def copy(self):
         """
@@ -77,6 +101,63 @@ class ImpactBasicOptions:
             The copy of the object.
         """
         return copy.deepcopy(self)
+
+    def load_from_csv(self, options_csv):
+        """
+        Load the options from a CSV file.
+
+        Parameters
+        ----------
+        options_csv : str
+            The path to the CSV file.
+        """
+        df = pd.read_csv(options_csv)
+
+        # Parse the arguments to set the default values
+        self.parse_args()
+
+        # Set the attributes from the CSV file
+        for row in df.itertuples():
+            key = row[1]
+            val = row[2]
+
+            # Skip some keys
+            if key in ['parser', 'run_name', 'dataset']:
+                continue
+
+            # Check that the key is valid
+            if not hasattr(self, key):
+                raise ValueError(f"Unknown option: {key}")
+
+            # Convert the value to the correct type
+            attr_type = type(getattr(self, key))
+            if key == 'random_state':
+                if val in ['None', 'none', 'null', '']:
+                    val = None
+                else:
+                    val = int(val)
+            elif attr_type == bool:
+                val = val in ['True', 'true', '1', 'yes']
+            elif attr_type == int:
+                val = int(val)
+            elif attr_type == float:
+                val = float(val)
+            elif attr_type == str:
+                val = str(val)
+            elif attr_type == list:
+                val = self._parse_list_string(val)
+            elif attr_type == type(None):
+                if val in ['None', 'none', 'null', '']:
+                    val = None
+                else:
+                    raise ValueError(f"Invalid value for NoneType option: {val}")
+            elif attr_type == str:
+                val = str(val)
+            else:
+                raise ValueError(f"Unsupported option type: {attr_type}")
+
+            # Set the attribute
+            setattr(self, key, val)
     
     def _set_parser_basic_arguments(self):
         """
@@ -93,14 +174,25 @@ class ImpactBasicOptions:
             "--event-file-label", type=str, default='default_occurrence',
             help="The event file label (default: 'default_occurrence').")
         self.parser.add_argument(
+            "--event-method", type=str, default=None,
+            choices=['simple', 'classic'],
+            help="The event extraction method ('simple' or 'classic').")
+        self.parser.add_argument(
+            "--precip-dataset", type=str, default='hourly',
+            choices=['hourly', '5min'],
+            help="The precipitation dataset the events were extracted from "
+                 "('hourly' or '5min'). The classic event method relies on "
+                 "hourly data.")
+        self.parser.add_argument(
             '--min-nb-claims', type=int, default=1,
             help='The minimum number of claims for an event to be considered.')
         self.parser.add_argument(
             '--target-type', type=str, default='occurrence',
             help='The target type. Options are: occurrence, damage_ratio')
         self.parser.add_argument(
-            '--random-state', type=int, default=None,
-            help='The random state to use for the random number generator')
+            '--random-state', type=int, default=42,
+            help='The random state to use for the random number generator '
+                 '(default: 42, for reproducible splits and fits)')
         self.parser.add_argument(
             '--use-event-attributes', action=argparse.BooleanOptionalAction,
             default=True, help='Use event attributes (i_max_q, p_sum_q, duration, ...)')
@@ -134,6 +226,11 @@ class ImpactBasicOptions:
         self.parser.add_argument(
             '--optuna-random-sampler', action=argparse.BooleanOptionalAction,
             default=False, help='Use the random sampler for Optuna')
+        self.parser.add_argument(
+            '--optuna-save-best', action='store_true',
+            help='After the study, refit the best trial and save the model. '
+                 'Run this in a single finalisation job (not in every array '
+                 'worker), optionally with --optuna-trials-nb 0 to skip new trials')
 
     def parse_args(self):
         """
@@ -149,6 +246,8 @@ class ImpactBasicOptions:
         self.run_name = args.run_name
         self.dataset = args.dataset
         self.event_file_label = args.event_file_label
+        self.event_method = args.event_method
+        self.precip_dataset = args.precip_dataset
         self.min_nb_claims = args.min_nb_claims
         self.target_type = args.target_type
         self.random_state = args.random_state
@@ -162,6 +261,8 @@ class ImpactBasicOptions:
             if self.use_static_attributes:
                 classes.extend(['terrain', 'swf_map', 'flowacc', 'twi'])
             self.simple_feature_classes = classes
+        elif args.simple_feature_classes == ['none']:
+            self.simple_feature_classes = []
         else:
             self.simple_feature_classes = args.simple_feature_classes
         self.replace_simple_features = args.replace_simple_features
@@ -169,38 +270,65 @@ class ImpactBasicOptions:
         self.optuna_trials_nb = args.optuna_trials_nb
         self.optuna_study_name = args.optuna_study_name
         self.optuna_random_sampler = args.optuna_random_sampler
+        self.optuna_save_best = args.optuna_save_best
 
     def print_options(self):
         """
         Print the options.
         """
-        print("-" * 80)
+        logger.info("-" * 80)
         self._print_basic_options()
-        print("-" * 80)
+        logger.info("-" * 80)
 
     def _print_basic_options(self):
         """
         Print the options.
         """
-        print(f"Options (run {self.run_name}):")
-        print("- dataset: ", self.dataset)
-        print("- event_file_label: ", self.event_file_label)
-        print("- min_nb_claims: ", self.min_nb_claims)
-        print("- target_type: ", self.target_type)
-        print("- random_state: ", self.random_state)
-        print("- use_event_attributes: ", self.use_event_attributes)
-        print("- use_static_attributes: ", self.use_static_attributes)
-        print("- use_all_static_attributes: ", self.use_all_static_attributes)
+        logger.info("Options (run %s):", self.run_name)
+        logger.info("- dataset:  %s", self.dataset)
+        logger.info("- event_file_label:  %s", self.event_file_label)
+        logger.info("- event_method:  %s", self.event_method)
+        logger.info("- precip_dataset:  %s", self.precip_dataset)
+        logger.info("- min_nb_claims:  %s", self.min_nb_claims)
+        logger.info("- target_type:  %s", self.target_type)
+        logger.info("- random_state:  %s", self.random_state)
+        logger.info("- use_event_attributes:  %s", self.use_event_attributes)
+        logger.info("- use_static_attributes:  %s", self.use_static_attributes)
+        logger.info("- use_all_static_attributes:  %s", self.use_all_static_attributes)
 
         if self.use_static_attributes or self.use_event_attributes:
-            print("- simple_feature_classes: ", self.simple_feature_classes)
-            print("- replace simple_features: ", self.replace_simple_features)
+            logger.info("- simple_feature_classes:  %s", self.simple_feature_classes)
+            logger.info("- replace simple_features:  %s", self.replace_simple_features)
 
         if self.optimize_with_optuna:
-            print("- optimize_with_optuna: ", self.optimize_with_optuna)
-            print("- optuna_study_name: ", self.optuna_study_name)
-            print("- optuna_trials_nb: ", self.optuna_trials_nb)
-            print("- optuna_random_sampler: ", self.optuna_random_sampler)
+            logger.info("- optimize_with_optuna:  %s", self.optimize_with_optuna)
+            logger.info("- optuna_study_name:  %s", self.optuna_study_name)
+            logger.info("- optuna_trials_nb:  %s", self.optuna_trials_nb)
+            logger.info("- optuna_random_sampler:  %s", self.optuna_random_sampler)
+            logger.info("- optuna_save_best:  %s", self.optuna_save_best)
+
+    def get_events_filename(self, extension='.pickle'):
+        """
+        Get the name of the events file holding the target values, as written by
+        the claims-events linkage.
+
+        Parameters
+        ----------
+        extension : str
+            The file extension to append (e.g. '.pickle' or '.csv').
+
+        Returns
+        -------
+        str
+            The events filename.
+        """
+        return get_events_filename(
+            dataset=self.dataset,
+            event_file_label=self.event_file_label,
+            event_method=self.event_method,
+            precip_dataset=self.precip_dataset,
+            extension=extension,
+        )
 
     def get_attributes_tag(self):
         """
@@ -239,6 +367,10 @@ class ImpactBasicOptions:
             Whether the options are ok or not.
         """
         assert self.dataset in ['mobiliar', 'gvz'], "Invalid dataset"
+        assert self.precip_dataset in ['hourly', '5min'], "Invalid precip dataset"
+        if self.event_method == 'classic':
+            assert self.precip_dataset == 'hourly', \
+                "The classic method relies on hourly data"
         assert self.target_type in ['occurrence', 'damage_ratio'], "Invalid target type"
         assert self.random_state is None or isinstance(self.random_state, int), "Invalid random state"
         assert isinstance(self.use_event_attributes, bool), "Invalid use_event_attributes"
@@ -246,3 +378,21 @@ class ImpactBasicOptions:
         assert isinstance(self.use_all_static_attributes, bool), "Invalid use_all_static_attributes"
 
         return True
+
+    @staticmethod
+    def _parse_list_string(s: str) -> List[str]:
+        """
+        Parse a string like `['event', 'terrain', 'swf_map', 'flowacc', 'twi']`
+        into a Python list of strings. Raises ValueError on invalid input.
+        """
+        if not s:
+            return []
+        try:
+            val = ast.literal_eval(s)
+        except (SyntaxError, ValueError) as e:
+            raise ValueError(f"Invalid list string: {e}") from e
+
+        if not isinstance(val, list):
+            raise ValueError("String does not represent a list")
+
+        return [str(x) for x in val]

@@ -4,6 +4,7 @@ It is not meant to be used directly, but to be inherited by other classes.
 """
 import datetime
 import argparse
+import logging
 
 from swafi.impact_basic_options import ImpactBasicOptions
 
@@ -13,6 +14,9 @@ try:
     has_optuna = True
 except ImportError:
     pass
+
+
+logger = logging.getLogger(__name__)
 
 
 class ImpactDlOptions(ImpactBasicOptions):
@@ -31,7 +35,11 @@ class ImpactDlOptions(ImpactBasicOptions):
         Whether to log-transform the precipitation or not.
     transform_precip: str
         The transformation to apply to the precipitation data.
-        Options are: 'standardize', 'normalize'.
+        Options are: 'standardize', 'normalize', 'cdf'.
+    precip_cdf_spread: str
+        How the CDF transform spreads the percentiles over the output range.
+        Options are: 'return_period', 'none'. Only used with transform_precip
+        set to 'cdf'.
     transform_static: str
         The transformation to apply to the static data.
         Options are: 'standardize', 'normalize'.
@@ -41,6 +49,22 @@ class ImpactDlOptions(ImpactBasicOptions):
         The number of epochs.
     learning_rate: float
         The learning rate.
+    optimizer_name: str
+        The optimizer. Options are: 'adam', 'adamw'.
+    weight_decay: float
+        The weight decay for AdamW (ignored when optimizer_name is 'adam').
+    lr_method: str
+        The learning rate schedule. Options are: 'constant', 'cosine_decay',
+        'cosine_decay_warmup', 'reduce_on_plateau'.
+    lr_warmup_epochs: int
+        Number of warmup epochs for 'cosine_decay_warmup'.
+    use_poisson_head: bool
+        Whether to predict a claim-count rate with log(nb_contracts) as exposure
+        offset (Poisson NLL on nb_claims) instead of an occurrence probability.
+    jit_compile: bool
+        Whether to enable XLA JIT compilation in Keras model.compile.
+    use_mixed_precision: bool
+        Whether to enable float16 mixed-precision training.
     dropout_rate_dense: float
         The dropout rate for the dense layers.
     use_batchnorm_dense: bool
@@ -66,70 +90,282 @@ class ImpactDlOptions(ImpactBasicOptions):
         self.use_precip = None
         self.log_transform_precip = None
         self.transform_precip = None
+        self.precip_cdf_spread = None
         self.transform_static = None
 
         # Training options
         self.batch_size = None
+        self.batch_pos_ratio = None
         self.epochs = None
         self.learning_rate = None
+        self.optimizer_name = None
+        self.weight_decay = None
+        self.lr_method = None
+        self.lr_warmup_epochs = None
+        self.early_stopping_metric = None
+        self.early_stopping_patience = None
+        self.loss_function = None
+        self.use_poisson_head = None
+        self.jit_compile = False
+        self.use_mixed_precision = False
 
         # Model options for the dense layers
         self.dropout_rate_dense = None
         self.use_batchnorm_dense = None
+        self.use_layernorm_dense = None
+        self.use_residual_dense = None
+        self.use_feature_class_embedding = None
+        self.feature_class_embedding_size = None
         self.nb_dense_layers = None
         self.nb_dense_units = None
         self.nb_dense_units_decreasing = None
         self.inner_activation_dense = None
+
+        # Training performance options
+        self.steps_per_execution = 1
+
+        # Checkpoint / resume options
+        self.checkpoint_dir = None
+        self.resume_training = False
 
     def _set_parser_dl_shared_arguments(self):
         """
         Set the parser arguments.
         """
         self.parser.add_argument(
-            '--factor-neg-reduction', type=int, default=10,
-            help='The factor to reduce the number of negatives only for training')
+            '--factor-neg-reduction',
+            type=int,
+            default=1,
+            help='The factor to reduce the number of negatives only for training'
+        )
         self.parser.add_argument(
-            '--weight-denominator', type=int, default=10,
-            help='The weight denominator to reduce the negative class weights')
+            '--weight-denominator',
+            type=int,
+            default=1,
+            help='Extra divisor applied to the positive class weight, on top of '
+                 'the correction for --factor-neg-reduction. 1 keeps the balanced '
+                 'weighting; values above 1 favour the negative class.'
+        )
         self.parser.add_argument(
-            '--use-precip', action=argparse.BooleanOptionalAction, default=True,
-            help='Use precipitation data')
+            '--use-precip',
+            action=argparse.BooleanOptionalAction,
+            default=True,
+            help='Use precipitation data'
+        )
         self.parser.add_argument(
-            '--log-transform-precip', action=argparse.BooleanOptionalAction,
-            default=True, help='Log-transform the precipitation')
+            '--log-transform-precip',
+            action=argparse.BooleanOptionalAction,
+            default=True,
+            help='Log-transform the precipitation'
+        )
         self.parser.add_argument(
-            '--transform-precip', type=str, default='normalize',
-            help='The transformation to apply to the precipitation data')
+            '--transform-precip',
+            type=str,
+            default='normalize',
+            choices=['standardize', 'normalize', 'cdf'],
+            help='The transformation to apply to the precipitation data: '
+                 'per-pixel mean/std (standardize), per-pixel division by the '
+                 '99th percentile (normalize), or per-pixel rank in the wet-step '
+                 'distribution (cdf, as for the *_q event features)'
+        )
         self.parser.add_argument(
-            '--transform-static', type=str, default='standardize',
-            help='The transformation to apply to the static data')
+            '--precip-cdf-spread',
+            type=str,
+            default='return_period',
+            choices=['return_period', 'none'],
+            help='How the CDF transform spreads the percentiles over the output '
+                 'range: -log10 of the exceedance probability, which keeps the '
+                 'extremes apart (return_period), or the raw percentile (none)'
+        )
         self.parser.add_argument(
-            '--batch-size', type=int, default=64,
-            help='The batch size')
+            '--transform-static',
+            type=str,
+            default='standardize',
+            help='The transformation to apply to the static data'
+        )
         self.parser.add_argument(
-            '--epochs', type=int, default=300,
-            help='The number of epochs')
+            '--batch-size',
+            type=int,
+            default=64,
+            help='The batch size'
+        )
         self.parser.add_argument(
-            '--learning-rate', type=float, default=0.001,
-            help='The learning rate')
+            '--batch-pos-ratio',
+            type=float,
+            default=None,
+            help='Fraction of positives per batch for stratified sampling '
+                 '(e.g. 0.005 = ~2 positives per batch for 512 batch size). '
+                 'Keep the oversampling factor (logged at startup) below ~3×.'
+        )
         self.parser.add_argument(
-            '--dropout-rate-dense', type=float, default=0.4,
-            help='The dropout rate for the dense layers')
+            '--epochs',
+            type=int,
+            default=200,
+            help='The number of epochs'
+        )
         self.parser.add_argument(
-            '--use-batchnorm-dense', action=argparse.BooleanOptionalAction,
-            default=True, help='Use batch normalization for the dense layers')
+            '--learning-rate',
+            type=float,
+            default=0.0003,
+            help='The learning rate'
+        )
         self.parser.add_argument(
-            '--nb-dense-layers', type=int, default=4,
-            help='The number of dense layers')
+            '--optimizer-name',
+            type=str,
+            default='adamw',
+            choices=['adam', 'adamw'],
+            help='Optimizer: adam or adamw (AdamW adds decoupled weight decay)'
+        )
         self.parser.add_argument(
-            '--nb-dense-units', type=int, default=1024,
-            help='The number of dense units')
+            '--weight-decay',
+            type=float,
+            default=1e-4,
+            help='Weight decay coefficient for AdamW (ignored when --optimizer-name adam)'
+        )
         self.parser.add_argument(
-            '--nb-dense-units-decreasing', action=argparse.BooleanOptionalAction,
-            default=True, help='The number of dense units should decrease')
+            '--lr-method',
+            type=str,
+            default='constant',
+            choices=['constant', 'cosine_decay', 'cosine_decay_warmup', 'reduce_on_plateau'],
+            help='Learning rate schedule: constant, cosine_decay, cosine_decay_warmup, '
+                 'or reduce_on_plateau (ReduceLROnPlateau callback on val_loss)'
+        )
         self.parser.add_argument(
-            '--inner-activation-dense', type=str, default='leaky_relu',
-            help='The inner activation function for the dense layers')
+            '--lr-warmup-epochs',
+            type=int,
+            default=3,
+            help='Number of linear warmup epochs for cosine_decay_warmup schedule'
+        )
+        self.parser.add_argument(
+            '--early-stopping-metric',
+            type=str,
+            default='val_PR_AUC',
+            choices=['val_csi', 'val_ROC_AUC', 'val_PR_AUC'],
+            help='Metric to monitor for early stopping (default: val_PR_AUC)'
+        )
+        self.parser.add_argument(
+            '--early-stopping-patience',
+            type=int,
+            default=20,
+            help='Epochs without improvement of --early-stopping-metric before '
+                 'training stops. The best weights are restored either way, so '
+                 'this only bounds how long a plateau is tolerated.'
+        )
+        self.parser.add_argument(
+            '--loss-function',
+            type=str,
+            default='focal',
+            choices=['wbce', 'focal', 'bfce', 'bce_dice', 'bce_jaccard', 'tversky', 'f1', 'focal_tversky'],
+            help='Loss function: '
+                 'wbce (Weighted Binary Cross-Entropy), '
+                 'focal (Focal Loss), '
+                 'bfce (Binary Focal Cross-Entropy), '
+                 'bce_dice (Binary Cross-Entropy + Dice Loss), '
+                 'bce_jaccard (Binary Cross-Entropy + Jaccard Loss), '
+                 'tversky (Tversky Loss), '
+                 'f1 (F1 Loss), '
+                 'focal_tversky (Focal Tversky Loss)'
+        )
+        self.parser.add_argument(
+            '--use-poisson-head',
+            action=argparse.BooleanOptionalAction,
+            default=False,
+            help='Predict a claim-count rate with log(nb_contracts) as exposure '
+                 'offset, trained with a Poisson NLL on nb_claims '
+                 '(--loss-function is then ignored). Occurrence probability is '
+                 'evaluated as 1 - exp(-rate).'
+        )
+        self.parser.add_argument(
+            '--jit-compile',
+            action=argparse.BooleanOptionalAction,
+            default=True,
+            help='Enable XLA JIT compilation in Keras model.compile. Disabled by default because some GPU CNN conv kernels fail to autotune under XLA.'
+        )
+        self.parser.add_argument(
+            '--use-mixed-precision',
+            action=argparse.BooleanOptionalAction,
+            default=False,
+            help='Enable float16 mixed-precision training (recommended on Ampere/Turing/Volta GPUs).'
+        )
+        self.parser.add_argument(
+            '--dropout-rate-dense',
+            type=float,
+            default=0.1,
+            help='The dropout rate for the dense layers'
+        )
+        self.parser.add_argument(
+            '--use-batchnorm-dense',
+            action=argparse.BooleanOptionalAction,
+            default=False,
+            help='Use batch normalization for the dense layers'
+        )
+        self.parser.add_argument(
+            '--use-layernorm-dense',
+            action=argparse.BooleanOptionalAction,
+            default=True,
+            help='Use layer normalization (per-sample) for the dense layers instead of batch norm'
+        )
+        self.parser.add_argument(
+            '--use-residual-dense',
+            action=argparse.BooleanOptionalAction,
+            default=True,
+            help='Add residual (skip) connections around each dense layer'
+        )
+        self.parser.add_argument(
+            '--use-feature-class-embedding',
+            action=argparse.BooleanOptionalAction,
+            default=True,
+            help='Project each feature class through a separate dense layer before the shared block'
+        )
+        self.parser.add_argument(
+            '--feature-class-embedding-size',
+            type=int,
+            default=32,
+            help='Output size of each per-feature-class embedding Dense layer'
+        )
+        self.parser.add_argument(
+            '--nb-dense-layers',
+            type=int,
+            default=4,
+            help='The number of dense layers'
+        )
+        self.parser.add_argument(
+            '--nb-dense-units',
+            type=int,
+            default=1024,
+            help='The number of dense units'
+        )
+        self.parser.add_argument(
+            '--nb-dense-units-decreasing',
+            action=argparse.BooleanOptionalAction,
+            default=True,
+            help='The number of dense units should decrease'
+        )
+        self.parser.add_argument(
+            '--inner-activation-dense',
+            type=str,
+            default='leaky_relu',
+            help='The inner activation function for the dense layers'
+        )
+        self.parser.add_argument(
+            '--steps-per-execution',
+            type=int,
+            default=1,
+            help='Number of training steps per compiled TF function call (reduces Python/TF overhead)'
+        )
+        self.parser.add_argument(
+            '--checkpoint-dir',
+            type=str,
+            default=None,
+            help='Directory for saving training checkpoints after each epoch. '
+                 'If None, checkpointing is disabled.'
+        )
+        self.parser.add_argument(
+            '--resume-training',
+            action=argparse.BooleanOptionalAction,
+            default=False,
+            help='Resume training from the latest checkpoint in --checkpoint-dir.'
+        )
 
     def _parse_dl_args(self, args):
         """
@@ -142,16 +378,55 @@ class ImpactDlOptions(ImpactBasicOptions):
         self.use_precip = args.use_precip
         self.log_transform_precip = args.log_transform_precip
         self.transform_precip = args.transform_precip
+        self.precip_cdf_spread = args.precip_cdf_spread
         self.transform_static = args.transform_static
         self.batch_size = args.batch_size
+        self.batch_pos_ratio = args.batch_pos_ratio
         self.epochs = args.epochs
         self.learning_rate = args.learning_rate
+        self.optimizer_name = args.optimizer_name
+        self.weight_decay = args.weight_decay
+        self.lr_method = args.lr_method
+        self.lr_warmup_epochs = args.lr_warmup_epochs
+        self.early_stopping_metric = args.early_stopping_metric
+        self.early_stopping_patience = args.early_stopping_patience
+        self.loss_function = args.loss_function
+        self.use_poisson_head = args.use_poisson_head
+        self.jit_compile = args.jit_compile
+        self.use_mixed_precision = args.use_mixed_precision
         self.dropout_rate_dense = args.dropout_rate_dense
         self.use_batchnorm_dense = args.use_batchnorm_dense
+        self.use_layernorm_dense = args.use_layernorm_dense
+        self.use_residual_dense = args.use_residual_dense
+        self.use_feature_class_embedding = args.use_feature_class_embedding
+        self.feature_class_embedding_size = args.feature_class_embedding_size
         self.nb_dense_layers = args.nb_dense_layers
         self.nb_dense_units = args.nb_dense_units
+        self.steps_per_execution = args.steps_per_execution
         self.nb_dense_units_decreasing = args.nb_dense_units_decreasing
         self.inner_activation_dense = args.inner_activation_dense
+        self.checkpoint_dir = args.checkpoint_dir
+        self.resume_training = args.resume_training
+
+    def _apply_ann_mode_defaults(self, args):
+        """Apply ANN-friendly defaults for options still at their parser default.
+
+        Called by subclasses when use_precip=False so that dense-only networks
+        get sensible defaults without changing the CNN defaults.
+        """
+        overrides = {
+            'dropout_rate_dense': 0.1,
+            'nb_dense_units': 256,
+            'nb_dense_units_decreasing': False,
+            'weight_denominator': 1,
+            'use_batchnorm_dense': False,
+            'use_layernorm_dense': True,
+            'use_residual_dense': True,
+            'use_feature_class_embedding': True,
+        }
+        for attr, ann_default in overrides.items():
+            if getattr(args, attr) == self.parser.get_default(attr):
+                setattr(self, attr, ann_default)
 
     def _generate_for_optuna(self, trial, hp_to_optimize):
         if not has_optuna:
@@ -171,29 +446,41 @@ class ImpactDlOptions(ImpactBasicOptions):
         if self.use_precip:
             if 'transform_precip' in hp_to_optimize:
                 self.transform_precip = trial.suggest_categorical(
-                    'transform_precip', ['standardize', 'normalize'])
+                    'transform_precip', ['standardize', 'normalize', 'cdf'])
             if 'log_transform_precip' in hp_to_optimize:
                 self.log_transform_precip = trial.suggest_categorical(
                     'log_transform_precip', [True, False])
 
         if 'batch_size' in hp_to_optimize:
             self.batch_size = trial.suggest_categorical(
-                'batch_size', [16, 32, 64, 128, 256])
+                'batch_size', [32, 64, 128, 256, 512, 1024])
         if 'learning_rate' in hp_to_optimize:
             self.learning_rate = trial.suggest_float(
                 'learning_rate', 5e-4, 3e-3, log=True)
         if 'dropout_rate_dense' in hp_to_optimize:
             self.dropout_rate_dense = trial.suggest_float(
-                'dropout_rate_dense', 0.2, 0.5)
+                'dropout_rate_dense', 0.0, 0.3)
         if 'use_batchnorm_dense' in hp_to_optimize:
             self.use_batchnorm_dense = trial.suggest_categorical(
                 'use_batchnorm_dense', [True, False])
+        if 'use_layernorm_dense' in hp_to_optimize:
+            self.use_layernorm_dense = trial.suggest_categorical(
+                'use_layernorm_dense', [True, False])
+        if 'use_residual_dense' in hp_to_optimize:
+            self.use_residual_dense = trial.suggest_categorical(
+                'use_residual_dense', [True, False])
+        if 'use_feature_class_embedding' in hp_to_optimize:
+            self.use_feature_class_embedding = trial.suggest_categorical(
+                'use_feature_class_embedding', [True, False])
+        if 'feature_class_embedding_size' in hp_to_optimize:
+            self.feature_class_embedding_size = trial.suggest_categorical(
+                'feature_class_embedding_size', [16, 32, 64, 128])
         if 'nb_dense_layers' in hp_to_optimize:
             self.nb_dense_layers = trial.suggest_int(
-                'nb_dense_layers', 1, 10)
+                'nb_dense_layers', 1, 8)
         if 'nb_dense_units' in hp_to_optimize:
             self.nb_dense_units = trial.suggest_categorical(
-                'nb_dense_units', [32, 64, 128, 256, 512, 1024])
+                'nb_dense_units', [32, 64, 128, 256, 512, 1024, 2048])
         if 'nb_dense_units_decreasing' in hp_to_optimize:
             self.nb_dense_units_decreasing = trial.suggest_categorical(
                 'nb_dense_units_decreasing', [True, False])
@@ -207,32 +494,53 @@ class ImpactDlOptions(ImpactBasicOptions):
 
     def _print_shared_options(self, show_optuna_params=False):
         self._print_basic_options()
-        print("- factor_neg_reduction: ", self.factor_neg_reduction)
-        print("- use_precip: ", self.use_precip)
+        logger.info("- factor_neg_reduction:  %s", self.factor_neg_reduction)
+        logger.info("- use_precip:  %s", self.use_precip)
 
         if self.optimize_with_optuna:
-            print("- epochs: ", self.epochs)
+            logger.info("- epochs:  %s", self.epochs)
             if not show_optuna_params:
                 return  # Do not print the other options
 
-        print("- weight_denominator: ", self.weight_denominator)
+        logger.info("- weight_denominator:  %s", self.weight_denominator)
 
         if self.use_static_attributes:
-            print("- transform_static: ", self.transform_static)
+            logger.info("- transform_static:  %s", self.transform_static)
 
         if self.use_precip:
-            print("- transform_precip: ", self.transform_precip)
-            print("- log_transform_precip: ", self.log_transform_precip)
+            logger.info("- transform_precip:  %s", self.transform_precip)
+            if self.transform_precip == 'cdf':
+                logger.info("- precip_cdf_spread:  %s", self.precip_cdf_spread)
+            logger.info("- log_transform_precip:  %s", self.log_transform_precip)
 
-        print("- batch_size: ", self.batch_size)
-        print("- epochs: ", self.epochs)
-        print("- learning_rate: ", self.learning_rate)
-        print("- dropout_rate_dense: ", self.dropout_rate_dense)
-        print("- use_batchnorm_dense: ", self.use_batchnorm_dense)
-        print("- nb_dense_layers: ", self.nb_dense_layers)
-        print("- nb_dense_units: ", self.nb_dense_units)
-        print("- nb_dense_units_decreasing: ", self.nb_dense_units_decreasing)
-        print("- inner_activation_dense: ", self.inner_activation_dense)
+        logger.info("- loss_function:  %s", self.loss_function)
+        logger.info("- use_poisson_head:  %s", self.use_poisson_head)
+        logger.info("- jit_compile:  %s", self.jit_compile)
+        logger.info("- use_mixed_precision:  %s", self.use_mixed_precision)
+        logger.info("- batch_size:  %s", self.batch_size)
+        logger.info("- batch_pos_ratio:  %s", self.batch_pos_ratio)
+        logger.info("- epochs:  %s", self.epochs)
+        logger.info("- learning_rate:  %s", self.learning_rate)
+        logger.info("- optimizer_name:  %s", self.optimizer_name)
+        if self.optimizer_name == 'adamw':
+            logger.info("- weight_decay:  %s", self.weight_decay)
+        logger.info("- lr_method:  %s", self.lr_method)
+        if self.lr_method == 'cosine_decay_warmup':
+            logger.info("- lr_warmup_epochs:  %s", self.lr_warmup_epochs)
+        logger.info("- early_stopping_metric:  %s", self.early_stopping_metric)
+        logger.info("- early_stopping_patience:  %s", self.early_stopping_patience)
+        logger.info("- dropout_rate_dense:  %s", self.dropout_rate_dense)
+        logger.info("- use_batchnorm_dense:  %s", self.use_batchnorm_dense)
+        logger.info("- use_layernorm_dense:  %s", self.use_layernorm_dense)
+        logger.info("- use_residual_dense:  %s", self.use_residual_dense)
+        logger.info("- use_feature_class_embedding:  %s", self.use_feature_class_embedding)
+        logger.info("- feature_class_embedding_size:  %s", self.feature_class_embedding_size)
+        logger.info("- nb_dense_layers:  %s", self.nb_dense_layers)
+        logger.info("- nb_dense_units:  %s", self.nb_dense_units)
+        logger.info("- nb_dense_units_decreasing:  %s", self.nb_dense_units_decreasing)
+        logger.info("- inner_activation_dense:  %s", self.inner_activation_dense)
+        logger.info("- checkpoint_dir:  %s", self.checkpoint_dir)
+        logger.info("- resume_training:  %s", self.resume_training)
 
     def is_ok(self):
         """
@@ -250,13 +558,36 @@ class ImpactDlOptions(ImpactBasicOptions):
         assert self.weight_denominator is not None, "weight_denominator is not set"
         assert isinstance(self.use_precip, bool), "use_precip is not set"
         assert isinstance(self.log_transform_precip, bool), "log_transform_precip is not set"
-        assert self.transform_precip in ['standardize', 'normalize'], "transform_precip is not set"
+        assert self.transform_precip in ['standardize', 'normalize', 'cdf'], \
+            "transform_precip is not set"
+        if self.precip_cdf_spread is None:
+            # Options deserialized from models saved before this flag existed
+            self.precip_cdf_spread = 'return_period'
+        assert self.precip_cdf_spread in ['return_period', 'none'], \
+            "precip_cdf_spread is not set"
         assert self.transform_static in ['standardize', 'normalize'], "transform_static is not set"
         assert self.batch_size is not None, "batch_size is not set"
         assert self.epochs is not None, "epochs is not set"
         assert self.learning_rate is not None, "learning_rate is not set"
+        assert self.lr_method in ['constant', 'cosine_decay', 'cosine_decay_warmup', 'reduce_on_plateau'], \
+            "lr_method must be 'constant', 'cosine_decay', 'cosine_decay_warmup', or 'reduce_on_plateau'"
+        assert self.optimizer_name in ['adam', 'adamw'], "optimizer_name must be 'adam' or 'adamw'"
+        assert self.early_stopping_metric in ['val_csi', 'val_ROC_AUC', 'val_PR_AUC'], \
+            "early_stopping_metric must be 'val_csi', 'val_ROC_AUC', or 'val_PR_AUC'"
+        if self.use_poisson_head is None:
+            # Options deserialized from models saved before this flag existed
+            self.use_poisson_head = False
+        assert isinstance(self.use_poisson_head, bool), "use_poisson_head is not set"
+        assert isinstance(self.jit_compile, bool), "jit_compile is not set"
+        assert isinstance(self.use_mixed_precision, bool), "use_mixed_precision is not set"
         assert self.dropout_rate_dense is not None, "dropout_rate_dense is not set"
         assert isinstance(self.use_batchnorm_dense, bool), "use_batchnorm_dense is not set"
+        assert isinstance(self.use_layernorm_dense, bool), "use_layernorm_dense is not set"
+        assert isinstance(self.use_residual_dense, bool), "use_residual_dense is not set"
+        assert isinstance(self.use_feature_class_embedding, bool), \
+            "use_feature_class_embedding is not set"
+        assert self.feature_class_embedding_size is not None, \
+            "feature_class_embedding_size is not set"
         assert self.nb_dense_layers is not None, "nb_dense_layers is not set"
         assert self.nb_dense_units is not None, "nb_dense_units is not set"
         assert isinstance(self.nb_dense_units_decreasing, bool), "nb_dense_units_decreasing is not set"

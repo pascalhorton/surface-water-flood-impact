@@ -3,11 +3,13 @@ Extract static data from geotiff files for each building from the TLM geopackage
 """
 
 import argparse
+import logging
 import rasterio
 import geopandas as gpd
 import numpy as np
 from rasterio.features import geometry_mask
 from swafi.config import Config
+from swafi.utils.logging_setup import setup_logging
 
 config = Config(output_dir='static_attributes_buildings')
 base_dir = config.get('OUTPUT_DIR')
@@ -43,12 +45,14 @@ attribute_names = [
 
 
 def main():
+    setup_logging(script_name='extract_static_data_per_building')
+    logger = logging.getLogger(__name__)
     parser = argparse.ArgumentParser(description="Link buildings with attributes")
     parser.add_argument("index", help="Configuration", type=int, default=0,
                         nargs='?')
 
     args = parser.parse_args()
-    print("index: ", args.index)
+    logger.info("index: %s", args.index)
 
     attribute_name = attribute_names[args.index]
     attribute_file = attribute_files[args.index]
@@ -61,7 +65,7 @@ def main():
     gdf[attribute_name] = np.nan
 
     # Loop through each attribute file
-    print(f'Extracting data from {attribute_file}...')
+    logger.info("Extracting data from %s...", attribute_file)
 
     # Open the attribute file
     with rasterio.open(attribute_file) as attribute_src:
@@ -89,7 +93,7 @@ def main():
     gdf.to_file(f'{config.output_dir}/buildings_with_attributes_{attribute_name}.gpkg',
                 layer='buildings', driver='GPKG')
 
-    print('Done.')
+    logger.info("Done.")
 
 
 if __name__ == '__main__':

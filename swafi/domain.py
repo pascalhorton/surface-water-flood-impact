@@ -2,6 +2,7 @@
 Class to define the spatial domain and cell IDs.
 """
 
+import logging
 import pickle
 import rasterio
 import numpy as np
@@ -18,6 +19,8 @@ from . import data
 from .config import Config
 
 config = Config()
+
+logger = logging.getLogger(__name__)
 
 
 class Domain:
@@ -48,7 +51,7 @@ class Domain:
                 cid_file_path = str(p)
 
         if not Path(cid_file_path).exists():
-            print(f"Working directory: {Path.cwd()}")
+            logger.error("Working directory: %s", Path.cwd())
             raise FileNotFoundError(f"The CID file {cid_file_path} does not exist.")
 
         self._load_from_dump()
@@ -138,6 +141,28 @@ class Domain:
 
         return df
 
+    def get_x_axis(self):
+        """
+        Get the x coordinates axis.
+
+        Returns
+        -------
+        numpy.ndarray
+            The x coordinates as a 1D array.
+        """
+        return self.cids['xs'][0, :]
+
+    def get_y_axis(self):
+        """
+        Get the y coordinates axis.
+
+        Returns
+        -------
+        numpy.ndarray
+            The y coordinates as a 1D array.
+        """
+        return self.cids['ys'][:, 0]
+
     def _load_cid_file(self, cid_file):
         """
         Load the file containing the CIDs.
@@ -156,8 +181,8 @@ class Domain:
             # Extract the axes
             cols, rows = np.meshgrid(np.arange(data.shape[1]), np.arange(data.shape[0]))
             xs, ys = rasterio.transform.xy(dataset.transform, rows, cols)
-            self.cids['xs'] = np.array(xs)
-            self.cids['ys'] = np.array(ys)
+            self.cids['xs'] = np.array(xs).reshape(data.shape)
+            self.cids['ys'] = np.array(ys).reshape(data.shape)
 
         self._dump_object()
 

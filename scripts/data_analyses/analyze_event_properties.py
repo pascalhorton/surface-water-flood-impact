@@ -2,8 +2,13 @@
 This script calculates statistics for the event properties.
 """
 
+import logging
 import pandas as pd
 import matplotlib.pyplot as plt
+from swafi.utils.logging_setup import setup_logging
+
+setup_logging(script_name='analyze_event_properties')
+logger = logging.getLogger(__name__)
 
 data_dir = R'C:\Data\Projects\2024 SWF\Data\CombiPrecip'
 events_parquet = data_dir + '/events_cpc_model_domain_3x3_2005_2024.parquet'
@@ -28,7 +33,7 @@ stats['api'] = df['api'].describe(percentiles=percentiles)
 stats.to_csv(data_dir + '/event_statistics.csv')
 
 # Print the statistics to the console
-print(stats.to_string(float_format="{:.1f}".format))
+logger.info("%s", stats.to_string(float_format="{:.1f}".format))
 
 # Plot duration, sum and max intensity
 cmap = plt.get_cmap('viridis')

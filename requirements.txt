@@ -1,13 +1,16 @@
 numpy
 PyYAML
-pandas==2.*
+pandas
 rasterio
 tqdm
 pyarrow
 scikit-learn
+lightgbm
 tensorflow[and-cuda]
 keras
 xarray
 dask
+zarr
 netcdf4
+h5py
 rioxarray

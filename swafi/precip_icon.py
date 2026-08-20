@@ -41,7 +41,7 @@ class IconPrecip(PrecipitationForecast):
         if data_path:
             self.data_path = data_path
         if not self.data_path:
-            self.data_path = config.get('DIR_PRECIP')
+            self.data_path = config.get('DIR_PRECIP_HOURLY')
         if not self.data_path:
             raise FileNotFoundError("The data path was not provided.")
         self.resolution = resolution

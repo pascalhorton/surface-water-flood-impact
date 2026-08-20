@@ -1,14 +1,15 @@
 """
 Class to handle the precipitation archive data.
 """
-import pickle
 import hashlib
+import logging
+import warnings
+from pathlib import Path
+
 import dask
-import gc
 import numpy as np
 import pandas as pd
 import xarray as xr
-import dask.array as da
 from tqdm import tqdm
 
 from .config import Config
@@ -16,12 +17,103 @@ from .precip import Precipitation
 
 config = Config()
 
+logger = logging.getLogger(__name__)
+
+# CDF (percentile) transform. The per-pixel distribution is estimated on the wet
+# time steps only: precipitation is zero-inflated, so a percentile taken over all
+# steps would place every dry step at ~0.9 and squeeze the whole signal into the
+# top tenth of the output range.
+CDF_WET_THRESHOLD = 0.1  # [mm per time step] below this, a step counts as dry
+CDF_NB_LEVELS = 40
+# Rarest resolved wet value, as -log10 of its exceedance probability among wet
+# steps (4 -> a 1-in-10'000 wet step). Also the maximum output value of the
+# 'return_period' spread.
+CDF_MAX_LOG_EXCEEDANCE = 4.0
+
+# Floor applied to the per-pixel divisors of the standardize/normalize transforms
+# [mm per time step]. A pixel that is almost always dry - common at sub-hourly
+# resolution, where the wet fraction can fall below 1% - otherwise yields a zero
+# standard deviation or a zero 99th percentile, and the division sends the whole
+# time series of that pixel to inf/NaN. The value is small enough to leave any
+# genuinely wet pixel untouched.
+TRANSFORM_DIVISOR_FLOOR = 1e-3
+
+
+def time_step_to_minutes(time_step_h):
+    """
+    Integer minutes for a time step given in hours.
+
+    Used for the pandas frequency strings and the derived-store identity, so
+    that a sub-hourly step is exact regardless of the float the caller passes
+    (e.g. both 5/60 and 0.0833 map to 5). The step must be a whole number of
+    minutes.
+
+    Parameters
+    ----------
+    time_step_h: float
+        The time step [h].
+
+    Returns
+    -------
+    int
+        The time step [min].
+    """
+    minutes = time_step_h * 60
+    minutes_rounded = int(round(minutes))
+    # Tolerant to one second, so a step meant as a whole number of minutes but
+    # typed as a rounded decimal of an hour (0.0833 for 5/60) is accepted.
+    assert abs(minutes - minutes_rounded) < 1 / 60, \
+        (f"The time step ({time_step_h} h) must be a whole number of minutes "
+         f"(e.g. 0.0833 = 5/60 for 5 min).")
+    assert minutes_rounded > 0, "The time step must be > 0."
+    return minutes_rounded
+
+
+def get_cdf_levels(spread, nb_levels=CDF_NB_LEVELS):
+    """
+    Percentile levels of the CDF transform, and the output step between two
+    consecutive levels.
+
+    The levels are spaced so that the transform output is simply the number of
+    levels the value exceeds, times the step: the output scale is built into the
+    level grid rather than applied afterwards.
+
+    Parameters
+    ----------
+    spread: str
+        How the percentiles are spread over the output range:
+        - 'return_period': the output is -log10 of the exceedance probability
+          among wet steps, i.e. the log10 of the return period expressed in wet
+          steps, in [0, CDF_MAX_LOG_EXCEEDANCE]. The upper tail (where damaging
+          events live) gets most of the range instead of being packed against 1.
+        - 'none': the output is the percentile itself, in [0, 1]. Uniformly
+          distributed over the wet steps, but the extremes are compressed.
+    nb_levels: int
+        The number of levels of the CDF table.
+
+    Returns
+    -------
+    np.array, float
+        The percentile levels (increasing, starting at 0), and the output step.
+    """
+    if spread == 'return_period':
+        step = CDF_MAX_LOG_EXCEEDANCE / nb_levels
+        exponents = np.arange(nb_levels) * step
+        return 1.0 - np.power(10.0, -exponents), step
+    if spread == 'none':
+        step = 1.0 / nb_levels
+        return np.arange(nb_levels) * step, step
+
+    raise ValueError(f"Unknown CDF spread: {spread}. "
+                     f"Options are: 'return_period', 'none'")
+
 
 class PrecipitationArchive(Precipitation):
     def __init__(self, year_start=None, year_end=None, cid_file=None):
         """
-        The generic PrecipitationArchive class.
-        Must be netCDF files as relies on xarray.
+        The generic PrecipitationArchive class. The data is backed by a zarr
+        store (see the build_zarr_store() methods of the subclasses) and opened
+        lazily: reads only touch the chunks covering the selection.
 
         Parameters
         ----------
@@ -36,26 +128,61 @@ class PrecipitationArchive(Precipitation):
 
         self.year_start = year_start
         self.year_end = year_end
-        if year_start is not None or year_end is not None:
-            self.time_index = pd.date_range(start=f'{year_start}-01-01',
-                                            end=f'{year_end}-12-31', freq='MS')
-        self.missing = None
 
-        self.hash_tag = None
-        self.pickle_files = []
         self.cid_time_series = None
+        self.full_grid_data = None
+        self.native_time_step = 1  # Native time step of the source [h]
         self.mem_nb_pixels = 64  # Number of pixels to process at once (per spatial dimension; e.g. 100x100)
+        self._transform_tag = ''  # Applied lazy transforms (part of cache keys)
 
     def reset(self):
         """
         Reset the data.
         """
-        self.hash_tag = None
-        self.pickle_files = []
+        self.data = None
         self.cid_time_series = None
+        self.full_grid_data = None
+        self._transform_tag = ''
 
     def prepare_data(self):
         raise NotImplementedError("This method must be implemented in the child class.")
+
+    def open_zarr(self, zarr_path):
+        """
+        Open a precipitation zarr store lazily. Only the chunks covering later
+        selections are read from disk.
+
+        Parameters
+        ----------
+        zarr_path: str|Path
+            The path to the zarr store.
+        """
+        zarr_path = Path(zarr_path)
+        if not (zarr_path / 'zarr.json').exists():
+            raise FileNotFoundError(
+                f"'{zarr_path}' is not an initialized zarr store.")
+
+        self.data = xr.open_zarr(zarr_path, consolidated=False)
+        self.resolution = 1
+        self.time_step = self.native_time_step
+
+        # Select the data for the given years
+        if self.year_start:
+            self.data = self.data.sel(time=slice(f'{self.year_start}-01-01', None))
+        if self.year_end:
+            self.data = self.data.sel(time=slice(None, f'{self.year_end}-12-31'))
+
+    def preload_full_grid(self):
+        """
+        Load the full (lazy) dataset into memory. Optional: patch reads from the
+        zarr store are cheap, but an in-memory grid makes batch generation with
+        large spatial windows faster still (if it fits in RAM).
+        """
+        logger.info("Preloading full precipitation grid into memory...")
+        self.full_grid_data = self.data.compute()
+        logger.info("Full grid loaded: shape %s, size %.1f GB",
+                    dict(self.full_grid_data.sizes),
+                    self.full_grid_data.nbytes / 1e9)
 
     def get_time_series(self, cid, start, end, size=1, as_xr=False):
         """
@@ -80,38 +207,23 @@ class PrecipitationArchive(Precipitation):
         np.array
             The timeseries as a numpy array
         """
+        if self.data is None:
+            raise ValueError("The precipitation data must be first loaded.")
+
         x, y = self.domain.get_cid_coordinates(cid)
         dx = self.domain.resolution[0]
         dy = self.domain.resolution[1]
         dpx = (size - 1) / 2
 
-        if len(self.pickle_files) == 0:
-            raise ValueError("The precipitation data must be first pre-loaded.")
+        source = self.full_grid_data if self.full_grid_data is not None else self.data
+        ts = source.sel(
+            {self.x_axis_dim: slice(x - dx * dpx, x + dx * dpx),
+             self.y_axis_dim: slice(y + dy * dpx, y - dy * dpx),
+             self.time_axis_dim: slice(start, end)}
+        ).compute()
 
-        ts = []
-
-        for f in self.pickle_files:
-            try:
-                with open(f, 'rb') as file:
-                    data = pickle.load(file)
-                    data = data.chunk({'time': -1, self.x_axis: 'auto',
-                                       self.y_axis: 'auto'})  # Chunk the data
-                    dat = data.sel(
-                        {self.x_axis: slice(x - dx * dpx, x + dx * dpx),
-                         self.y_axis: slice(y + dy * dpx, y - dy * dpx)
-                         }).compute()  # Compute only the selected data
-
-                    ts.append(dat)
-                    del data
-                    gc.collect()
-            except EOFError:
-                raise EOFError(f"Error: {f} is empty or corrupted.")
-
-        if len(ts) == 0:
+        if len(ts[self.time_axis_dim]) == 0:
             raise ValueError(f"No data found for CID {cid}")
-
-        ts = xr.concat(ts, dim=self.time_axis)
-        ts = ts.sel({self.time_axis: slice(start, end)})
 
         if as_xr:
             return ts
@@ -119,11 +231,12 @@ class PrecipitationArchive(Precipitation):
         if size == 1:
             return ts[self.precip_var].to_numpy()
 
-        return ts[self.precip_var].mean(dim=[self.x_axis, self.y_axis]).to_numpy()
+        return ts[self.precip_var].mean(dim=[self.x_axis_dim, self.y_axis_dim]).to_numpy()
 
     def preload_all_cid_data(self, cids):
         """
-        Preload all the data for each cell ID.
+        Preload the 1-D time series for each cell ID (single vectorized pass
+        over the store). The result is cached in TMP_DIR as netCDF.
 
         Parameters
         ----------
@@ -131,62 +244,32 @@ class PrecipitationArchive(Precipitation):
             The list of cell IDs
         """
         self.cid_time_series = None  # Necessary to reset the data !
-        hash_tag = hashlib.md5(
-            pickle.dumps(self.pickle_files) + pickle.dumps(cids)).hexdigest()
+        cids = np.asarray(cids)
+        hash_tag = self._compute_cache_hash(cids.tobytes())
 
-        filename = f"precip_{self.dataset_name.lower()}_all_cids_{hash_tag}.pickle"
+        filename = f"precip_{self.dataset_name.lower()}_all_cids_{hash_tag}.nc"
         tmp_filename = self.tmp_dir / filename
 
         if tmp_filename.exists():
-            print("Loading all data for each CID from pickle file.")
-            try:
-                with open(tmp_filename, 'rb') as f:
-                    self.cid_time_series = pickle.load(f)
-                return
-
-            except EOFError:
-                raise EOFError(f"Error: {tmp_filename} is empty or corrupted.")
+            logger.info("Loading all data for each CID from netCDF file.")
+            self.cid_time_series = xr.load_dataarray(tmp_filename)
+            return
 
         locations = [self.domain.get_cid_coordinates(cid) for cid in cids]
+        xs = xr.DataArray([x for x, _ in locations], dims='cid')
+        ys = xr.DataArray([y for _, y in locations], dims='cid')
 
-        for idx in tqdm(range(len(self.time_index)),
-                        desc="Preloading all data for each CID"):
-            f = self.pickle_files[idx]
-            try:
-                with open(f, 'rb') as file:
-                    ts = []
-                    data = pickle.load(file)
-                    for x, y in locations:
-                        try:
-                            dat = data[self.precip_var].sel(
-                                {self.x_axis: x, self.y_axis: y}
-                            )
-                        except ValueError as e:
-                            print(e)
-                            print(f"Error with file {f} and location {x}, {y}")
-                            print(f"Data shape: {data[self.precip_var].shape}")
-                            data.info()
-
-                        ts.append(dat)
-
-                    ts_xr = xr.concat(ts, dim='cid')
-                    if self.cid_time_series is None:
-                        self.cid_time_series = ts_xr
-                    else:
-                        self.cid_time_series = xr.concat([self.cid_time_series, ts_xr],
-                                                         dim=self.time_axis)
-
-            except EOFError:
-                raise EOFError(f"Error: {f} is empty or corrupted.")
-
-        self.cid_time_series['cid'] = cids
+        logger.info("Preloading all data for each CID (single pass over the store).")
+        ts = self.data[self.precip_var].sel(
+            {self.x_axis_dim: xs, self.y_axis_dim: ys})
+        ts = ts.assign_coords(cid=('cid', cids))
+        self.cid_time_series = ts.compute()
 
         # Check again that the file was not created in the meantime
         if tmp_filename.exists():
             return
 
-        with open(tmp_filename, 'wb') as f:
-            pickle.dump(self.cid_time_series, f)
+        self.cid_time_series.to_netcdf(tmp_filename)
 
     def save_nc_file_per_cid(self, cid, start, end):
         """
@@ -207,106 +290,41 @@ class PrecipitationArchive(Precipitation):
         if isinstance(end, str):
             end = pd.to_datetime(end)
 
-        y_start = start.year
-        y_end = end.year
-
-        self.hash_tag = self._compute_hash_single_cid(y_start, y_end)
-        filename = f"precip_{self.dataset_name.lower()}_cid_{self.hash_tag}.nc"
+        hash_tag = self._compute_cache_hash(f"{cid}_{start}_{end}")
+        filename = f"precip_{self.dataset_name.lower()}_cid_{cid}_{hash_tag}.nc"
         tmp_filename = self.tmp_dir / filename
 
         if tmp_filename.exists():
             return
 
-        time_series = self.get_time_series(cid, start, end)
+        time_series = self.get_time_series(cid, start, end, as_xr=True)
         time_series.to_netcdf(tmp_filename)
 
-    def generate_pickles_for_subdomain(self, x_axis, y_axis):
+    def select_subdomain(self, x_axis, y_axis):
         """
-        Generate pickle files for the subdomain defined by the x and y axes.
+        Restrict the (lazy) data to the given axes. Cells of the axes outside
+        the data extent are filled with NaN.
 
         Parameters
         ----------
-        x_axis: slice|np.array
-            The slice for the x axis
-        y_axis: slice|np.array
-            The slice for the y axis
+        x_axis: xr.DataArray|np.array
+            The x coordinates to select
+        y_axis: xr.DataArray|np.array
+            The y coordinates to select
         """
         if not isinstance(x_axis, np.ndarray):
             x_axis = x_axis.to_numpy()
         if not isinstance(y_axis, np.ndarray):
             y_axis = y_axis.to_numpy()
 
-        self.hash_tag = self._compute_hash_precip_full_data(x_axis, y_axis)
-
-        for idx in tqdm(range(len(self.time_index)),
-                        desc="Generating pickle files for subdomain"):
-            original_file = self.pickle_files[idx]
-            t = self.time_index[idx]
-            filename = (f"precip_{self.dataset_name.lower()}_subdomain_{t.year}-"
-                        f"{t.month:02}_{self.hash_tag}.pickle")
-            tmp_filename = self.tmp_dir / filename
-            self.pickle_files[idx] = tmp_filename
-
-            if tmp_filename.exists():
-                continue
-
-            try:
-                with open(original_file, 'rb') as f_in:
-                    data = pickle.load(f_in)
-                    data = data.sel({self.x_axis: x_axis, self.y_axis: y_axis})
-
-                    # If the array is smaller than the expected size, fill with NaN
-                    if data[self.precip_var].shape[1:] != (len(y_axis), len(x_axis)):
-                        expected_shape = (
-                            len(data[self.time_axis]),
-                            len(y_axis),
-                            len(x_axis)
-                        )
-
-                        print(f"Filling missing values for {t.year}-{t.month:02} "
-                              f"with NaN in {self.precip_var} variable. "
-                              f"Expected shape: {expected_shape}, "
-                              f"actual shape: {data[self.precip_var].shape}")
-
-                        # Create an array filled with np.nan of the expected shape
-                        filled_data = np.full(expected_shape, np.nan, dtype='float32')
-
-                        # Get the available x and y coordinates in the data
-                        data_x = data[self.x_axis].values
-                        data_y = data[self.y_axis].values
-
-                        # Find the intersection indices for x and y
-                        x_idx = [i for i, x in enumerate(x_axis) if x in data_x]
-                        y_idx = [i for i, y in enumerate(y_axis) if y in data_y]
-
-                        # Find the corresponding indices in the data
-                        data_x_i = [np.where(data_x == x_axis[i])[0][0] for i in x_idx]
-                        data_y_i = [np.where(data_y == y_axis[i])[0][0] for i in y_idx]
-
-                        # Place the available data into the correct positions
-                        for i in range(len(data_x_i)):
-                            for j in range(len(data_y_i)):
-                                x_i = data_x_i[i]
-                                y_i = data_y_i[j]
-                                filled_data[:, y_idx[j], x_idx[i]] = \
-                                    data[self.precip_var].values[:, y_i, x_i]
-
-                        # Assign the filled data back to the xarray DataArray
-                        data[self.precip_var] = filled_data
-
-                    # Check again that the file was not created in the meantime
-                    if tmp_filename.exists():
-                        continue
-
-                    with open(tmp_filename, 'wb') as f_out:
-                        pickle.dump(data, f_out)
-
-            except EOFError:
-                raise EOFError(f"Error: {original_file} is empty or corrupted.")
+        self.data = self.data.reindex(
+            {self.x_axis_dim: x_axis, self.y_axis_dim: y_axis})
 
     def standardize(self, mean, std):
         """
-        Standardize the precipitation data.
+        Standardize the precipitation data (lazily; computed at read time on the
+        selected chunks only). Idempotent: the train/valid/test data generators
+        share the same precipitation object and each request the transform.
 
         Parameters
         ----------
@@ -315,113 +333,57 @@ class PrecipitationArchive(Precipitation):
         std: np.array
             The standard deviations (per pixel)
         """
-        for idx in tqdm(range(len(self.time_index)),
-                        desc="Standardizing precipitation data"):
-            original_file = self.pickle_files[idx]
-            t = self.time_index[idx]
-            filename = (f"precip_{self.dataset_name.lower()}_standardized_{t.year}-"
-                        f"{t.month:02}_{self.hash_tag}.pickle")
-            tmp_filename = self.tmp_dir / filename
-            self.pickle_files[idx] = tmp_filename
+        if '_std' in self._transform_tag:
+            logger.debug("Precipitation already standardized; skipping.")
+            return
 
-            if tmp_filename.exists():
-                continue
-
-            try:
-                with open(original_file, 'rb') as f_in:
-                    data = pickle.load(f_in)
-                    precip = data[self.precip_var]
-                    data[self.precip_var] = ((precip - mean) / std).astype('float32')
-
-                    # Check again that the file was not created in the meantime
-                    if tmp_filename.exists():
-                        continue
-
-                    with open(tmp_filename, 'wb') as f_out:
-                        pickle.dump(data, f_out)
-
-            except EOFError:
-                raise EOFError(f"Error: {original_file} is empty or corrupted.")
+        std = self._floor_divisor(std, 'standard deviation')
+        mean = self._as_spatial_da(mean)
+        std = self._as_spatial_da(std)
+        precip = self.data[self.precip_var]
+        self.data[self.precip_var] = ((precip - mean) / std).astype('float32')
+        self._transform_tag += '_std'
+        self._drop_preloaded()
 
     def normalize(self, q99):
         """
-        Normalize the precipitation data.
+        Normalize the precipitation data (lazily; computed at read time on the
+        selected chunks only). Idempotent: the train/valid/test data generators
+        share the same precipitation object and each request the transform.
 
         Parameters
         ----------
         q99: np.array
             The 99th quantile (per pixel)
         """
-        # Add dimension to q99
-        q99 = np.expand_dims(q99, axis=0)
+        if '_norm' in self._transform_tag:
+            logger.debug("Precipitation already normalized; skipping.")
+            return
 
-        for idx in tqdm(range(len(self.time_index)),
-                        desc="Normalizing precipitation data"):
-            original_file = self.pickle_files[idx]
-            t = self.time_index[idx]
-            filename = (f"precip_{self.dataset_name.lower()}_normalized_{t.year}-"
-                        f"{t.month:02}_{self.hash_tag}.pickle")
-            tmp_filename = self.tmp_dir / filename
-            self.pickle_files[idx] = tmp_filename
-
-            if tmp_filename.exists():
-                continue
-
-            try:
-                with open(original_file, 'rb') as f_in:
-                    data = pickle.load(f_in)
-                    precip = data[self.precip_var]
-                    min_precip = float(precip.min())  # Might not be 0 when log-transformed
-
-                    data[self.precip_var] = ((precip - min_precip) / (q99 - min_precip)).astype('float32')
-
-                    # Check again that the file was not created in the meantime
-                    if tmp_filename.exists():
-                        continue
-
-                    with open(tmp_filename, 'wb') as f_out:
-                        pickle.dump(data, f_out)
-
-            except EOFError:
-                raise EOFError(f"Error: {original_file} is empty or corrupted.")
+        q99 = self._floor_divisor(q99, '99th quantile')
+        q99 = self._as_spatial_da(q99)
+        precip = self.data[self.precip_var]
+        # Precipitation (raw or log1p-transformed) is non-negative, so the lower
+        # bound of the normalization is 0.
+        self.data[self.precip_var] = (precip / q99).astype('float32')
+        self._transform_tag += '_norm'
+        self._drop_preloaded()
 
     def log_transform(self):
         """
-        Log-transform the precipitation data.
+        Log-transform the precipitation data (lazily; computed at read time on
+        the selected chunks only). Idempotent: the train/valid/test data
+        generators share the same precipitation object and each request the
+        transform.
         """
-        if not self.hash_tag.startswith("log_"):
-            self.hash_tag = "log_" + self.hash_tag
+        if '_log' in self._transform_tag:
+            logger.debug("Precipitation already log-transformed; skipping.")
+            return
 
-        for idx in tqdm(range(len(self.time_index)),
-                        desc="Log-transforming precipitation data"):
-            original_file = self.pickle_files[idx]
-            t = self.time_index[idx]
-            filename = (f"precip_{self.dataset_name.lower()}_subdomain_{t.year}-"
-                        f"{t.month:02}_{self.hash_tag}.pickle")
-            tmp_filename = self.tmp_dir / filename
-            self.pickle_files[idx] = tmp_filename
-
-            if tmp_filename.exists():
-                continue
-
-            try:
-                with open(original_file, 'rb') as f_in:
-                    data = pickle.load(f_in)
-                    precip = data[self.precip_var]
-                    data[self.precip_var] = (np.log1p(precip)).astype('float32')
-
-                    # Check again that the file was not created in the meantime
-                    if tmp_filename.exists():
-                        continue
-
-                    with open(tmp_filename, 'wb') as f_out:
-                        pickle.dump(data, f_out)
-
-            except EOFError:
-                raise EOFError(f"Error: {original_file} is empty or corrupted.")
-
-            except ValueError as e:
-                raise ValueError(f"Error with file {original_file}: {e}")
+        precip = self.data[self.precip_var]
+        self.data[self.precip_var] = np.log1p(precip).astype('float32')
+        self._transform_tag += '_log'
+        self._drop_preloaded()
 
     def compute_mean_and_std_per_pixel(self):
         """
@@ -432,56 +394,34 @@ class PrecipitationArchive(Precipitation):
         np.array, np.array
             The mean and standard deviation of the precipitation data
         """
-        # Compute hash tag by hashing the pickle files list
-        hash_tag = hashlib.md5(pickle.dumps(self.pickle_files)).hexdigest()
-        filename_mean = f"precip_{self.dataset_name.lower()}_mean_{hash_tag}.pickle"
-        filename_std = f"precip_{self.dataset_name.lower()}_std_{hash_tag}.pickle"
+        hash_tag = self._compute_cache_hash('meanstd')
+        filename = f"precip_{self.dataset_name.lower()}_meanstd_{hash_tag}.npz"
+        tmp_filename = self.tmp_dir / filename
 
-        # If the files already exist, load them
-        mean_file = self.tmp_dir / filename_mean
-        std_file = self.tmp_dir / filename_std
-        if mean_file.exists() and std_file.exists():
-            try:
-                with open(mean_file, 'rb') as f:
-                    mean = pickle.load(f)
-            except EOFError:
-                raise EOFError(f"Error: {mean_file} is empty or corrupted.")
+        if tmp_filename.exists():
+            logger.info("Precipitation mean/sd loaded from file %s.", tmp_filename)
+            cached = np.load(tmp_filename)
+            return cached['mean'], cached['std']
 
-            try:
-                with open(std_file, 'rb') as f:
-                    std = pickle.load(f)
-            except EOFError:
-                raise EOFError(f"Error: {std_file} is empty or corrupted.")
+        precip = self.data[self.precip_var]
+        n_rows = precip.sizes[self.y_axis_dim]
+        n_cols = precip.sizes[self.x_axis_dim]
 
-            return mean, std
-
-        # Open first precipitation file to get the dimensions
-        try:
-            with open(self.pickle_files[0], 'rb') as f_in:
-                data = pickle.load(f_in)
-                n_rows, n_cols = data[self.precip_var].shape[1:]
-        except EOFError:
-            raise EOFError(f"Error: {self.pickle_files[0]} is empty or corrupted.")
-
-        # Compute mean and standard deviation by spatial chunks (for memory efficiency)
+        # Compute by spatial blocks: each block loads the whole time series for
+        # its pixels (needed for the statistics) while bounding memory.
         mean = np.zeros((n_rows, n_cols))
         std = np.zeros((n_rows, n_cols))
-        for i in tqdm(np.arange(0, n_rows + 1, self.mem_nb_pixels),
+        for i in tqdm(np.arange(0, n_rows, self.mem_nb_pixels),
                       desc="Computing mean and standard deviation per pixel"):
-            for j in np.arange(0, n_cols + 1, self.mem_nb_pixels):
-                x_size = min(self.mem_nb_pixels, n_rows - i)
-                y_size = min(self.mem_nb_pixels, n_cols - j)
-                data = self.get_spatial_chunk_data(i, j, x_size, y_size)
-                mean[i:i + x_size, j:j + y_size] = np.nanmean(data, axis=0)
-                std[i:i + x_size, j:j + y_size] = np.nanstd(data, axis=0)
+            for j in np.arange(0, n_cols, self.mem_nb_pixels):
+                block = self._get_spatial_block(precip, i, j)
+                mean[i:i + block.shape[1], j:j + block.shape[2]] = \
+                    np.nanmean(block, axis=0)
+                std[i:i + block.shape[1], j:j + block.shape[2]] = \
+                    np.nanstd(block, axis=0)
 
-        # Save mean and standard deviation
-        if not mean_file.exists():
-            with open(mean_file, 'wb') as f:
-                pickle.dump(mean, f)
-        if not std_file.exists():
-            with open(std_file, 'wb') as f:
-                pickle.dump(std, f)
+        if not tmp_filename.exists():
+            np.savez(tmp_filename, mean=mean, std=std)
 
         return mean, std
 
@@ -499,88 +439,134 @@ class PrecipitationArchive(Precipitation):
         np.array
             The quantile of the precipitation data
         """
-        # Compute hash tag by hashing the pickle files list
-        hash_tag = hashlib.md5(pickle.dumps(self.pickle_files)).hexdigest()
-        filename = f"precip_{self.dataset_name.lower()}_q_{quantile:.3f}_{hash_tag}.pickle"
-
-        # If the file already exists, load it
+        hash_tag = self._compute_cache_hash(f"q{quantile:.3f}")
+        filename = f"precip_{self.dataset_name.lower()}_q_{quantile:.3f}_{hash_tag}.npy"
         tmp_filename = self.tmp_dir / filename
+
         if tmp_filename.exists():
-            try:
-                with open(tmp_filename, 'rb') as f:
-                    quantiles = pickle.load(f)
-            except EOFError:
-                raise EOFError(f"Error: {tmp_filename} is empty or corrupted.")
+            logger.info("Precipitation quantile %s loaded from file %s.",
+                        quantile, tmp_filename)
+            return np.load(tmp_filename)
 
-            return quantiles
+        precip = self.data[self.precip_var]
+        n_rows = precip.sizes[self.y_axis_dim]
+        n_cols = precip.sizes[self.x_axis_dim]
 
-        # Open first precipitation file to get the dimensions
-        try:
-            with open(self.pickle_files[0], 'rb') as f_in:
-                data = pickle.load(f_in)
-                n_rows, n_cols = data[self.precip_var].shape[1:]
-        except EOFError:
-            raise EOFError(f"Error: {self.pickle_files[0]} is empty or corrupted.")
-
-        # Compute quantile by spatial chunks (for memory efficiency)
+        # Compute by spatial blocks: each block loads the whole time series for
+        # its pixels (needed for the quantile) while bounding memory.
         quantiles = np.zeros((n_rows, n_cols))
-        for i in tqdm(np.arange(0, n_rows + 1, self.mem_nb_pixels),
+        for i in tqdm(np.arange(0, n_rows, self.mem_nb_pixels),
                       desc=f"Computing {quantile} quantile per pixel"):
-            for j in np.arange(0, n_cols + 1, self.mem_nb_pixels):
-                x_size = min(self.mem_nb_pixels, n_rows - i)
-                y_size = min(self.mem_nb_pixels, n_cols - j)
-                data = self.get_spatial_chunk_data(i, j, x_size, y_size)
-                quantiles[i:i + x_size, j:j + y_size] = np.nanquantile(data, quantile, axis=0)
-                del data
-                gc.collect()
+            for j in np.arange(0, n_cols, self.mem_nb_pixels):
+                block = self._get_spatial_block(precip, i, j)
+                quantiles[i:i + block.shape[1], j:j + block.shape[2]] = \
+                    np.nanquantile(block, quantile, axis=0)
 
-        # Save quantile
         if not tmp_filename.exists():
-            with open(tmp_filename, 'wb') as f:
-                pickle.dump(quantiles, f)
+            np.save(tmp_filename, quantiles)
 
         return quantiles
 
-    def get_spatial_chunk_data(self, i, j, x_size, y_size):
+    def compute_cdf_table_per_pixel(self, levels, wet_threshold=CDF_WET_THRESHOLD):
         """
-        Get the precipitation data for a spatial chunk.
+        Compute, for each pixel, the precipitation value at each percentile level
+        of its wet-step distribution (the value grid inverted by cdf_transform).
 
         Parameters
         ----------
-        i: int
-            The starting row index
-        j: int
-            The starting column index
-        x_size: int
-            The number of rows
-        y_size: int
-            The number of columns
+        levels: np.array
+            The percentile levels, from get_cdf_levels().
+        wet_threshold: float
+            Time steps at or below this value are excluded from the distribution
+            (and map to 0 by the transform).
 
         Returns
         -------
         np.array
-            The precipitation data for the spatial chunk
+            The value grid, (nb_levels, nb_rows, nb_cols). Pixels with no wet
+            step hold +inf, so that the transform maps them to 0.
         """
-        data_chunk = None
-        for idx in range(len(self.time_index)):
-            original_file = self.pickle_files[idx]
+        levels = np.asarray(levels, dtype='float64')
+        hash_tag = self._compute_cache_hash(
+            b'cdftable' + levels.tobytes() + str(wet_threshold).encode())
+        filename = f"precip_{self.dataset_name.lower()}_cdf_{hash_tag}.npy"
+        tmp_filename = self.tmp_dir / filename
 
-            try:
-                with open(original_file, 'rb') as f_in:
-                    data_file = pickle.load(f_in)
-                    data_file = data_file[self.precip_var].values
-                    data_file = data_file[:, i:i + x_size, j:j + y_size]
-                    if data_chunk is None:
-                        data_chunk = data_file
-                    else:
-                        data_chunk = np.concatenate((data_chunk, data_file), axis=0)
-            except EOFError:
-                raise EOFError(f"Error: {original_file} is empty or corrupted.")
-            except ValueError as e:
-                raise ValueError(f"Error with file {original_file} at indices "
-                                 f"{i}:{i + x_size}, {j}:{j + y_size}: {e}")
+        if tmp_filename.exists():
+            logger.info("Precipitation CDF table loaded from file %s.",
+                        tmp_filename)
+            return np.load(tmp_filename)
 
-        return data_chunk
+        precip = self.data[self.precip_var]
+        n_rows = precip.sizes[self.y_axis_dim]
+        n_cols = precip.sizes[self.x_axis_dim]
+
+        # Compute by spatial blocks: each block loads the whole time series for
+        # its pixels (needed for the quantiles) while bounding memory.
+        table = np.zeros((len(levels), n_rows, n_cols))
+        for i in tqdm(np.arange(0, n_rows, self.mem_nb_pixels),
+                      desc="Computing the CDF table per pixel"):
+            for j in np.arange(0, n_cols, self.mem_nb_pixels):
+                block = self._get_spatial_block(precip, i, j)
+                # Masked in place: a copy would double the memory of a block
+                # holding the whole time series of its pixels.
+                block[block <= wet_threshold] = np.nan
+                with warnings.catch_warnings():
+                    # Pixels without any wet step: handled right below.
+                    warnings.simplefilter('ignore', category=RuntimeWarning)
+                    table[:, i:i + block.shape[1], j:j + block.shape[2]] = \
+                        np.nanquantile(block, levels, axis=0)
+
+        nb_dry_pixels = int(np.isnan(table[0]).sum())
+        if nb_dry_pixels:
+            logger.warning("%d pixels have no wet time step (above %s); they "
+                           "are mapped to 0.", nb_dry_pixels, wet_threshold)
+        table = np.where(np.isfinite(table), table, np.inf)
+
+        if not tmp_filename.exists():
+            np.save(tmp_filename, table)
+
+        return table
+
+    def cdf_transform(self, levels, table, step):
+        """
+        Replace each value by its rank in the wet-step distribution of its own
+        pixel (lazily; computed at read time on the selected chunks only).
+
+        This is the transform the ``*_q`` event features use, applied to the
+        precipitation series itself: it makes intensities comparable between
+        pixels with different climatologies. Dry steps map to 0. Idempotent: the
+        train/valid/test data generators share the same precipitation object and
+        each request the transform.
+
+        Parameters
+        ----------
+        levels: np.array
+            The percentile levels, from get_cdf_levels().
+        table: np.array
+            The per-pixel value grid, from compute_cdf_table_per_pixel().
+        step: float
+            The output step between two consecutive levels, from
+            get_cdf_levels().
+        """
+        if '_cdf' in self._transform_tag:
+            logger.debug("Precipitation already CDF-transformed; skipping.")
+            return
+
+        precip = self.data[self.precip_var]
+
+        # The output is the number of levels the value exceeds, times the step.
+        # Accumulated one level at a time so that no (time, level, y, x) array is
+        # ever materialized.
+        counts = None
+        for values in table:
+            # Cast before accumulating: '+' on booleans is a logical or.
+            exceeds = (precip > self._as_spatial_da(values)).astype('float32')
+            counts = exceeds if counts is None else counts + exceeds
+
+        self.data[self.precip_var] = (counts * step).astype('float32')
+        self._transform_tag += f'_cdf{len(levels)}'
+        self._drop_preloaded()
 
     def get_data_chunk(self, t_start, t_end, x_start, x_end, y_start, y_end, cid=None):
         """
@@ -608,6 +594,13 @@ class PrecipitationArchive(Precipitation):
         np.array
             The precipitation data for the temporal and spatial chunk
         """
+        if self.full_grid_data is not None:
+            return self.full_grid_data[self.precip_var].sel(
+                time=slice(t_start, t_end),
+                x=slice(x_start, x_end),
+                y=slice(y_start, y_end)
+            ).to_numpy()
+
         if self.cid_time_series is not None and cid is not None:
             try:
                 ts = self.cid_time_series.sel(
@@ -615,9 +608,9 @@ class PrecipitationArchive(Precipitation):
                     cid=cid
                 ).to_numpy()
             except KeyError as e:
-                print(f"Error with CID {cid} and time {t_start} to {t_end}")
-                print(f"File: precip_{self.dataset_name.lower()}_all_cids_[hash].pickle")
-                print(e)
+                logger.error("Error with CID %s and time %s to %s", cid, t_start, t_end)
+                logger.error("File: precip_%s_all_cids_[hash].nc", self.dataset_name.lower())
+                logger.error("%s", e)
 
             # If the time series is 1D, add 2 dimensions
             if len(ts.shape) == 1:
@@ -625,97 +618,136 @@ class PrecipitationArchive(Precipitation):
 
             return ts
 
-        # Get the index/indices in the temporal index
-        try:
-            idx_start = self.time_index.get_loc(t_start.normalize().replace(day=1))
-        except KeyError:
-            idx_start = 0
-        try:
-            idx_end = self.time_index.get_loc(t_end.normalize().replace(day=1))
-        except KeyError:
-            idx_end = len(self.time_index) - 1
+        return self.data[self.precip_var].sel(
+            time=slice(t_start, t_end),
+            x=slice(x_start, x_end),
+            y=slice(y_start, y_end)
+        ).to_numpy()
 
-        data = None
-        for idx in range(idx_start, idx_end + 1):
-            pk_file = self.pickle_files[idx]
-            try:
-                with open(pk_file, 'rb') as f_in:
-                    data_file = pickle.load(f_in)
-                    data_file = data_file[self.precip_var].sel(
-                        time=slice(t_start, t_end),
-                        x=slice(x_start, x_end),
-                        y=slice(y_start, y_end)
-                    ).to_numpy()
+    def _get_spatial_block(self, precip, i, j):
+        """
+        Load the full time series for the spatial block starting at (i, j) as a
+        (time, y, x) numpy array.
+        """
+        return precip.isel({
+            self.y_axis_dim: slice(i, i + self.mem_nb_pixels),
+            self.x_axis_dim: slice(j, j + self.mem_nb_pixels),
+        }).compute().values
 
-                    if data is None:
-                        data = data_file
-                    else:
-                        data = np.concatenate((data, data_file))
-            except EOFError:
-                raise EOFError(f"Error: {pk_file} is empty or corrupted.")
+    @staticmethod
+    def _floor_divisor(values, label):
+        """
+        Clip a per-pixel divisor away from zero before it is used to rescale the
+        precipitation. Pixels that are dry over the whole record yield a divisor
+        of 0 (or NaN, when the statistic was computed on an empty selection), and
+        dividing by it turns the entire time series of that pixel into inf/NaN,
+        which then propagates silently through the network and shows up only as a
+        NaN loss many epochs later.
 
-        return data
+        Parameters
+        ----------
+        values: np.array
+            The per-pixel divisor (standard deviation or quantile).
+        label: str
+            Name of the statistic, for the warning message.
 
-    def _compute_hash_precip_full_data(self, x_axis=None, y_axis=None):
-        tag_data = (
-                pickle.dumps(self.dataset_name) +
-                pickle.dumps(self.resolution) +
-                pickle.dumps(self.time_step) +
-                pickle.dumps(x_axis) +
-                pickle.dumps(y_axis))
+        Returns
+        -------
+        np.array
+            The divisor, with every entry at or above TRANSFORM_DIVISOR_FLOOR.
+        """
+        values = np.asarray(values, dtype='float64')
+        degenerate = ~np.isfinite(values) | (values < TRANSFORM_DIVISOR_FLOOR)
+        nb_degenerate = int(degenerate.sum())
 
-        return hashlib.md5(tag_data).hexdigest()
+        if nb_degenerate:
+            logger.warning(
+                "%d of %d pixels have a %s below %s (dry over the whole record); "
+                "clipping to that floor so the transform stays finite.",
+                nb_degenerate, values.size, label, TRANSFORM_DIVISOR_FLOOR)
 
-    def _compute_hash_single_cid(self, y_start, y_end):
-        tag_data = (
-                pickle.dumps(self.dataset_name) +
-                pickle.dumps(self.resolution) +
-                pickle.dumps(self.time_step) +
-                pickle.dumps(y_start) +
-                pickle.dumps(y_end))
+        values = np.where(degenerate, TRANSFORM_DIVISOR_FLOOR, values)
 
-        return hashlib.md5(tag_data).hexdigest()
+        return values
 
-    def _generate_pickle_files(self, data):
-        self.hash_tag = self._compute_hash_precip_full_data(
-            data['x'].to_numpy(), data['y'].to_numpy())
+    def _as_spatial_da(self, values):
+        """Wrap a per-pixel (y, x) array so it broadcasts against the data."""
+        if isinstance(values, xr.DataArray):
+            return values
+        return xr.DataArray(
+            np.asarray(values),
+            coords={self.y_axis_dim: self.data[self.y_axis_dim],
+                    self.x_axis_dim: self.data[self.x_axis_dim]},
+            dims=(self.y_axis_dim, self.x_axis_dim))
 
-        data['time'] = pd.to_datetime(data['time'])
+    def _compute_cache_hash(self, extra=''):
+        """
+        Hash identifying the current data selection (dataset, resolution, time
+        step, period, spatial extent, applied transforms) for cache filenames.
+        """
+        h = hashlib.md5()
+        h.update(str(self.dataset_name).encode())
+        h.update(str(self.resolution).encode())
+        h.update(str(self.time_step).encode())
+        h.update(self._transform_tag.encode())
+        h.update(np.asarray(self.data[self.time_axis_dim][0]).tobytes())
+        h.update(np.asarray(self.data[self.time_axis_dim][-1]).tobytes())
+        h.update(self.data[self.y_axis_dim].values.tobytes())
+        h.update(self.data[self.x_axis_dim].values.tobytes())
+        if isinstance(extra, str):
+            extra = extra.encode()
+        h.update(extra)
 
-        for idx in tqdm(
-                range(len(self.time_index)),
-                desc="Generating pickle files for precipitation data"
-        ):
-            t = self.time_index[idx]
-            filename = (f"precip_{self.dataset_name.lower()}_full_{t.year}-"
-                        f"{t.month:02}_{self.hash_tag}.pickle")
-            tmp_filename = self.tmp_dir / filename
-            self.pickle_files.append(tmp_filename)
+        return h.hexdigest()
 
-            if tmp_filename.exists():
-                continue
+    def _use_derived_store(self, resolution, time_step):
+        """
+        Switch to the derived zarr store for the given spatial resolution [km]
+        and time step [h], materializing it once from the currently opened base
+        store (kept in TMP_DIR and reused across runs).
 
-            end_time = (t + pd.offsets.MonthEnd(0)).replace(
-                hour=23, minute=59, second=59)
-            subset = data.sel(time=slice(t, end_time)).compute()
-            subset = self._remove_duplicate_timestamps(subset)
-            subset = self._fill_missing_values(subset)
-            subset = self._resample(subset)
-            subset = subset.compute()
+        Parameters
+        ----------
+        resolution: int
+            The target spatial resolution [km]
+        time_step: int|float
+            The target time step [h]
+        """
+        # Compared in minutes so that a native step passed as a slightly
+        # imprecise float (e.g. 0.0833 for 5/60 h) is recognised as native and
+        # does not trigger a needless rebuild.
+        target_minutes = time_step_to_minutes(time_step)
+        current_minutes = (time_step_to_minutes(self.time_step)
+                           if self.time_step is not None else None)
+        if resolution == self.resolution and target_minutes == current_minutes:
+            return
 
-            # Check for duplicates
-            if len(subset['time'].values) != len(np.unique(subset['time'].values)):
-                raise ValueError(
-                    f"Duplicate timestamps found in subset for {t.year}-{t.month:02}")
+        # The name must carry the period: the base data is year-sliced, so the
+        # same resolution/time step over another period is a different store.
+        t_first = pd.Timestamp(self.data[self.time_axis_dim].values[0])
+        t_last = pd.Timestamp(self.data[self.time_axis_dim].values[-1])
+        name = (f"precip_{self.dataset_name.lower()}"
+                f"_r{resolution:g}_t{target_minutes}min"
+                f"_{t_first.year}-{t_last.year}.zarr")
+        derived_path = self.tmp_dir / name
+        done_marker = Path(str(derived_path) + '.done')
 
-            assert len(subset.dims) == 3, "Precipitation must be 3D"
+        if not done_marker.exists():
+            logger.info("Building derived precipitation store '%s'.", derived_path)
+            self.resolution = resolution
+            self.time_step = time_step
+            derived = self._resample(self.data)
+            derived = derived.chunk(
+                {self.time_axis_dim: 720,
+                 self.y_axis_dim: 32, self.x_axis_dim: 32})
+            derived = derived.drop_encoding()
+            # mode='w' overwrites leftovers of an interrupted build (no marker).
+            derived.to_zarr(derived_path, mode='w', consolidated=False)
+            done_marker.touch()
 
-            # Check again that the file was not created in the meantime
-            if tmp_filename.exists():
-                continue
-
-            with open(tmp_filename, 'wb') as f:
-                pickle.dump(subset, f)
+        self.data = xr.open_zarr(derived_path, consolidated=False)
+        self.resolution = resolution
+        self.time_step = time_step
 
     def _resample(self, data):
         with dask.config.set(**{'array.slicing.split_large_chunks': True}):
@@ -727,33 +759,40 @@ class PrecipitationArchive(Precipitation):
                     boundary='trim'
                 ).mean()
 
-            # Aggregate the precipitation at the desired time step
-            if self.time_step != 1:
+            # Aggregate the precipitation at the desired time step. Resample whenever
+            # the target step differs from the native step of the source (e.g. native
+            # 5-min -> hourly). The hourly product (native == target == 1h) is a no-op.
+            # Timestamps label the END of the accumulation interval (both in the
+            # native 5-min files and in the hourly netCDF product), so the bins must
+            # be right-closed and right-labelled: the step labelled T sums the native
+            # steps over (T - target, T].
+            if self.time_step is not None and \
+                    time_step_to_minutes(self.time_step) != \
+                    time_step_to_minutes(self.native_time_step):
                 data = data.resample(
-                    time=f'{self.time_step}h',
+                    time=f'{time_step_to_minutes(self.time_step)}min',
+                    closed='right',
+                    label='right',
                 ).sum(dim='time')
 
         return data
 
     @staticmethod
     def _remove_duplicate_timestamps(data):
-        # Identify duplicate timestamps
+        # Keep the first occurrence of each timestamp (positional selection:
+        # label-based selection fails on a non-unique index).
         _, index = np.unique(data['time'], return_index=True)
-        unique_times = data['time'].values[index]
-
-        # Reindex the dataset to remove duplicates
-        data = data.sel(time=unique_times)
+        if len(index) != len(data['time']):
+            data = data.isel(time=np.sort(index))
 
         return data
 
-    @staticmethod
-    def _fill_missing_values(data):
-        # Create a complete time series index with hourly frequency
-        data_start = data.time.values[0]
-        data_start = pd.Timestamp(data_start).replace(day=1, hour=0)
-        data_end = (data_start + pd.offsets.MonthEnd(0)).replace(hour=23)
+    def _fill_missing_values(self, data, start_time, end_time):
+        # Create a complete time series index at the native frequency of the source
+        freq_minutes = int(round(self.native_time_step * 60))
+        freq = f'{freq_minutes}min'
         complete_time_index = pd.date_range(
-            start=data_start, end=data_end, freq='h')
+            start=start_time, end=end_time, freq=freq)
 
         if len(complete_time_index) != len(data.time):
             with dask.config.set(**{'array.slicing.split_large_chunks': True}):
@@ -768,3 +807,11 @@ class PrecipitationArchive(Precipitation):
         data = data.fillna(0)
 
         return data
+
+    def _drop_preloaded(self):
+        """
+        Drop in-memory copies after a transform changed the (lazy) data: they
+        are rebuilt (or reloaded from their per-transform cache) on demand.
+        """
+        self.cid_time_series = None
+        self.full_grid_data = None

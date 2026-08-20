@@ -7,6 +7,8 @@ from .impact_cnn_model import ModelCnn
 from .impact_cnn_data_generator import ImpactCnnDataGenerator
 
 import copy
+import logging
+import numpy as np
 import pandas as pd
 
 has_optuna = False
@@ -18,6 +20,8 @@ except ImportError:
 
 DEBUG = False
 
+logger = logging.getLogger(__name__)
+
 
 class ImpactCnn(ImpactDl):
     """
@@ -25,16 +29,16 @@ class ImpactCnn(ImpactDl):
 
     Parameters
     ----------
-    events: Events
-        The events object.
     options: ImpactCnnOptions
         The model options.
+    events: Events
+        The events object.
     reload_trained_models: bool
         Whether to reload the previously trained models or not.
     """
 
-    def __init__(self, events, options, reload_trained_models=False):
-        super().__init__(events, options, reload_trained_models)
+    def __init__(self, options, events=None, reload_trained_models=False):
+        super().__init__(options, events, reload_trained_models)
 
         self.dem = None
 
@@ -50,6 +54,130 @@ class ImpactCnn(ImpactDl):
             The copy of the object.
         """
         return copy.deepcopy(self)
+
+    def set_model(self, model):
+        """
+        Set the model.
+
+        Parameters
+        ----------
+        model: keras.Model
+            The model to set.
+        """
+        self.model = model
+
+    def get_data_generator_inference(self, events, features, exposure, precip_stats=None, mean_static=None, std_static=None, min_static=None, max_static=None):
+        """
+        Get the data generator for inference.
+
+        Parameters
+        ----------
+        events: pd.DataFrame
+            The events.
+        features: pd.DataFrame
+            The features.
+        exposure: pd.DataFrame
+            The exposure data.
+        precip_stats: xr.Dataset
+            The precipitation statistics.
+        mean_static: np.array|None
+            The mean of the static features to use for normalization. If None, the values from the
+            model will be used if available.
+        std_static: np.array|None
+            The standard deviation of the static features to use for normalization. If None, the values from the
+            model will be used if available.
+        min_static
+            The minimum of the static features to use for normalization. If None, the values from the
+            model will be used if available.
+        max_static
+            The maximum of the static features to use for normalization. If None, the values from the
+            model will be used if available.
+
+        Returns
+        -------
+        ImpactCnnDataGenerator
+            The data generator.
+        """
+
+        df = events.merge(exposure, on='cid', how='left')
+        if features is not None:
+            df = df.merge(features, on='cid', how='left')
+            df.dropna(subset=self.features, inplace=True)
+
+        # Drop events with missing exposure data
+        df.dropna(subset=['nb_contracts'], inplace=True)
+
+        df.rename(columns={'i_max_date': 'date'}, inplace=True)
+        df['date'] = pd.to_datetime(df['date'])
+
+        x_static = df[self.features].to_numpy()
+
+        y_fields = ['date', 'x', 'y', 'cid']
+        event_props = df[y_fields].to_numpy()
+
+        log_exposure = None
+        if self.options.use_poisson_head:
+            log_exposure = np.log(df['nb_contracts'].to_numpy(dtype=float))
+
+        model_stats = getattr(self, 'model', None)
+        if model_stats is not None:
+            mean_static = mean_static if mean_static is not None else getattr(model_stats, 'mean_static', None)
+            std_static = std_static if std_static is not None else getattr(model_stats, 'std_static', None)
+            min_static = min_static if min_static is not None else getattr(model_stats, 'min_static', None)
+            max_static = max_static if max_static is not None else getattr(model_stats, 'max_static', None)
+
+        if precip_stats is None:
+            mean_precip = getattr(model_stats, 'mean_precip', None) if model_stats is not None else None
+            std_precip = getattr(model_stats, 'std_precip', None) if model_stats is not None else None
+            q99_precip = getattr(model_stats, 'q99_precip', None) if model_stats is not None else None
+        else:
+            if self.options.log_transform_precip:
+                mean_precip = precip_stats['mean_log'].values
+                std_precip = precip_stats['std_log'].values
+                q99_precip = precip_stats['q99_log'].values
+            else:
+                mean_precip = precip_stats['mean'].values
+                std_precip = precip_stats['std'].values
+                q99_precip = precip_stats['q99'].values
+
+        dg = ImpactCnnDataGenerator(
+            event_props=event_props,
+            x_static=x_static,
+            x_precip=self.precipitation_hf,
+            x_dem=self.dem,
+            batch_size=self.options.batch_size,
+            shuffle=False,
+            precip_window_size=self.options.precip_window_size,
+            precip_resolution=self.options.precip_resolution,
+            precip_time_step=self.options.precip_time_step,
+            precip_days_before=self.options.precip_days_before,
+            precip_days_after=self.options.precip_days_after,
+            tmp_dir=self.tmp_dir,
+            transform_static=self.options.transform_static,
+            transform_precip=self.options.transform_precip,
+            log_transform_precip=self.options.log_transform_precip,
+            precip_cdf_spread=self.options.precip_cdf_spread,
+            mean_static=mean_static,
+            std_static=std_static,
+            min_static=min_static,
+            max_static=max_static,
+            mean_precip=mean_precip,
+            std_precip=std_precip,
+            q99_precip=q99_precip,
+            log_exposure=log_exposure,
+            debug=DEBUG
+        )
+
+        if self.options.use_precip and self.precipitation_hf is not None:
+            pixels_nb = int(self.options.precip_window_size / self.options.precip_resolution)
+            if pixels_nb == 1:
+                logger.info("Preloading all precipitation data.")
+                all_cids = df['cid'].unique()
+                self.precipitation_hf.preload_all_cid_data(all_cids)
+            elif self.options.preload_precip:
+                self.precipitation_hf.preload_full_grid()
+
+        return dg
 
     def _create_data_generator_train(self):
         self.dg_train = ImpactCnnDataGenerator(
@@ -69,14 +197,20 @@ class ImpactCnn(ImpactDl):
             transform_static=self.options.transform_static,
             transform_precip=self.options.transform_precip,
             log_transform_precip=self.options.log_transform_precip,
-            debug=DEBUG
+            precip_cdf_spread=self.options.precip_cdf_spread,
+            batch_pos_ratio=self.options.batch_pos_ratio,
+            log_exposure=self.exposure_train,
+            debug=DEBUG,
         )
 
-        if (self.options.use_precip and self.precipitation_hf is not None and
-                self.options.precip_window_size / self.options.precip_resolution == 1):
-            print("Preloading all precipitation data.")
-            all_cids = self.df['cid'].unique()
-            self.precipitation_hf.preload_all_cid_data(all_cids)
+        if self.options.use_precip and self.precipitation_hf is not None:
+            pixels_nb = int(self.options.precip_window_size / self.options.precip_resolution)
+            if pixels_nb == 1:
+                logger.info("Preloading all precipitation data.")
+                all_cids = self.df['cid'].unique()
+                self.precipitation_hf.preload_all_cid_data(all_cids)
+            elif self.options.preload_precip:
+                self.precipitation_hf.preload_full_grid()
 
         if self.factor_neg_reduction != 1:
             self.dg_train.reduce_negatives(self.factor_neg_reduction)
@@ -89,7 +223,7 @@ class ImpactCnn(ImpactDl):
             x_dem=self.dem,
             y=self.y_valid,
             batch_size=self.options.batch_size,
-            shuffle=True,
+            shuffle=False,
             precip_window_size=self.options.precip_window_size,
             precip_resolution=self.options.precip_resolution,
             precip_time_step=self.options.precip_time_step,
@@ -106,6 +240,13 @@ class ImpactCnn(ImpactDl):
             min_static=self.dg_train.min_static,
             max_static=self.dg_train.max_static,
             q99_precip=self.dg_train.q99_precip,
+            cdf_precip=self.dg_train.cdf_precip,
+            precip_cdf_spread=self.options.precip_cdf_spread,
+            mean_dem=self.dg_train.mean_dem,
+            std_dem=self.dg_train.std_dem,
+            min_dem=self.dg_train.min_dem,
+            max_dem=self.dg_train.max_dem,
+            log_exposure=self.exposure_valid,
             debug=DEBUG
         )
 
@@ -117,7 +258,7 @@ class ImpactCnn(ImpactDl):
             x_dem=self.dem,
             y=self.y_test,
             batch_size=self.options.batch_size,
-            shuffle=True,
+            shuffle=False,
             precip_window_size=self.options.precip_window_size,
             precip_resolution=self.options.precip_resolution,
             precip_time_step=self.options.precip_time_step,
@@ -134,6 +275,13 @@ class ImpactCnn(ImpactDl):
             min_static=self.dg_train.min_static,
             max_static=self.dg_train.max_static,
             q99_precip=self.dg_train.q99_precip,
+            cdf_precip=self.dg_train.cdf_precip,
+            precip_cdf_spread=self.options.precip_cdf_spread,
+            mean_dem=self.dg_train.mean_dem,
+            std_dem=self.dg_train.std_dem,
+            min_dem=self.dg_train.min_dem,
+            max_dem=self.dg_train.max_dem,
+            log_exposure=self.exposure_test,
             debug=DEBUG
         )
 
@@ -142,22 +290,73 @@ class ImpactCnn(ImpactDl):
         Define the model.
         """
         input_1d_size = self.x_train.shape[1:]
+        if input_1d_size == (0,):
+            input_1d_size = None
         input_3d_size = None
         pixels_per_side = (self.options.precip_window_size //
                            self.options.precip_resolution)
 
         if self.options.use_precip:
-            input_3d_size = [pixels_per_side,
+            input_3d_size = [self.dg_train.get_time_dim_size(),
                              pixels_per_side,
-                             self.dg_train.get_third_dim_size(),
-                             1] # 1 channel
+                             pixels_per_side,
+                             self.dg_train.get_nb_channels()]
+
+        # Build per-class sizes that exactly match self.features ordering.
+        # tabular_features may contain classes not loaded into x_train, so we
+        # derive sizes from self.features directly rather than from tabular_features.
+        feature_to_class = {
+            f: cls
+            for cls, feats in self.tabular_features.items()
+            for f in feats
+        }
+        feature_class_sizes = []
+        current_cls = None
+        count = 0
+        for f in self.features:
+            cls = feature_to_class.get(f)
+            if cls != current_cls:
+                if count > 0:
+                    feature_class_sizes.append(count)
+                current_cls = cls
+                count = 1
+            else:
+                count += 1
+        if count > 0:
+            feature_class_sizes.append(count)
+
+        if self.options.use_poisson_head:
+            # Start at the base rate: log(total claims / total contracts)
+            total_exposure = np.sum(np.exp(self.exposure_train))
+            output_bias_init = float(np.log(np.sum(self.y_train) / total_exposure))
+        else:
+            n_pos = np.sum(self.y_train > 0)
+            n_neg = np.sum(self.y_train == 0)
+            output_bias_init = float(np.log(n_pos / n_neg))
 
         self.model = ModelCnn(
             task=self.target_type,
             options=self.options,
             input_3d_size=input_3d_size,
             input_1d_size=input_1d_size,
+            input_1d_splits=feature_class_sizes,
+            output_bias_init=output_bias_init,
         )
+        self.model.build_model()
+
+        # Persist training-set feature statistics inside the model for inference.
+        self.model.set_feature_stats(
+            mean_static=self.dg_train.mean_static,
+            std_static=self.dg_train.std_static,
+            min_static=self.dg_train.min_static,
+            max_static=self.dg_train.max_static,
+            mean_precip=self.dg_train.mean_precip,
+            std_precip=self.dg_train.std_precip,
+            q99_precip=self.dg_train.q99_precip,
+        )
+        # The CDF table is not stored in the model: it is a (levels, y, x) grid,
+        # far too large for the model config. Inference reloads it from its cache
+        # in TMP_DIR (or recomputes it from the precipitation store).
 
     def set_precipitation(self, precipitation):
         """
@@ -172,18 +371,19 @@ class ImpactCnn(ImpactDl):
             return
 
         if not self.options.use_precip:
-            print("Precipitation is not used and is therefore not loaded.")
+            logger.info("Precipitation is not used and is therefore not loaded.")
             return
 
         precipitation.prepare_data(
             resolution=self.options.precip_resolution,
-            time_step=self.options.precip_time_step
+            # prepare_data works in hours; the option is in minutes.
+            time_step=self.options.precip_time_step / 60
         )
 
         # Check the shape of the precipitation and the DEM
         if self.dem is not None:
             # Select the same domain as the DEM
-            precipitation.generate_pickles_for_subdomain(self.dem.x, self.dem.y)
+            precipitation.select_subdomain(self.dem.x, self.dem.y)
 
         self.precipitation_hf = precipitation
 
@@ -200,7 +400,7 @@ class ImpactCnn(ImpactDl):
             return
 
         if not self.options.use_precip:
-            print("DEM is not used and is therefore not loaded.")
+            logger.info("DEM is not used and is therefore not loaded.")
             return
 
         assert dem.ndim == 2, "DEM must be 2D"
@@ -224,9 +424,7 @@ class ImpactCnn(ImpactDl):
         precip_window_size: int
             The precipitation window size [km].
         """
-        precip_window_size_m = 15 * 1000
-        if precip_window_size > 15:
-            precip_window_size_m = precip_window_size * 1000
+        precip_window_size_m = max(precip_window_size, 15) * 1000
         x_min = self.df['x'].min() - precip_window_size_m / 2
         x_max = self.df['x'].max() + precip_window_size_m / 2
         y_min = self.df['y'].min() - precip_window_size_m / 2
@@ -234,7 +432,7 @@ class ImpactCnn(ImpactDl):
         if self.precipitation_hf is not None:
             x_axis = self.precipitation_hf.get_x_axis_for_bounds(x_min, x_max)
             y_axis = self.precipitation_hf.get_y_axis_for_bounds(y_min, y_max)
-            self.precipitation_hf.generate_pickles_for_subdomain(x_axis, y_axis)
+            self.precipitation_hf.select_subdomain(x_axis, y_axis)
         if self.dem is not None:
             self.dem = self.dem.sel(
                 x=slice(x_min, x_max),
@@ -248,16 +446,23 @@ class ImpactCnn(ImpactDl):
         if self.precipitation_hf is None:
             return
 
-        # Extract events dates
-        events = self.df[['e_start', 'e_end', 'date_claim']].copy()
-        events.rename(columns={'date_claim': 'date'}, inplace=True)
+        if 'e_start' in self.df.columns:
+            # Extract events dates
+            events = self.df[['e_start', 'e_end', 'date_claim']].copy()
+            events.rename(columns={'date_claim': 'date'}, inplace=True)
 
-        # Fill NaN values with the mean of the event start and end date (as date, not datetime)
-        events['date'] = events['date'].fillna(events[['e_start', 'e_end']].mean(axis=1))
+            # Fill NaN values with the mean of the event start and end date (as date, not datetime)
+            events['date'] = events['date'].fillna(events[['e_start', 'e_end']].mean(axis=1))
 
-        events['e_start'] = pd.to_datetime(events['e_start']).dt.date
-        events['e_end'] = pd.to_datetime(events['e_end']).dt.date
-        events['date'] = pd.to_datetime(events['date']).dt.date
+            events['e_start'] = pd.to_datetime(events['e_start']).dt.date
+            events['e_end'] = pd.to_datetime(events['e_end']).dt.date
+            events['date'] = pd.to_datetime(events['date']).dt.date
+        elif 'e_date' in self.df.columns:
+            events = self.df[['e_date']].copy()
+            events.rename(columns={'e_date': 'date'}, inplace=True)
+            events['date'] = pd.to_datetime(events['date']).dt.date
+        else:
+            raise ValueError("No event date column found in the dataframe.")
 
         # Precipitation period
         p_start = pd.to_datetime(f'{self.precipitation_hf.year_start}-01-01').date()

@@ -2,9 +2,14 @@
 Class to generate data for the deep learning models.
 """
 
+import logging
+
 import keras
 import numpy as np
 from pathlib import Path
+
+
+logger = logging.getLogger(__name__)
 
 
 class ImpactDlDataGenerator(keras.utils.Sequence):
@@ -12,7 +17,8 @@ class ImpactDlDataGenerator(keras.utils.Sequence):
                  tmp_dir=None, transform_static='standardize',
                  transform_precip='normalize', log_transform_precip=True,
                  mean_static=None, std_static=None, min_static=None,
-                 max_static=None, debug=False):
+                 max_static=None, batch_pos_ratio=None, log_exposure=None,
+                 debug=False):
         """
         Data generator class.
         Template from:
@@ -50,14 +56,19 @@ class ImpactDlDataGenerator(keras.utils.Sequence):
             The min of the static data.
         max_static: np.array
             The max of the static data.
+        log_exposure: np.array|None
+            The log of the exposure (nb_contracts) per sample, used as an offset
+            input by the Poisson head. None when not using the Poisson head.
         debug: bool
             Whether to run in debug mode or not (print more messages).
         """
         super().__init__()
         self.warning_counter = 0
         self.tmp_dir = tmp_dir
+        self._reset_precip_monitor()
         self.event_props = event_props
         self.y = y
+        self.log_exposure = log_exposure
         self.batch_size = batch_size
         self.shuffle = shuffle
         self.debug = debug
@@ -73,8 +84,35 @@ class ImpactDlDataGenerator(keras.utils.Sequence):
 
         self.X_static = x_static
 
-        self.n_samples = self.y.shape[0]
+        self.n_samples = self.X_static.shape[0]
         self.idxs = np.arange(self.n_samples)
+
+        # Epoch-reshuffled negative subsampling (factor_neg_reduction > 1)
+        self._factor_neg_reduction = 1
+        self._all_idxs_neg = None
+
+        # Stratified batch sampling: guarantee positives in every batch
+        self.batch_pos_ratio = batch_pos_ratio
+        self._idxs_pos = None
+        self._idxs_neg = None
+        if batch_pos_ratio is not None:
+            self._idxs_pos = np.where(self.y > 0)[0]
+            self._idxs_neg = np.where(self.y == 0)[0]
+            np.random.shuffle(self._idxs_neg)
+            n_pos_per_batch = max(1, int(self.batch_size * batch_pos_ratio))
+            n_neg_per_batch = self.batch_size - n_pos_per_batch
+            n_batches = max(1, len(self._idxs_neg) // n_neg_per_batch)
+            oversampling = (n_pos_per_batch * n_batches) / max(1, len(self._idxs_pos))
+            logger.info(
+                "Stratified batching: pos_ratio=%.3f, %d pos, %d neg, "
+                "%d pos/batch, ~%d batches/epoch, oversampling=%.1f×",
+                batch_pos_ratio, len(self._idxs_pos), len(self._idxs_neg),
+                n_pos_per_batch, n_batches, oversampling)
+            if oversampling > 5:
+                logger.warning(
+                    "Positive oversampling factor %.1f× is high (target: 1–3×). "
+                    "Consider lowering --batch-pos-ratio to avoid memorization.",
+                    oversampling)
 
     def reduce_negatives(self, factor):
         """
@@ -89,23 +127,32 @@ class ImpactDlDataGenerator(keras.utils.Sequence):
         if factor == 1:
             return
 
-        # Select the indices of the negative events
-        idxs_neg = np.where(self.y == 0)[0]
-        n_neg = idxs_neg.shape[0]
-        n_neg_new = int(n_neg / factor)
-        idxs_neg_new = np.random.choice(idxs_neg, size=n_neg_new, replace=False)
+        if self.batch_pos_ratio is not None:
+            logger.warning(
+                "reduce_negatives(factor=%d) has no effect when batch_pos_ratio is set: "
+                "the stratified generator uses self._idxs_neg (all negatives), not self.idxs. "
+                "Use batch_pos_ratio alone to control training speed and class balance.",
+                factor)
+            return
 
-        # Select the indices of the positive events
+        self._factor_neg_reduction = factor
+        self._all_idxs_neg = np.where(self.y == 0)[0]
+        n_neg = len(self._all_idxs_neg)
+        n_neg_per_epoch = int(n_neg / factor)
+        logger.info(
+            "Negative subsampling enabled: factor=%d, %d -> %d negatives per epoch "
+            "(subset reshuffled each epoch; all negatives seen over ~%d epochs)",
+            factor, n_neg, n_neg_per_epoch, factor)
+        self._resample_negatives()
+
+    def _resample_negatives(self):
+        """Draw a fresh random subset of negatives. Called at init and each epoch end."""
+        n_neg_new = int(len(self._all_idxs_neg) / self._factor_neg_reduction)
+        idxs_neg_new = np.random.choice(
+            self._all_idxs_neg, size=n_neg_new, replace=False)
         idxs_pos = np.where(self.y > 0)[0]
-
-        # Concatenate the indices
         self.idxs = np.concatenate([idxs_neg_new, idxs_pos])
         self.n_samples = self.idxs.shape[0]
-
-        print(f"Reduced the number of negative events from {n_neg} to {n_neg_new}")
-        print(f"Number of positive events: {idxs_pos.shape[0]}")
-
-        # Shuffle
         np.random.shuffle(self.idxs)
 
     def get_number_of_batches_for_full_dataset(self):
@@ -141,6 +188,57 @@ class ImpactDlDataGenerator(keras.utils.Sequence):
 
         return self._generate_batch(idxs)
 
+    def get_batch_for_cid(self, cid):
+        """
+        Get a batch of data from the full data (i.e., without shuffling or negative
+        event removal) for a given cid.
+
+        Parameters
+        ----------
+        cid : int
+            The cell id.
+
+        Returns
+        -------
+        The batch of data.
+        """
+        idxs = np.where(self.event_props[:, 3] == cid)[0]
+
+        return self._generate_batch(idxs)
+
+    def get_batch_for_indices(self, idxs):
+        """
+        Get a batch of data from the full data (i.e., without shuffling or negative
+        event removal) for the given event indices.
+
+        Parameters
+        ----------
+        idxs : np.ndarray
+            The event indices into the full data.
+
+        Returns
+        -------
+        The batch of data.
+        """
+        return self._generate_batch(np.asarray(idxs))
+
+    def get_event_dates_for_cid(self, cid):
+        """
+        Get all event dates for a given cid.
+
+        Parameters
+        ----------
+        cid : int
+            The cell id.
+
+        Returns
+        -------
+        The event dates.
+        """
+        idxs = np.where(self.event_props[:, 3] == cid)[0]
+
+        return self.event_props[idxs, 0]
+
     def _standardize_static_inputs(self):
         if self.X_static is not None:
             self.X_static = (self.X_static - self.mean_static) / self.std_static
@@ -152,7 +250,7 @@ class ImpactDlDataGenerator(keras.utils.Sequence):
 
     def _compute_static_predictor_statistics(self):
         if self.X_static is not None:
-            print('Computing/assigning static predictor statistics')
+            logger.info('Computing/assigning static predictor statistics')
             if self.transform_static == 'standardize':
                 # Compute the mean and standard deviation of the static data
                 if self.mean_static is None:
@@ -167,44 +265,179 @@ class ImpactDlDataGenerator(keras.utils.Sequence):
                     self.max_static = np.max(self.X_static, axis=0)
 
     def _create_empty_precip_block(self, shape):
-        """Create an empty precipitation block. Log-transform if needed."""
-        empty_block = np.zeros(shape)
-        if self.log_transform_precip:
-            empty_block = (np.log1p(empty_block)).astype('float32')
+        """
+        Create a block standing in for missing time steps, in the same units as
+        the surrounding data.
 
-        return empty_block
+        The block represents dry conditions, so it must carry whatever value the
+        active transform maps 'no rain' to - not a raw zero. Under 'normalize'
+        and 'cdf' the two coincide (0 mm maps to 0), but under 'standardize' dry
+        sits at -mean/std, and filling with 0 instead tells the network that the
+        missing steps saw the pixel's climatological mean rainfall.
+        """
+        return np.full(shape, self.get_dry_fill_value(), dtype='float32')
+
+    def get_dry_fill_value(self):
+        """
+        The value a dry time step takes after the active precipitation transform.
+
+        Returns
+        -------
+        float
+            The fill value to use for missing time steps.
+        """
+        return getattr(self, 'dry_fill_value', 0.0)
+
+    def _reset_precip_monitor(self):
+        """Reset the per-epoch statistics collected on the precipitation inputs."""
+        self._precip_monitor = {
+            'patches': 0,
+            'patches_with_nan': 0,
+            'values': 0,
+            'values_non_finite': 0,
+            'min': np.inf,
+            'max': -np.inf,
+            'sum': 0.0,
+        }
+
+    def _sanitize_precip(self, block):
+        """
+        Replace non-finite values in a precipitation patch and record what the
+        network is being fed.
+
+        Missing radar time steps and unguarded per-pixel divisions both surface
+        here as NaN/inf. Left alone they poison the forward pass, the loss goes
+        non-finite within an epoch, and every downstream metric degenerates
+        without anything in the logs saying why. The DEM path has always been
+        sanitized this way; the precipitation path was not.
+
+        Parameters
+        ----------
+        block: np.array
+            The precipitation patch, in transformed units.
+
+        Returns
+        -------
+        np.array
+            The patch, with non-finite values replaced by the dry fill value.
+        """
+        block = np.asarray(block, dtype='float32')
+        finite = np.isfinite(block)
+        nb_non_finite = block.size - int(finite.sum())
+
+        mon = self._precip_monitor
+        mon['patches'] += 1
+        mon['values'] += block.size
+        mon['values_non_finite'] += nb_non_finite
+
+        if nb_non_finite:
+            mon['patches_with_nan'] += 1
+            block = np.where(finite, block, self.get_dry_fill_value())
+            block = block.astype('float32')
+
+        if block.size:
+            mon['min'] = min(mon['min'], float(block.min()))
+            mon['max'] = max(mon['max'], float(block.max()))
+            mon['sum'] += float(block.sum())
+
+        return block
+
+    def log_precip_monitor(self, label=''):
+        """
+        Log the precipitation input statistics gathered since the last reset, then
+        reset them. Called once per epoch so that a scaling or missing-data
+        problem is visible in the first epoch rather than inferred from a flat
+        loss curve afterwards.
+
+        Parameters
+        ----------
+        label: str
+            A prefix identifying the split, for the log message.
+        """
+        mon = self._precip_monitor
+        if not mon['patches'] or not mon['values']:
+            return
+
+        share_non_finite = mon['values_non_finite'] / mon['values']
+        mean = mon['sum'] / mon['values']
+        prefix = f"{label} " if label else ""
+
+        logger.info(
+            "%sprecipitation inputs: min=%.4g, max=%.4g, mean=%.4g "
+            "(%d patches, %d values)",
+            prefix, mon['min'], mon['max'], mean, mon['patches'], mon['values'])
+
+        if mon['values_non_finite']:
+            logger.warning(
+                "%s%d of %d precipitation values (%.3f%%) were non-finite and "
+                "replaced by the dry fill value %.4g; %d of %d patches affected. "
+                "Check the source data and the transform divisors.",
+                prefix, mon['values_non_finite'], mon['values'],
+                100 * share_non_finite, self.get_dry_fill_value(),
+                mon['patches_with_nan'], mon['patches'])
+
+        self._reset_precip_monitor()
 
     def _analyze_precip_shape_difference(self, event, precip_ev, data_length,
                                          expected_length):
         """Analyze the precipitation data shape difference."""
         if data_length > expected_length:
-            print(f"Data array larger than expected: {data_length} > "
-                  f"{expected_length}")
-            print(f"Event: {event}")
-            print(f"Data shape: {precip_ev.shape}")
-            print(f"Data: {precip_ev}")
+            logger.error("Data array larger than expected: %s > %s", data_length, expected_length)
+            logger.error("Event: %s", event)
+            logger.error("Data shape: %s", precip_ev.shape)
+            logger.error("Data: %s", precip_ev)
             raise ValueError("Data array larger than expected.")
 
         if self.debug:
-            print(f"Shape mismatch: expected: {expected_length} !="
-                  f" got: {data_length}")
-            print(f"Event: {event}")
+            logger.debug("Shape mismatch: expected: %s != got: %s", expected_length, data_length)
+            logger.debug("Event: %s", event)
 
         if self.warning_counter in [10, 50, 100, 500, 1000]:
-            print(f"Shape mismatch: expected: {expected_length} !="
-                  f" got: {precip_ev.shape[-1]}")
-            print(f"Warning: {self.warning_counter} events with "
-                  f"shape mismatch (e.g., missing precipitation data).")
+            logger.warning("Shape mismatch: expected: %s != got: %s", expected_length, precip_ev.shape[-1])
+            logger.warning("%s events with shape mismatch (e.g., missing precipitation data).",
+                           self.warning_counter)
 
         if self.warning_counter > 1000:
             raise ValueError("Too many issues with precipitation data.")
 
     def __len__(self):
-        """Denotes the number of batches per epoch"""
+        """Denotes the number of batches per epoch."""
+        if self.batch_pos_ratio is not None:
+            n_pos_per_batch = max(1, int(self.batch_size * self.batch_pos_ratio))
+            n_neg_per_batch = self.batch_size - n_pos_per_batch
+            return max(1, len(self._idxs_neg) // n_neg_per_batch)
         return int(np.floor(self.n_samples / self.batch_size))
 
+    def _get_batch_idxs(self, i):
+        """Return sample indices for batch i.
+
+        In stratified mode: draws positives with replacement and slices through
+        all negatives sequentially, guaranteeing at least one positive per batch.
+        In standard mode: sequential slice of the (optionally shuffled) index array.
+        """
+        if self.batch_pos_ratio is None:
+            return self.idxs[i * self.batch_size:(i + 1) * self.batch_size]
+
+        n_pos_per_batch = max(1, int(self.batch_size * self.batch_pos_ratio))
+        n_neg_per_batch = self.batch_size - n_pos_per_batch
+
+        pos_idxs = np.random.choice(self._idxs_pos, size=n_pos_per_batch, replace=True)
+        start = i * n_neg_per_batch
+        neg_idxs = self._idxs_neg[start:start + n_neg_per_batch]
+
+        combined = np.concatenate([pos_idxs, neg_idxs])
+        np.random.shuffle(combined)
+        return combined
+
     def on_epoch_end(self):
-        """Updates indexes after each epoch and reset the warning counter."""
+        """Updates indexes after each epoch and resets the warning counter."""
         self.warning_counter = 0
-        if self.shuffle:
+        if self.batch_pos_ratio is not None:
+            np.random.shuffle(self._idxs_neg)
+        elif self._factor_neg_reduction > 1:
+            self._resample_negatives()
+        elif self.shuffle:
             np.random.shuffle(self.idxs)
+
+    def __getitem__(self, index):
+        raise NotImplementedError("This method should be implemented in subclasses.")

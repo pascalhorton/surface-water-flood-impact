@@ -2,13 +2,17 @@
 This script is used to analyze the results of the link between claims and events.
 """
 
+import logging
 from swafi.config import Config
 from swafi.damages_mobiliar import DamagesMobiliar
 from swafi.damages_gvz import DamagesGvz
 from swafi.events import Events
 from swafi.precip_combiprecip import CombiPrecip
+from swafi.utils.logging_setup import setup_logging
 from swafi.utils.plotting import *
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 config = Config()
 
@@ -25,6 +29,29 @@ PARAMETERS = [  # [label, [criteria], [window_days]]
 ]
 
 DATASET = 'mobiliar'
+
+# Events extraction method ('classic' for Bernet et al 2019 or 'simple' for the new
+# simple approach). Must be the same as the one used for the events extraction
+METHOD = 'simple'
+
+# Precipitation dataset the events were extracted from ('hourly' or '5min');
+# simple method only — the classic method relies on hourly data by definition.
+PRECIP_DATASET = 'hourly'
+
+if METHOD == 'simple':
+    if PRECIP_DATASET == 'hourly':
+        EVENTS_PATH = config.get('EVENTS_PATH_SIMPLE_HOURLY')
+    elif PRECIP_DATASET == '5min':
+        EVENTS_PATH = config.get('EVENTS_PATH_SIMPLE_5MIN')
+    else:
+        raise ValueError(f"Unknown precipitation dataset: {PRECIP_DATASET}")
+    PRECIP_SUFFIX = f'_{PRECIP_DATASET}'
+else:
+    if PRECIP_DATASET != 'hourly':
+        raise ValueError("The classic method relies on hourly data.")
+    EVENTS_PATH = config.get('EVENTS_PATH_CLASSIC')
+    PRECIP_SUFFIX = ''
+EVENTS_TAG = f'{DATASET}_{METHOD}{PRECIP_SUFFIX}'
 
 if DATASET == 'mobiliar':
     EXPOSURE_CATEGORIES = ['external']
@@ -48,11 +75,12 @@ PLOT_TIME_SERIES_DISAGREEMENT = True
 
 
 def main():
+    setup_logging(script_name='analyze_claims_events_link')
     # Compute the different matching
     compute_link_and_save_to_pickle()
 
     # Load the first pickle file and do some common work
-    filename = f'damages_{DATASET}_linked_{PARAMETERS[0][0].replace(" ", "_")}.pickle'
+    filename = f'damages_{DATASET}_linked_{PARAMETERS[0][0].replace(" ", "_")}{PRECIP_SUFFIX}.pickle'
     if DATASET == 'mobiliar':
         damages = DamagesMobiliar(pickle_file=filename,
                                   year_start=config.get('YEAR_START'),
@@ -66,7 +94,8 @@ def main():
 
     events = Events()
     events.load_events_and_select_those_with_contracts(
-        config.get('EVENTS_PATH'), damages, DATASET)
+        EVENTS_PATH, damages, EVENTS_TAG)
+    events.check_precip_dataset(PRECIP_DATASET)
     del damages
 
     precip = None
@@ -76,7 +105,7 @@ def main():
         cids = []
         for i, params in enumerate(PARAMETERS):
             label = params[0].replace(" ", "_")
-            filename = f'damages_{DATASET}_linked_{label}.pickle'
+            filename = f'damages_{DATASET}_linked_{label}{PRECIP_SUFFIX}.pickle'
             if DATASET == 'mobiliar':
                 damages = DamagesMobiliar(pickle_file=filename,
                                           year_start=config.get('YEAR_START'),
@@ -94,8 +123,8 @@ def main():
 
         # Precipitation data
         precip = CombiPrecip(config.get('YEAR_START'), config.get('YEAR_END'))
-        precip.prepare_data(config.get('DIR_PRECIP'))
-        print("Preloading all daily precipitation data.")
+        precip.prepare_data()  # Base zarr store from PATH_PRECIP_HOURLY_ZARR
+        logger.info("Preloading all daily precipitation data.")
         precip.preload_all_cid_data(cids)
 
     # Compare the events assigned
@@ -103,7 +132,7 @@ def main():
     total = []
     for i_ref, params_ref in enumerate(PARAMETERS):
         label_ref = params_ref[0].replace(" ", "_")
-        filename_ref = f'damages_{DATASET}_linked_{label_ref}.pickle'
+        filename_ref = f'damages_{DATASET}_linked_{label_ref}{PRECIP_SUFFIX}.pickle'
         if DATASET == 'mobiliar':
             df_ref = DamagesMobiliar(pickle_file=filename_ref,
                                      year_start=config.get('YEAR_START'),
@@ -131,7 +160,7 @@ def main():
         # Compute the differences in events attribution with other criteria
         for i_diff, params_diff in enumerate(PARAMETERS):
             label_diff = params_diff[0].replace(" ", "_")
-            filename_diff = f'damages_{DATASET}_linked_{label_diff}.pickle'
+            filename_diff = f'damages_{DATASET}_linked_{label_diff}{PRECIP_SUFFIX}.pickle'
             if DATASET == 'mobiliar':
                 df_comp = DamagesMobiliar(pickle_file=filename_diff,
                                           year_start=config.get('YEAR_START'),
@@ -170,14 +199,14 @@ def compute_link_and_save_to_pickle():
         label = params[0].replace(" ", "_")
         criteria = params[1]
         window_days = params[2]
-        filename = f'damages_{DATASET}_linked_{label}.pickle'
+        filename = f'damages_{DATASET}_linked_{label}{PRECIP_SUFFIX}.pickle'
         file_path = Path(PICKLES_DIR + '/' + filename)
 
         if file_path.exists():
-            print(f"Criteria {criteria} already assessed.")
+            logger.info("Criteria %s already assessed.", criteria)
             continue
 
-        print(f"Assessing criteria {criteria}")
+        logger.info("Assessing criteria %s", criteria)
         if DATASET == 'mobiliar':
             damages = DamagesMobiliar(dir_exposure=config.get('DIR_EXPOSURE_MOBILIAR'),
                                       dir_claims=config.get('DIR_CLAIMS_MOBILIAR'),
@@ -195,7 +224,8 @@ def compute_link_and_save_to_pickle():
 
         events = Events()
         events.load_events_and_select_those_with_contracts(
-            config.get('EVENTS_PATH'), damages, DATASET)
+            EVENTS_PATH, damages, EVENTS_TAG)
+        events.check_precip_dataset(PRECIP_DATASET)
 
         damages.link_with_events(events, criteria=criteria, filename=filename,
                                  window_days=window_days)

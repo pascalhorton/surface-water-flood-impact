@@ -136,3 +136,15 @@ config.yaml
 *.png
 *.pickle
 *.parquet
+*.keras
+**_1.py
+**_2.py
+**_3.py
+**_4.py
+**_5.py
+**_6.py
+**_7.py
+**_8.py
+**_9.py
+**_10.py
+.claude/

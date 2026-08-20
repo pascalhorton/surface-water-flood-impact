@@ -4,9 +4,15 @@ Class to define the options for the Transformer-based impact function.
 from .impact_dl_options import ImpactDlOptions
 
 import copy
+import logging
 import argparse
+import keras
 
 
+logger = logging.getLogger(__name__)
+
+
+@keras.saving.register_keras_serializable(package="swafi")
 class ImpactTransformerOptions(ImpactDlOptions):
     """
     The Transformer Deep Learning Impact class options.
@@ -79,7 +85,37 @@ class ImpactTransformerOptions(ImpactDlOptions):
             The copy of the object.
         """
         return copy.deepcopy(self)
-    
+
+    def get_config(self):
+        """
+        Keras serialization hook.
+        Return a JSON-serializable config dict of all public option attributes.
+        We exclude the argparse parser object and any private ("_" prefixed) attributes.
+        """
+        skip_keys = {"parser"}
+        cfg = {}
+        for k, v in self.__dict__.items():
+            if k.startswith('_') or k in skip_keys:
+                continue
+            if isinstance(v, (type(None), bool, int, float, str, list, tuple, dict)):
+                cfg[k] = list(v) if isinstance(v, tuple) else v
+            else:
+                cfg[k] = repr(v)
+        return cfg
+
+    @classmethod
+    def from_config(cls, config):
+        """
+        Keras deserialization hook.
+        """
+        obj = cls()
+        for k, v in config.items():
+            try:
+                setattr(obj, k, v)
+            except Exception:
+                pass
+        return obj
+
     def _set_parser_arguments(self):
         """
         Set the parser arguments.
@@ -91,7 +127,7 @@ class ImpactTransformerOptions(ImpactDlOptions):
             "--precip-hf-time-step", type=int, default=60,
             help="The time step for the high-frequency precipitation [min].")
         self.parser.add_argument(
-            "--precip-hf-days-before", type=int, default=3,
+            "--precip-hf-days-before", type=int, default=2,
             help="The number of days before the event to use for the high-frequency precipitation.")
         self.parser.add_argument(
             "--precip-hf-days-after", type=int, default=1,
@@ -103,7 +139,7 @@ class ImpactTransformerOptions(ImpactDlOptions):
             "--embeddings-2-layers", action=argparse.BooleanOptionalAction,
             default=False, help="Whether to use two dense layers for the embeddings.")
         self.parser.add_argument(
-            "--embeddings-activation", type=str, default="elu",
+            "--embeddings-activation", type=str, default="relu",
             help="The activation function for the embeddings.")
         self.parser.add_argument(
             "--use-single-attributes-vector", action=argparse.BooleanOptionalAction,
@@ -118,19 +154,19 @@ class ImpactTransformerOptions(ImpactDlOptions):
             "--use-cnn-in-tx", action=argparse.BooleanOptionalAction, default=False,
             help="Whether to use a CNN in the transformer instead of the dense layers.")
         self.parser.add_argument(
-            "--nb-transformer-blocks", type=int, default=3,
+            "--nb-transformer-blocks", type=int, default=2,
             help="The number of transformer blocks.")
         self.parser.add_argument(
-            "--tx-model-dim", type=int, default=128,
+            "--tx-model-dim", type=int, default=64,
             help="The model dimension.")
         self.parser.add_argument(
-            "--num-heads", type=int, default=8,
+            "--num-heads", type=int, default=4,
             help="The number of heads.")
         self.parser.add_argument(
-            "--ff-dim", type=int, default=32,
+            "--ff-dim", type=int, default=64,
             help="The feed-forward dimension.")
         self.parser.add_argument(
-            "--dropout-rate", type=float, default=0.4,
+            "--dropout-rate", type=float, default=0.3,
             help="The dropout rate.")
 
     def parse_args(self):
@@ -158,7 +194,7 @@ class ImpactTransformerOptions(ImpactDlOptions):
         self.dropout_rate = args.dropout_rate
 
         if self.optimize_with_optuna:
-            print("Optimizing with Optuna; some options will be ignored.")
+            logger.info("Optimizing with Optuna; some options will be ignored.")
 
     def generate_for_optuna(self, trial, hp_to_optimize='default'):
         """
@@ -257,7 +293,7 @@ class ImpactTransformerOptions(ImpactDlOptions):
                 "ff_dim", [16, 32, 64, 128])
         if 'dropout_rate' in hp_to_optimize:
             self.dropout_rate = trial.suggest_uniform(
-                "dropout_rate", 0.1, 0.5)
+                "dropout_rate", 0.0, 0.4)
 
         return True
 
@@ -270,32 +306,32 @@ class ImpactTransformerOptions(ImpactDlOptions):
         show_optuna_params: bool
             Whether to show the Optuna parameters or not.
         """
-        print("-" * 80)
+        logger.info("-" * 80)
         self._print_shared_options(show_optuna_params)
-        print("Transformer-specific options:")
+        logger.info("Transformer-specific options:")
 
         if self.optimize_with_optuna and not show_optuna_params:
-            print("-" * 80)
+            logger.info("-" * 80)
             return
 
-        print("- precip_daily_days_nb:", self.precip_daily_days_nb)
-        print("- precip_hf_time_step:", self.precip_hf_time_step)
-        print("- precip_hf_days_before:", self.precip_hf_days_before)
-        print("- precip_hf_days_after:", self.precip_hf_days_after)
-        print("- architecture:", self.architecture)
-        print("- inner_activation_tx:", self.inner_activation_tx)
-        print("- use_cnn_in_tx:", self.use_cnn_in_tx)
-        print("- embeddings_2_layers:", self.embeddings_2_layers)
-        print("- embeddings_activation:", self.embeddings_activation)
-        print("- use_single_attributes_vector:", self.use_single_attributes_vector)
-        print("- use_precip_type_embedding:", self.use_precip_type_embedding)
-        print("- nb_transformer_blocks:", self.nb_transformer_blocks)
-        print("- tx_model_dim:", self.tx_model_dim)
-        print("- num_heads:", self.num_heads)
-        print("- ff_dim:", self.ff_dim)
-        print("- dropout_rate:", self.dropout_rate)
+        logger.info("- precip_daily_days_nb: %s", self.precip_daily_days_nb)
+        logger.info("- precip_hf_time_step: %s", self.precip_hf_time_step)
+        logger.info("- precip_hf_days_before: %s", self.precip_hf_days_before)
+        logger.info("- precip_hf_days_after: %s", self.precip_hf_days_after)
+        logger.info("- architecture: %s", self.architecture)
+        logger.info("- inner_activation_tx: %s", self.inner_activation_tx)
+        logger.info("- use_cnn_in_tx: %s", self.use_cnn_in_tx)
+        logger.info("- embeddings_2_layers: %s", self.embeddings_2_layers)
+        logger.info("- embeddings_activation: %s", self.embeddings_activation)
+        logger.info("- use_single_attributes_vector: %s", self.use_single_attributes_vector)
+        logger.info("- use_precip_type_embedding: %s", self.use_precip_type_embedding)
+        logger.info("- nb_transformer_blocks: %s", self.nb_transformer_blocks)
+        logger.info("- tx_model_dim: %s", self.tx_model_dim)
+        logger.info("- num_heads: %s", self.num_heads)
+        logger.info("- ff_dim: %s", self.ff_dim)
+        logger.info("- dropout_rate: %s", self.dropout_rate)
 
-        print("-" * 80)
+        logger.info("-" * 80)
 
     def is_ok(self):
         """

@@ -2,6 +2,7 @@
 Class to handle all exposure and claims.
 """
 
+import logging
 import pickle
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -9,6 +10,7 @@ from pathlib import Path
 import rasterio
 import numpy as np
 import pandas as pd
+import xarray as xr
 from tqdm import tqdm
 
 try:
@@ -20,6 +22,12 @@ from .config import Config
 from .domain import Domain
 
 config = Config()
+
+# Temporal window for claim-event matching (hours relative to the claim day at 0 h)
+SIMPLE_EVENT_HOURS_BEFORE = 8
+SIMPLE_EVENT_HOURS_AFTER = 26
+
+logger = logging.getLogger(__name__)
 
 
 class Damages:
@@ -85,7 +93,7 @@ class Damages:
             The path to the directory containing the files.
         """
         if self.use_dump and self.mask['mask'].size > 0:
-            print("Exposure files reloaded from pickle file.")
+            logger.info("Exposure files reloaded from pickle file.")
             return
 
         if not directory:
@@ -116,7 +124,7 @@ class Damages:
             The path to the directory containing the files.
         """
         if self.use_dump and not self.claims.empty:
-            print("Claims reloaded from pickle file.")
+            logger.info("Claims reloaded from pickle file.")
             return
 
         if not directory:
@@ -147,8 +155,8 @@ class Damages:
         """
         Select all the damage categories.
         """
-        self.exposure['selection'] = self.exposure[self.claim_categories].sum(axis=1)
-        self.claims['selection'] = self.claims[self.exposure_categories].sum(axis=1)
+        self.exposure['selection'] = self.exposure[self.exposure_categories].sum(axis=1)
+        self.claims['selection'] = self.claims[self.claim_categories].sum(axis=1)
 
     def exposure_categories_are_for_type(self, types):
         """
@@ -246,7 +254,7 @@ class Damages:
         """
         self.exposure['selection'] = self.exposure[categories].sum(axis=1)
 
-    def link_with_events(self, events, criteria=None, window_days=None,
+    def link_with_events(self, events, method='simple', criteria=None, window_days=None,
                          filename=None):
         """
         Link the damages with the events.
@@ -255,6 +263,8 @@ class Damages:
         ----------
         events: Events instance
             An object containing the events properties.
+        method: str
+            The method to use for the events extraction. Can be 'simple' or 'classic'.
         criteria: list (optional)
             A list of the criteria to consider for the matching.
             Default to ['i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt']
@@ -277,49 +287,103 @@ class Damages:
         -------
         The list of events to remove from the events dataframe
         """
-        if window_days is None:
-            window_days = [5, 3, 1]
-        if criteria is None:
-            criteria = ['i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt']
+        events_to_remove = []
         if filename is None:
             filename = f'damages_{self.name}_matched.pickle'
 
-        self._add_event_matching_fields(events, window_days, criteria)
-        stats = dict(none=0, single=0, two=0, three=0, multiple=0,
-                     conflicts=0, unresolved=0)
+        if method == 'classic':
+            if window_days is None:
+                window_days = [5, 3, 1]
+            if criteria is None:
+                criteria = ['i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt']
+            # Sorted copy: do not mutate the caller's list
+            window_days = sorted(window_days, reverse=True)
 
-        events_to_remove = []
+            self._add_event_matching_fields(events, window_days, criteria)
+            stats = dict(none=0, single=0, two=0, three=0, multiple=0,
+                         conflicts=0, unresolved=0)
 
-        for i_claim in tqdm(range(len(self.claims)), desc=f"Matching claims / events"):
-            claim = self.claims.iloc[i_claim]
+            # Group the events per cell (sorted by start date): the candidate
+            # lookup per claim is then a binary search instead of a scan of
+            # the whole events dataframe.
+            events_by_cid = self._group_events_by_cid(events.events, 'e_start')
+            max_duration = (events.events['e_end'] - events.events['e_start']).max()
 
-            # Get potential events
-            pot_events = self._get_potential_events(claim, events, window_days)
-            self._record_stat_candidates(stats, pot_events)
+            for i_claim in tqdm(range(len(self.claims)), desc=f"Matching claim/events"):
+                claim = self.claims.iloc[i_claim]
 
-            if pot_events is None:
-                continue
+                # Get potential events
+                pot_events = self._get_potential_classic_events(
+                    claim, events_by_cid, window_days, max_duration)
+                self._record_stat_candidates(stats, pot_events)
 
-            # Assign points for all windows and criteria
-            self._compute_match_score(claim, criteria, pot_events, window_days)
+                if pot_events is None:
+                    continue
 
-            # Getting the best event matches
-            best_matches = self._get_best_candidate(pot_events, window_days, stats)
-            self._record_best_event(best_matches, i_claim)
+                # Assign points for all windows and criteria
+                self._compute_match_score(claim, criteria, pot_events, window_days)
 
-            # Remove the events that have been matched
-            if len(pot_events) > 1:
-                ev_to_remove = pot_events.eid.tolist()
-                best_eid = best_matches.eid.tolist()[0]
-                ev_to_remove.remove(best_eid)
-                events_to_remove.extend(ev_to_remove)
+                # Getting the best event matches
+                best_matches = self._get_best_candidate(pot_events, window_days, stats)
+                self._record_best_event(best_matches, i_claim)
 
-        # Check again that the events to remove were not selected in the claims
-        events_to_remove = [ev for ev in events_to_remove if
-                            ev not in self.claims.eid.tolist()]
-        print(f"Events to remove due to claim/event link: {len(events_to_remove)}")
+                # Remove the events that have been matched
+                if len(pot_events) > 1:
+                    ev_to_remove = pot_events.eid.tolist()
+                    best_eid = best_matches.eid.tolist()[0]
+                    ev_to_remove.remove(best_eid)
+                    events_to_remove.extend(ev_to_remove)
 
-        self._print_matches_stats(stats)
+            # Check again that the events to remove were not selected in the claims
+            claim_eids = set(self.claims['eid'].tolist())
+            events_to_remove = [ev for ev in events_to_remove if
+                                ev not in claim_eids]
+            logger.info("Events to remove due to claim/event link: %s", len(events_to_remove))
+
+            self._print_matches_stats(stats)
+
+        elif method == 'simple':
+            stats = dict(none=0, single=0, two=0, three=0, multiple=0)
+
+            # The 'eid' column must exist (as int) before the loop: otherwise
+            # the .at setter creates a float column where unmatched claims end
+            # up as NaN, which the eid != 0 filter below would keep.
+            self.claims.reset_index(inplace=True, drop=True)
+            self.claims['eid'] = 0
+
+            # Group the events per cell (sorted by i_max_date) for fast lookup
+            events_by_cid = self._group_events_by_cid(events.events, 'i_max_date')
+
+            for i_claim in tqdm(range(len(self.claims)), desc=f"Matching claim/events"):
+                claim = self.claims.iloc[i_claim]
+
+                # Get potential events
+                pot_events = self._get_potential_simple_events(claim, events_by_cid)
+                self._record_stat_candidates(stats, pot_events)
+
+                if pot_events is None:
+                    continue
+
+                best_match = self._get_best_candidate_simple(pot_events, claim)
+                self.claims.at[i_claim, 'eid'] = best_match.eid
+
+                # Remove the events that have been matched
+                if len(pot_events) > 1:
+                    ev_to_remove = pot_events.eid.tolist()
+                    ev_to_remove.remove(best_match.eid)
+                    events_to_remove.extend(ev_to_remove)
+
+            # Check again that the events to remove were not selected in the claims
+            claim_eids = set(self.claims['eid'].tolist())
+            events_to_remove = [ev for ev in events_to_remove if
+                                ev not in claim_eids]
+            logger.info("Events to remove due to claim/event link: %s", len(events_to_remove))
+
+            self._print_matches_stats(stats)
+
+        else:
+            raise ValueError(f"Unknown method: {method}")
+
         self._remove_claims_with_no_event()
         self._dump_object(filename)
 
@@ -368,6 +432,136 @@ class Damages:
         claims = self.claims
         midpoint_date = claims.e_start + (claims.e_end - claims.e_start) / 2
         self.claims[field_name] = (midpoint_date - claims.date_claim).dt.days
+
+    def to_xarray(self, save_to_nc=True, removed_claims=None):
+        """
+        Convert the exposure and claims dataframes to xarray datasets.
+
+        Parameters
+        ----------
+        save_to_nc: bool
+            Whether to save the datasets to netCDF4 files. Default is True.
+        removed_claims: DataFrame
+            The claims that have been removed from the dataset when selecting
+            the claim categories.
+
+        Returns
+        -------
+        xr.Dataset
+            The xarray dataset containing the exposure and claims data.
+        """
+        # Pickle file path
+        pickle_path = Path(self.pickles_dir) / f'damages_{self.name}_{self.year_start}_{self.year_end}_xr.pickle'
+        if self.use_dump and pickle_path.exists():
+            with open(pickle_path, 'rb') as f:
+                claims_ds = pickle.load(f)
+            logger.info("Claims datasets reloaded from pickle file: %s", pickle_path)
+            return claims_ds
+
+        # Create daily time axis
+        time = pd.date_range(
+            start=f"{self.year_start}-01-01",
+            end=f"{self.year_end}-12-31",
+            freq="D"
+        )
+
+        # Get spatial axes
+        xs = self.domain.get_x_axis()
+        ys = self.domain.get_y_axis()
+
+        # Numpy buffers (wrapped into DataArrays at the end)
+        claims_np = np.full((len(time), len(ys), len(xs)), np.nan, dtype=np.float32)
+        exposure_np = np.full_like(claims_np, np.nan)
+
+        # Set values to 0 where there is exposure (vectorized per year)
+        exposure = self.exposure[self.exposure['selection'] != 0]
+        if not exposure.empty:
+            exp_x = self._nearest_axis_indices(xs, exposure['x'].to_numpy())
+            exp_y = self._nearest_axis_indices(ys, exposure['y'].to_numpy())
+            exp_values = exposure['selection'].to_numpy()
+            for year, rows in exposure.groupby('year').indices.items():
+                t_sel = np.where(time.year == year)[0]
+                if t_sel.size == 0:
+                    continue
+                exposure_np[t_sel[:, None], exp_y[rows][None, :],
+                            exp_x[rows][None, :]] = exp_values[rows][None, :]
+                claims_np[t_sel[:, None], exp_y[rows][None, :],
+                          exp_x[rows][None, :]] = 0.0
+
+        def _scatter_claims(target, claims_df, values):
+            t_idx = time.searchsorted(pd.to_datetime(claims_df['date_claim']))
+            x_idx = self._nearest_axis_indices(xs, claims_df['x'].to_numpy())
+            y_idx = self._nearest_axis_indices(ys, claims_df['y'].to_numpy())
+            in_range = t_idx < len(time)
+            target[t_idx[in_range], y_idx[in_range], x_idx[in_range]] = \
+                values[in_range]
+
+        # Place each claim's selection value
+        if not self.claims.empty:
+            _scatter_claims(claims_np, self.claims,
+                            self.claims['selection'].to_numpy())
+
+        coords = {"time": time, "y": ys, "x": xs}
+        dims = ["time", "y", "x"]
+        claims_da = xr.DataArray(claims_np, coords=coords, dims=dims, name="claims")
+        exposure_da = xr.DataArray(exposure_np, coords=coords, dims=dims,
+                                   name="exposure")
+
+        # Combine into a single dataset
+        xr_ds = xr.Dataset({"claims": claims_da, "exposure": exposure_da})
+        if removed_claims is not None and not removed_claims.empty:
+            removed_np = np.full_like(claims_np, np.nan)
+            _scatter_claims(removed_np, removed_claims,
+                            np.ones(len(removed_claims), dtype=np.float32))
+            xr_ds["removed_claims"] = xr.DataArray(
+                removed_np, coords=coords, dims=dims, name="removed_claims")
+        xr_ds.attrs['year_start'] = self.year_start
+        xr_ds.attrs['year_end'] = self.year_end
+        xr_ds.attrs['exposure_categories'] = self.selected_exposure_categories
+        xr_ds.attrs['claim_categories'] = self.selected_claim_categories
+        xr_ds.attrs['dataset_name'] = self.name
+        xr_ds.attrs['creation_date'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        xr_ds.attrs['source'] = 'Generated by SWAFI damages.to_xarray()'
+
+        # Save to pickle
+        if self.use_dump:
+            with open(pickle_path, 'wb') as f:
+                pickle.dump(xr_ds, f)
+            logger.info("Claims datasets saved to pickle file: %s", pickle_path)
+
+        # Save to netCDF4
+        if save_to_nc and nc4 is not None:
+            netcdf_path = Path(self.pickles_dir) / f'damages_{self.name}_{self.year_start}_{self.year_end}.nc'
+            xr_ds.to_netcdf(netcdf_path)
+            logger.info("Claims datasets saved to netCDF4 file: %s", netcdf_path)
+
+        return xr_ds
+
+    def from_nc_file(self, filepath):
+        """
+        Load the exposure and claims data from a netCDF4 file.
+
+        Parameters
+        ----------
+        filepath: str
+            The path to the netCDF4 file.
+
+        Returns
+        -------
+        xr.Dataset
+            The xarray dataset containing the exposure and claims data.
+        """
+        if nc4 is None:
+            raise ImportError("netCDF4 is not installed. Cannot read netCDF files.")
+
+        xr_ds = xr.open_dataset(filepath)
+        self.year_start = xr_ds.attrs.get('year_start', self.year_start)
+        self.year_end = xr_ds.attrs.get('year_end', self.year_end)
+        self.selected_exposure_categories = xr_ds.attrs.get('exposure_categories', [])
+        self.selected_claim_categories = xr_ds.attrs.get('claim_categories', [])
+        self.name = xr_ds.attrs.get('dataset_name', self.name)
+
+        return xr_ds
 
     def _create_exposure_claims_df(self):
         self.exposure = pd.DataFrame(
@@ -476,6 +670,27 @@ class Damages:
 
         return best_matches
 
+    def _get_best_candidate_simple(self, pot_events, claim):
+        if len(pot_events) == 1:
+            return pot_events.iloc[0]
+
+        else:  # 2 or more potential events
+            # Select the event(s) with the highest i_max
+            best_idx = pot_events.i_max.idxmax()
+            best_events = pot_events[pot_events.i_max == pot_events.loc[best_idx].i_max]
+            if len(best_events) == 1:
+                return best_events.iloc[0]
+
+            # If multiple events have the same i_max, keep the claim date
+            best_event = best_events[best_events.e_date == claim.date_claim.floor('D')]
+            if best_event.empty:
+                # Return the closest event to the claim date
+                best_events['date_diff'] = (best_events.e_date - claim.date_claim).abs()
+                best_event = best_events.loc[best_events.date_diff.idxmin()]
+                return best_event
+
+            return best_event.iloc[0]
+
     def _record_best_event(self, best_matches, i_claim):
         self.claims.at[i_claim, 'eid'] = best_matches.iloc[0].eid
         self.claims.at[i_claim, 'e_search_window'] = best_matches.iloc[0].min_window
@@ -496,9 +711,9 @@ class Damages:
                     continue
                 within_window = pot_events['min_window'] <= window
                 val_max = pot_events.loc[within_window, criterion].max()
+                if pd.isna(val_max):
+                    continue  # no event within this window for this criterion
                 with_max_val = pot_events[criterion] == val_max
-                if with_max_val.empty:
-                    continue
                 field_name = f'{criterion}_{window}'
                 pot_events.loc[within_window & with_max_val, field_name] = 1
                 pot_events.loc[within_window & with_max_val, 'match_score'] += 1
@@ -518,14 +733,15 @@ class Damages:
 
     @staticmethod
     def _print_matches_stats(stats):
-        print(f"Stats of the events / damage matches:")
-        print(f"- {stats['none']} claims could not be matched")
-        print(f"- {stats['single']} claims had 1 candidate event")
-        print(f"- {stats['two']} claims had 2 candidate events")
-        print(f"- {stats['three']} claims had 3 candidate events")
-        print(f"- {stats['multiple']} claims had more candidate event")
-        print(f"- {stats['conflicts']} claims had conflicts")
-        print(f"- {stats['unresolved']} matching were unresolved (first event taken)")
+        logger.info("Stats of the events / damage matches:")
+        logger.info("- %s claims could not be matched", stats['none'])
+        logger.info("- %s claims had 1 candidate event", stats['single'])
+        logger.info("- %s claims had 2 candidate events", stats['two'])
+        logger.info("- %s claims had 3 candidate events", stats['three'])
+        logger.info("- %s claims had more candidate event", stats['multiple'])
+        if 'conflicts' in stats:
+            logger.info("- %s claims had conflicts", stats['conflicts'])
+            logger.info("- %s matching were unresolved (first event taken)", stats['unresolved'])
 
     @staticmethod
     def _compute_temporal_overlap(date_claim, pot_events, window):
@@ -553,23 +769,44 @@ class Damages:
                 pot_events.at[i, 'prior'] = 1
 
     @staticmethod
-    def _get_potential_events(claim, events, window_days):
+    def _group_events_by_cid(events_df, sort_field):
         """
-        Get all potential events based on the CID and the date.
+        Group the events per cell, sorted by the given date field. Built once
+        before the matching loop so that the per-claim candidate lookup is a
+        binary search within the cell instead of a scan of all events.
         """
-        cid = claim['cid']
+        return {cid: group.sort_values(sort_field)
+                for cid, group in events_df.groupby('cid', sort=False)}
+
+    @staticmethod
+    def _get_potential_classic_events(claim, events_by_cid, window_days,
+                                      max_duration):
+        """
+        Get all potential events based on the CID and the date. The events must
+        be grouped per cell and sorted by e_start (see _group_events_by_cid);
+        window_days must be sorted in decreasing order; max_duration is the
+        longest event duration (bounds the e_start search range).
+        """
+        cid_events = events_by_cid.get(claim['cid'])
+        if cid_events is None:
+            return None
+
         date_claim = claim['date_claim']
 
         # Define the starting and ending dates of the longest temporal window
-        window_days.sort(reverse=True)
         date_window_end, date_window_start = Damages._get_window_dates(
-            date_claim, max(window_days))
+            date_claim, window_days[0])
 
-        # Select all events in the longest temporal window
-        potential_events = events.events[
-            (events.events['cid'] == cid) &
-            (events.events['e_start'] < date_window_end) &
-            (events.events['e_end'] > date_window_start)]
+        # Select all events overlapping the longest temporal window: their
+        # e_start lies in [window start - longest duration, window end).
+        starts = cid_events['e_start'].to_numpy()
+        i0 = np.searchsorted(
+            starts, pd.Timestamp(date_window_start - max_duration).to_datetime64())
+        i1 = np.searchsorted(
+            starts, pd.Timestamp(date_window_end).to_datetime64())
+        potential_events = cid_events.iloc[i0:i1]
+        potential_events = potential_events[
+            potential_events['e_end'] > date_window_start]
 
         if len(potential_events) == 0:
             return None
@@ -587,6 +824,33 @@ class Damages:
                 'min_window'] = window
 
         return potential_events
+
+    @staticmethod
+    def _get_potential_simple_events(claim, events_by_cid):
+        """
+        Get all potential events based on the CID and the date. The events must
+        be grouped per cell and sorted by i_max_date (see _group_events_by_cid).
+        """
+        cid_events = events_by_cid.get(claim['cid'])
+        if cid_events is None:
+            return None
+
+        date_claim = claim['date_claim']
+
+        # Define the starting and ending dates of the temporal window
+        date_window_start = date_claim - timedelta(hours=SIMPLE_EVENT_HOURS_BEFORE)
+        date_window_end = date_claim + timedelta(hours=SIMPLE_EVENT_HOURS_AFTER)
+
+        # Select all events with i_max_date in the window (inclusive bounds)
+        dates = cid_events['i_max_date'].to_numpy()
+        i0 = np.searchsorted(dates, pd.Timestamp(date_window_start).to_datetime64())
+        i1 = np.searchsorted(dates, pd.Timestamp(date_window_end).to_datetime64(),
+                             side='right')
+
+        if i1 <= i0:
+            return None
+
+        return cid_events.iloc[i0:i1].copy()
 
     @staticmethod
     def _get_window_dates(date_claim, window):
@@ -613,16 +877,52 @@ class Damages:
         self.claims = pd.merge(self.claims, df_claims, how='outer',
                                on=['date_claim', 'mask_index'], validate='one_to_one')
 
+    def _extract_claims_from_grids(self, data, dates, category):
+        """
+        Vectorized extraction of the non-null claims of a (time, y, x) stack
+        into a dataframe with columns [date_claim, mask_index, category].
+        One np.nonzero call replaces the per-date _extract_non_null_claims loop.
+
+        Parameters
+        ----------
+        data: np.ndarray
+            The claim grids, shape (time, y, x).
+        dates: list
+            The dates (datetime.date) of the time axis.
+        category: str
+            The claim category (name of the value column).
+
+        Returns
+        -------
+        pd.DataFrame
+            The non-null claims.
+        """
+        assert data.ndim == 3, "Data should be 3D in _extract_claims_from_grids()."
+        if self.mask['mask'].size == 0:
+            raise RuntimeError("The mask for extraction was not defined.")
+
+        masked = data[:, self.mask['mask']]  # (time, n_masked_cells)
+        i_time, i_cell = np.nonzero(masked)
+
+        if i_time.size == 0:
+            df_claims = pd.DataFrame(
+                columns=['date_claim', 'mask_index', category]).astype('int32')
+            df_claims['date_claim'] = pd.to_datetime(df_claims['date_claim'])
+            return df_claims
+
+        return pd.DataFrame({
+            'date_claim': np.asarray(dates, dtype=object)[i_time],
+            'mask_index': i_cell.astype('int32'),
+            category: np.asarray(masked[i_time, i_cell]),
+        })
+
     def _extract_non_null_claims(self, data):
         """
         Extracts the cells with at least 1 claim.
         """
         # Extract the pixels where the catalog is not null
-        assert data.ndim == 2, f"Data should be 3D in _extract_non_null_claims()."
+        assert data.ndim == 2, f"Data should be 2D in _extract_non_null_claims()."
         extracted = np.extract(self.mask['mask'], data[:, :])
-        if data.sum() != extracted.sum():
-            raise RuntimeError(
-                f"Missed claims during extraction: {data.sum() - extracted.sum()}")
 
         # Get non null data
         indices = np.nonzero(extracted)[0]
@@ -676,7 +976,7 @@ class Damages:
         """
         Check shape consistency with other files.
         """
-        assert data.ndim == 2, f"Data should be 3D in _check_shape()."
+        assert data.ndim == 2, f"Data should be 2D in _check_shape()."
         if self.mask['shape'] is None:
             self.mask['shape'] = data.shape
         elif self.mask['shape'] != data.shape:
@@ -698,14 +998,47 @@ class Damages:
         xs_mask = np.extract(self.mask['mask'], self.mask['xs'])
         ys_mask = np.extract(self.mask['mask'], self.mask['ys'])
 
-        cids = np.ones(len(xs_mask)) * np.nan
         xs_cid = self.domain.cids['xs'][0, :]
         ys_cid = self.domain.cids['ys'][:, 0]
 
-        for i, (x, y) in enumerate(zip(xs_mask, ys_mask)):
-            cids[i] = self.domain.cids['ids_map'][ys_cid == y, xs_cid == x]
+        # Vectorized exact-match lookup of the coordinates on the CID axes
+        x_idx = self._match_axis_indices(xs_cid, xs_mask, 'x')
+        y_idx = self._match_axis_indices(ys_cid, ys_mask, 'y')
 
-        self.cids_list = cids
+        self.cids_list = self.domain.cids['ids_map'][y_idx, x_idx].astype(float)
+
+    @staticmethod
+    def _nearest_axis_indices(axis, values):
+        """
+        Vectorized equivalent of argmin(|axis - v|) for each value, on a
+        monotonic (ascending or descending) axis.
+        """
+        axis = np.asarray(axis, dtype='float64')
+        values = np.asarray(values, dtype='float64')
+        ascending = axis[0] <= axis[-1]
+        axis_asc = axis if ascending else axis[::-1]
+        pos = np.clip(np.searchsorted(axis_asc, values), 1, len(axis_asc) - 1)
+        take_left = (np.abs(values - axis_asc[pos - 1])
+                     <= np.abs(values - axis_asc[pos]))
+        idx = np.where(take_left, pos - 1, pos)
+        return idx if ascending else len(axis) - 1 - idx
+
+    @staticmethod
+    def _match_axis_indices(axis, values, what):
+        """
+        Vectorized index lookup of exact coordinate values on a monotonic axis.
+        """
+        axis = np.asarray(axis)
+        values = np.asarray(values)
+        ascending = axis[0] <= axis[-1]
+        axis_asc = axis if ascending else axis[::-1]
+        pos = np.searchsorted(axis_asc, values)
+        pos = np.clip(pos, 0, len(axis_asc) - 1)
+        matched = axis_asc[pos] == values
+        if not matched.all():
+            bad = values[np.argmax(~matched)]
+            raise RuntimeError(f"No CID found for coordinate {what}={bad}.")
+        return pos if ascending else len(axis) - 1 - pos
 
     def _extract_data_with_mask(self, data):
         """
@@ -745,7 +1078,7 @@ class Damages:
         if not self.use_dump:
             return
         if filename is None:
-            filename = f'damages_{self.name}.pickle'
+            filename = f'damages_{self.name}_{self.year_start}-{self.year_end}.pickle'
         file_path = Path(self.pickles_dir + '/' + filename)
         with open(file_path, 'wb') as f:
             pickle.dump(self, f)
