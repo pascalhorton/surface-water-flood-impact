@@ -103,6 +103,7 @@ class ImpactDlOptions(ImpactBasicOptions):
         self.lr_method = None
         self.lr_warmup_epochs = None
         self.early_stopping_metric = None
+        self.early_stopping_patience = None
         self.loss_function = None
         self.use_poisson_head = None
         self.jit_compile = False
@@ -243,6 +244,14 @@ class ImpactDlOptions(ImpactBasicOptions):
             help='Metric to monitor for early stopping (default: val_PR_AUC)'
         )
         self.parser.add_argument(
+            '--early-stopping-patience',
+            type=int,
+            default=20,
+            help='Epochs without improvement of --early-stopping-metric before '
+                 'training stops. The best weights are restored either way, so '
+                 'this only bounds how long a plateau is tolerated.'
+        )
+        self.parser.add_argument(
             '--loss-function',
             type=str,
             default='focal',
@@ -380,6 +389,7 @@ class ImpactDlOptions(ImpactBasicOptions):
         self.lr_method = args.lr_method
         self.lr_warmup_epochs = args.lr_warmup_epochs
         self.early_stopping_metric = args.early_stopping_metric
+        self.early_stopping_patience = args.early_stopping_patience
         self.loss_function = args.loss_function
         self.use_poisson_head = args.use_poisson_head
         self.jit_compile = args.jit_compile
@@ -518,6 +528,7 @@ class ImpactDlOptions(ImpactBasicOptions):
         if self.lr_method == 'cosine_decay_warmup':
             logger.info("- lr_warmup_epochs:  %s", self.lr_warmup_epochs)
         logger.info("- early_stopping_metric:  %s", self.early_stopping_metric)
+        logger.info("- early_stopping_patience:  %s", self.early_stopping_patience)
         logger.info("- dropout_rate_dense:  %s", self.dropout_rate_dense)
         logger.info("- use_batchnorm_dense:  %s", self.use_batchnorm_dense)
         logger.info("- use_layernorm_dense:  %s", self.use_layernorm_dense)

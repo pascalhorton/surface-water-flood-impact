@@ -174,14 +174,15 @@ class ImpactDl(Impact):
 
         # Early stopping callbacks — ResumableEarlyStopping restores best/wait on resume
         es_monitor = self.options.early_stopping_metric
+        es_patience = getattr(self.options, 'early_stopping_patience', 20) or 20
         early_stopping_main = ResumableEarlyStopping(
-            monitor=es_monitor, patience=40, verbose=1,
+            monitor=es_monitor, patience=es_patience, verbose=1,
             restore_best_weights=True, mode='max',
             initial_best=initial_best_val_csi if resuming else None,
             initial_wait=resume_meta['early_stopping_wait'] if resuming else 0)
         # Fallback: stop if CSI drops to near-zero and stays there
         early_stopping_no_skill = CustomEarlyStopping(
-            monitor='val_csi', patience=30, min_value=0.00001)
+            monitor='val_csi', patience=10, min_value=0.00001)
         if resuming:
             early_stopping_no_skill.wait = resume_meta['no_skill_wait']
 
@@ -950,7 +951,7 @@ keras.saving.get_custom_objects()['WarmupCosineDecay'] = WarmupCosineDecay
 
 # Define a custom early stopping callback to stop when the CSI is almost 0
 class CustomEarlyStopping(keras.callbacks.Callback):
-    def __init__(self, monitor='val_csi', patience=30, min_value=0.00001):
+    def __init__(self, monitor='val_csi', patience=20, min_value=0.00001):
         super(CustomEarlyStopping, self).__init__()
         self.monitor = monitor
         self.patience = patience
