@@ -2,21 +2,31 @@
 Class for the Transformer model.
 """
 
+import logging
+
 from keras import layers, models
 import keras
 import tensorflow as tf
 import numpy as np
 
 
+logger = logging.getLogger(__name__)
+
+
+@keras.saving.register_keras_serializable(package="swafi")
 class ModelTransformer(models.Model):
     """
     Transformer model factory.
 
     Parameters
     ----------
+    trainable: bool
+        Whether the model is trainable.
+    dtype: str|None
+        The data type.
     task: str
         The task. Options are: 'regression', 'classification'
-    options: ImpactTransformerOptions
+    options: ImpactTransformerOptions|None
         The options.
     input_daily_prec_size: int, None
         The size of the daily precipitation data.
@@ -24,11 +34,16 @@ class ModelTransformer(models.Model):
         The size of the high-frequency precipitation data.
     input_attributes_size: int, None
         The input 1D size.
+    output_bias_init: float
+        The bias initialisation of the output layer.
+    **kwargs
+        Additional arguments to pass to keras.models.Model.
     """
 
-    def __init__(self, task, options, input_daily_prec_size, input_high_freq_prec_size,
-                 input_attributes_size, output_bias_init=0.0):
-        super().__init__()
+    def __init__(self, trainable=True, dtype=None, task='classification', options=None,
+                 input_daily_prec_size=None, input_high_freq_prec_size=None,
+                 input_attributes_size=None, output_bias_init=0.0, **kwargs):
+        super().__init__(trainable=trainable, dtype=dtype, **kwargs)
         self.model = None
         self.task = task
         self.options = options
@@ -39,7 +54,73 @@ class ModelTransformer(models.Model):
 
         self.last_activation = 'relu' if task == 'regression' else 'sigmoid'
 
-        self._build_model()
+        # Deserialization creates an empty shell and restores the inner graph from
+        # its saved config instead (see from_config).
+        if options is not None and input_attributes_size is not None:
+            self._build_model()
+
+    def get_config(self):
+        """
+        Return a serializable config for this wrapper.
+        """
+        try:
+            base_config = super().get_config()
+        except NotImplementedError:
+            base_config = {"name": self.name, "trainable": self.trainable}
+
+        options_cfg = (keras.saving.serialize_keras_object(self.options)
+                       if self.options is not None else None)
+
+        config = {
+            "task": self.task,
+            "options": options_cfg,
+            "input_daily_prec_size": self.input_daily_prec_size,
+            "input_high_freq_prec_size": self.input_high_freq_prec_size,
+            "input_attributes_size": self.input_attributes_size,
+            "output_bias_init": self.output_bias_init,
+            # The projection layers get random names, so the inner graph has to be
+            # restored from its own config: rebuilding it from the options would
+            # give layer names that no longer match the saved weights.
+            "inner_model_config": (self.model.get_config()
+                                   if self.model is not None else None),
+        }
+
+        return {**base_config, **config}
+
+    @classmethod
+    def from_config(cls, config):
+        """
+        Recreate the wrapper and restore the internal Keras model.
+        Keras will call this when deserializing the custom object.
+        """
+        options_cfg = config.get("options", None)
+        options = None
+        if options_cfg is not None:
+            try:
+                options = keras.saving.deserialize_keras_object(options_cfg)
+            except Exception:
+                logger.warning("Could not deserialize the Transformer options.")
+
+        # Create an empty shell: the inner model is restored below, not rebuilt.
+        instance = cls(trainable=config.get("trainable", True),
+                       dtype=config.get("dtype", None))
+        instance.task = config.get("task", 'classification')
+        instance.options = options
+        instance.input_daily_prec_size = config.get("input_daily_prec_size", None)
+        instance.input_high_freq_prec_size = config.get(
+            "input_high_freq_prec_size", None)
+        instance.input_attributes_size = config.get("input_attributes_size", None)
+        instance.output_bias_init = config.get("output_bias_init", 0.0)
+        instance.last_activation = (
+            'relu' if instance.task == 'regression' else 'sigmoid')
+
+        inner_config = config.get("inner_model_config", None)
+        if inner_config is not None:
+            instance.model = models.Model.from_config(inner_config)
+        elif options is not None and instance.input_attributes_size is not None:
+            instance._build_model()
+
+        return instance
 
     def _build_model(self):
         """
@@ -346,22 +427,69 @@ class ModelTransformer(models.Model):
 
 
 
+@keras.saving.register_keras_serializable(package="swafi")
 class AddLearnedPositionalEmbedding(layers.Layer):
     """
     learned positional embedding layer.
     """
     def __init__(self, model_dim, daily_prec_size, high_freq_prec_size,
-                 embeddings_activation, embeddings_2_layers, use_flag_embedding=True):
-        super().__init__()
+                 embeddings_activation=None, embeddings_2_layers=False,
+                 use_flag_embedding=True, **kwargs):
+        super().__init__(**kwargs)
         self.model_dim = model_dim
         self.daily_prec_size = daily_prec_size
         self.high_freq_prec_size = high_freq_prec_size
         self.embeddings_activation = embeddings_activation
         self.embeddings_2_layers = embeddings_2_layers
         self.use_flag_embedding = use_flag_embedding
-        self.temporal_embedding = self.get_temporal_embedding()
+
+        # The embeddings come out of randomly initialized projections, so they are
+        # kept as (non-trainable) weights: recomputing them when the model is
+        # reloaded would give a different embedding than the one trained with.
+        self.temporal_embedding = self._as_weight(
+            self.get_temporal_embedding(), 'temporal_embedding')
+        self.flag_embedding = None
         if self.use_flag_embedding:
-            self.flag_embedding = self.get_flag_embedding()
+            self.flag_embedding = self._as_weight(
+                self.get_flag_embedding(), 'flag_embedding')
+
+    def _as_weight(self, value, name):
+        """
+        Store a constant tensor as a non-trainable weight so that it is saved
+        along with the model.
+
+        Parameters
+        ----------
+        value: tensor
+            The constant tensor to store.
+        name: str
+            The name of the weight.
+
+        Returns
+        -------
+        The corresponding non-trainable weight.
+        """
+        value = tf.convert_to_tensor(value, dtype=tf.float32)
+
+        return self.add_weight(
+            shape=tuple(value.shape),
+            name=name,
+            trainable=False,
+            initializer=lambda shape, dtype=None: tf.cast(
+                value, dtype if dtype is not None else tf.float32),
+        )
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "model_dim": self.model_dim,
+            "daily_prec_size": self.daily_prec_size,
+            "high_freq_prec_size": self.high_freq_prec_size,
+            "embeddings_activation": self.embeddings_activation,
+            "embeddings_2_layers": self.embeddings_2_layers,
+            "use_flag_embedding": self.use_flag_embedding,
+        })
+        return config
 
     def get_temporal_embedding(self):
         """
@@ -457,15 +585,22 @@ class AddLearnedPositionalEmbedding(layers.Layer):
         return layers.Add()([x, embedding])
 
 
+@keras.saving.register_keras_serializable(package="swafi")
 class AddFixedPositionalEmbedding(layers.Layer):
     """
     Positional embedding layer.
     Source: https://pylessons.com/transformers-introduction
     """
-    def __init__(self, model_dim):
-        super().__init__()
+    def __init__(self, model_dim, **kwargs):
+        super().__init__(**kwargs)
         self.model_dim = model_dim
+        # Deterministic encoding: recomputing it on load gives the same values.
         self.pos_encoding = self.get_positional_encoding()
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({"model_dim": self.model_dim})
+        return config
 
     def get_positional_encoding(self, length=1024):
         """

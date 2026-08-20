@@ -6,11 +6,13 @@ from .impact_dl_options import ImpactDlOptions
 import copy
 import logging
 import argparse
+import keras
 
 
 logger = logging.getLogger(__name__)
 
 
+@keras.saving.register_keras_serializable(package="swafi")
 class ImpactTransformerOptions(ImpactDlOptions):
     """
     The Transformer Deep Learning Impact class options.
@@ -83,7 +85,37 @@ class ImpactTransformerOptions(ImpactDlOptions):
             The copy of the object.
         """
         return copy.deepcopy(self)
-    
+
+    def get_config(self):
+        """
+        Keras serialization hook.
+        Return a JSON-serializable config dict of all public option attributes.
+        We exclude the argparse parser object and any private ("_" prefixed) attributes.
+        """
+        skip_keys = {"parser"}
+        cfg = {}
+        for k, v in self.__dict__.items():
+            if k.startswith('_') or k in skip_keys:
+                continue
+            if isinstance(v, (type(None), bool, int, float, str, list, tuple, dict)):
+                cfg[k] = list(v) if isinstance(v, tuple) else v
+            else:
+                cfg[k] = repr(v)
+        return cfg
+
+    @classmethod
+    def from_config(cls, config):
+        """
+        Keras deserialization hook.
+        """
+        obj = cls()
+        for k, v in config.items():
+            try:
+                setattr(obj, k, v)
+            except Exception:
+                pass
+        return obj
+
     def _set_parser_arguments(self):
         """
         Set the parser arguments.
