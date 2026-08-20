@@ -183,14 +183,10 @@ class ImpactLstm(ImpactDl):
             std_precip = getattr(model_stats, 'std_precip', None) if model_stats is not None else None
             q99_precip = getattr(model_stats, 'q99_precip', None) if model_stats is not None else None
         else:
-            if self.options.log_transform_precip:
-                mean_precip = precip_stats['mean_log'].values
-                std_precip = precip_stats['std_log'].values
-                q99_precip = precip_stats['q99_log'].values
-            else:
-                mean_precip = precip_stats['mean'].values
-                std_precip = precip_stats['std'].values
-                q99_precip = precip_stats['q99'].values
+            suffix = '_log' if self.options.log_transform_precip else ''
+            mean_precip = self._stats_on_precip_grid(precip_stats, f'mean{suffix}')
+            std_precip = self._stats_on_precip_grid(precip_stats, f'std{suffix}')
+            q99_precip = self._stats_on_precip_grid(precip_stats, f'q99{suffix}')
 
         dg = ImpactCnnDataGenerator(
             event_props=event_props,

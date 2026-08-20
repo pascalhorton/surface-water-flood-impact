@@ -6,7 +6,6 @@ import keras
 import random
 import tensorflow as tf
 import numpy as np
-import xarray as xr
 from pathlib import Path
 
 from swafi.config import Config
@@ -17,7 +16,7 @@ from swafi.impact_dl import WeightedBinaryCrossEntropy, CriticalSuccessIndex
 from swafi.utils.logging_setup import setup_logging
 from swafi.utils.use_common import (
     assess, get_contracts_number, get_damages, get_damages_xr,
-    get_events, create_prediction_dataset, create_precipitation,
+    get_events, get_precip_stats, create_prediction_dataset, create_precipitation,
     ensure_precip_dataset, GridPredictionWriter, predict_events_in_chunks,
 )
 
@@ -25,7 +24,6 @@ logger = logging.getLogger(__name__)
 
 DO_ASSESS = True
 MODEL = R"C:\Users\phorton\Documents\SWF\outputs\model_cnn_test_30.keras"
-PRECIP_STATS_PATH = R"C:\Users\phorton\Documents\SWF\data\cpc_statistics_2005-2022.nc"
 DATASET = 'mobiliar'  # 'mobiliar' or 'gvz'
 
 config = Config()
@@ -89,14 +87,16 @@ def main():
         cnn.select_features(cnn.options.replace_simple_features)
         features = cnn.get_all_features(cnn.options.simple_feature_classes)
 
-    precip_stats = xr.open_dataset(PRECIP_STATS_PATH)
+    # None when the model carries the statistics it was trained with.
+    precip_stats = get_precip_stats(cnn_model, options)
     dg = cnn.get_data_generator_inference(
         events=events,
         features=features,
         exposure=contracts_number,
         precip_stats=precip_stats,
     )
-    precip_stats.close()
+    if precip_stats is not None:
+        precip_stats.close()
 
     writer = GridPredictionWriter(ds_pred, domain)
     writer.mask_outside_domain()

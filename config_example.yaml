@@ -41,6 +41,12 @@ DIR_PRECIP_5MIN: ''
 # scripts/data_preparation/build_precip_5min_zarr.py; needs ~20-30 GB of disk)
 PATH_PRECIP_5MIN_ZARR: ''
 
+# Path to the per-pixel precipitation statistics (written by
+# scripts/data_preparation/compute_precipitation_statistics.py). Only used at
+# inference for models saved before the training statistics were embedded in
+# the model; leave empty otherwise.
+PATH_PRECIP_STATS: ''
+
 # DEMs (with different resolutions)
 DEM_PATH: 'path/to/dem_cids.tif'
 DEM_PATHS:

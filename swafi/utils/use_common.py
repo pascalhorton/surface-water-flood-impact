@@ -305,6 +305,60 @@ def create_precipitation(precip_dataset, year_start, year_end):
     raise ValueError(f"Unknown precipitation dataset: {precip_dataset}")
 
 
+def get_precip_stats(model, options):
+    """Return the precipitation statistics to use at inference, or None.
+
+    Models trained with the current code carry the statistics they were trained
+    with (see ImpactCnn._define_model), and those are the ones to normalize with:
+    a different reference would scale the inputs differently than during
+    training. None tells the data generator to use them.
+
+    Older models have none stored. They fall back to the file pointed at by the
+    PATH_PRECIP_STATS config entry, because without any reference the generator
+    computes the statistics on the data it is given, i.e. on the test period.
+
+    Parameters
+    ----------
+    model : ModelCnn|ModelLstm
+        The loaded model.
+    options : ImpactDlOptions
+        The model options (the active precipitation transform decides which
+        statistics are needed).
+
+    Returns
+    -------
+    xr.Dataset|None
+        The statistics dataset, which the caller must close, or None to use the
+        ones embedded in the model.
+    """
+    needed = {
+        'standardize': ('mean_precip', 'std_precip'),
+        'normalize': ('q99_precip',),
+    }.get(options.transform_precip, ())
+
+    if not needed:
+        # 'cdf' (and anything else) does not read per-pixel statistics from a
+        # file: the CDF table is too large to store and is cached in TMP_DIR.
+        return None
+
+    if all(getattr(model, name, None) is not None for name in needed):
+        logger.info("Using the precipitation statistics stored in the model.")
+        return None
+
+    stats_path = config.get('PATH_PRECIP_STATS', None, False)
+    if not stats_path:
+        logger.warning(
+            "The model carries no precipitation statistics for the '%s' "
+            "transform and PATH_PRECIP_STATS is not set: they will be computed "
+            "on the data being predicted, which is not what the model was "
+            "trained with.", options.transform_precip)
+        return None
+
+    logger.info("Reading the precipitation statistics from %s.", stats_path)
+
+    return xr.open_dataset(stats_path)
+
+
 def get_events(year_start, year_end, event_method,
                filter_size=None, precip_dataset='hourly', detection_window_h=1.0,
                reference_path=None, detection_threshold=None,

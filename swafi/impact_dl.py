@@ -69,6 +69,32 @@ class ImpactDl(Impact):
         self.optimize_decision_threshold = optimize_decision_threshold
         self.decision_threshold = 0.5
 
+    def _stats_on_precip_grid(self, precip_stats, name):
+        """
+        Read a per-pixel precipitation statistic on the grid of the precipitation
+        data currently loaded.
+
+        The statistics file covers the domain it was computed on, which can be
+        larger than the (cropped) store used here.
+
+        Parameters
+        ----------
+        precip_stats: xr.Dataset
+            The precipitation statistics.
+        name: str
+            The name of the statistic to read (e.g. 'q99', 'mean_log').
+
+        Returns
+        -------
+        np.array
+            The statistic on the current precipitation grid.
+        """
+        stats = precip_stats[name]
+        if self.precipitation_hf is None or self.precipitation_hf.data is None:
+            return stats.to_numpy()
+
+        return self.precipitation_hf.match_stats_to_grid(stats, name)
+
     def save_model(self, dir_output, base_name='model'):
         """
         Save the model.

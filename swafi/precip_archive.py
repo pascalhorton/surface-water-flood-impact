@@ -670,12 +670,80 @@ class PrecipitationArchive(Precipitation):
 
         return values
 
+    def match_stats_to_grid(self, values, label='statistic'):
+        """
+        Align a per-pixel statistic to the current precipitation grid.
+
+        Statistics saved by compute_precipitation_statistics.py cover the domain
+        of the store they were computed on, which is not necessarily the one
+        being read now (the zarr store is cropped to the CID domain). When the
+        statistic carries coordinates, the pixels of the current grid are picked
+        out of it; otherwise its shape must already match.
+
+        Parameters
+        ----------
+        values: xr.DataArray|np.array
+            The per-pixel statistic.
+        label: str
+            Name of the statistic, for the error message.
+
+        Returns
+        -------
+        np.array
+            The statistic on the current grid.
+
+        Raises
+        ------
+        ValueError
+            If the statistic cannot be matched to the current grid.
+        """
+        y_axis = self.data[self.y_axis_dim]
+        x_axis = self.data[self.x_axis_dim]
+        grid_shape = (y_axis.size, x_axis.size)
+
+        if isinstance(values, xr.DataArray):
+            source_shape = values.shape
+            if source_shape == grid_shape:
+                return values.to_numpy()
+            if self.y_axis_dim not in values.coords or \
+                    self.x_axis_dim not in values.coords:
+                raise ValueError(
+                    f"The {label} has shape {values.shape} but the precipitation "
+                    f"grid is {grid_shape}, and it carries no "
+                    f"'{self.y_axis_dim}'/'{self.x_axis_dim}' coordinates to "
+                    f"select from.")
+            try:
+                values = values.sel({self.y_axis_dim: y_axis,
+                                     self.x_axis_dim: x_axis})
+            except KeyError as e:
+                raise ValueError(
+                    f"The {label} does not cover the precipitation grid: some "
+                    f"cells of the current domain are missing from it "
+                    f"({e}).") from e
+            logger.info(
+                "Selected the %s of the %s stats grid on the current "
+                "precipitation grid (%s).", label, source_shape, grid_shape)
+
+            return values.to_numpy()
+
+        values = np.asarray(values)
+        if values.shape != grid_shape:
+            raise ValueError(
+                f"The {label} has shape {values.shape}, which does not match the "
+                f"precipitation grid {grid_shape}. Recompute it for this domain "
+                f"(scripts/data_preparation/compute_precipitation_statistics.py) "
+                f"or pass it as a DataArray with "
+                f"'{self.y_axis_dim}'/'{self.x_axis_dim}' coordinates.")
+
+        return values
+
     def _as_spatial_da(self, values):
         """Wrap a per-pixel (y, x) array so it broadcasts against the data."""
         if isinstance(values, xr.DataArray):
             return values
+        values = self.match_stats_to_grid(values, 'per-pixel statistic')
         return xr.DataArray(
-            np.asarray(values),
+            values,
             coords={self.y_axis_dim: self.data[self.y_axis_dim],
                     self.x_axis_dim: self.data[self.x_axis_dim]},
             dims=(self.y_axis_dim, self.x_axis_dim))
