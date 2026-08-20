@@ -915,6 +915,7 @@ class EpochCheckpointCallback(keras.callbacks.Callback):
         )
 
 
+@tf.keras.utils.register_keras_serializable()
 class WarmupCosineDecay(keras.optimizers.schedules.LearningRateSchedule):
     """Linear warmup for `warmup_steps` steps, then cosine decay to `alpha * peak_lr`."""
 
@@ -938,6 +939,13 @@ class WarmupCosineDecay(keras.optimizers.schedules.LearningRateSchedule):
     def get_config(self):
         return dict(peak_lr=self.peak_lr, total_steps=self.total_steps,
                     warmup_steps=self.warmup_steps, alpha=self.alpha)
+
+
+# Models trained before the class was registered stored the schedule under its
+# bare class name. Keras only imports modules of the keras* packages when
+# resolving a config, so the registry is the only lookup path: alias the bare
+# name to keep those checkpoints loadable.
+keras.saving.get_custom_objects()['WarmupCosineDecay'] = WarmupCosineDecay
 
 
 # Define a custom early stopping callback to stop when the CSI is almost 0
