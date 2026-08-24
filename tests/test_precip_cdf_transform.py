@@ -163,3 +163,23 @@ def test_cdf_transform_is_idempotent():
 
     np.testing.assert_array_equal(p.data['precip'].to_numpy(), once)
     assert p.cid_time_series is not None
+
+
+def test_transform_tag_distinguishes_the_spreads():
+    """
+    The two spreads resolve the same number of levels but are different
+    transforms. The tag feeds the cache keys of the preloaded series, so it must
+    tell them apart -- otherwise a run with one spread reads back the series a
+    previous run cached with the other, and the flag silently does nothing.
+    """
+    values = np.abs(np.random.default_rng(0).normal(2, 2, (200, 2, 2)))
+
+    tags = []
+    for spread in ('return_period', 'none'):
+        levels, step = get_cdf_levels(spread)
+        p = _archive(values.copy())
+        p.cdf_transform(levels, _table(values, levels), step)
+        tags.append(p._transform_tag)
+
+    assert tags[0] != tags[1], \
+        f"both spreads tagged '{tags[0]}': their caches would collide"

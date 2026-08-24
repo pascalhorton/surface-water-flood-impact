@@ -565,7 +565,14 @@ class PrecipitationArchive(Precipitation):
             counts = exceeds if counts is None else counts + exceeds
 
         self.data[self.precip_var] = (counts * step).astype('float32')
-        self._transform_tag += f'_cdf{len(levels)}'
+        # The tag identifies the level grid, not just its size: two spreads can
+        # resolve the same number of levels ('return_period' and 'none' both use
+        # CDF_NB_LEVELS) while being different transforms. Tagging them alike
+        # would let the second one read the first one's cached series back.
+        grid_id = hashlib.md5(
+            np.asarray(levels, dtype='float64').tobytes()
+            + str(step).encode()).hexdigest()[:8]
+        self._transform_tag += f'_cdf{len(levels)}-{grid_id}'
         self._drop_preloaded()
 
     def get_data_chunk(self, t_start, t_end, x_start, x_end, y_start, y_end, cid=None):
