@@ -1,7 +1,7 @@
 import logging
 import math
 import numpy as np
-from sklearn.metrics import roc_auc_score
+from sklearn.metrics import average_precision_score, roc_auc_score
 
 logger = logging.getLogger(__name__)
 
@@ -417,6 +417,100 @@ def store_classic_scores(tp, tn, fp, fn, df_results):
     df_results['Precision'] = compute_score_binary('Precision', tp, tn, fp, fn)
     df_results['Recall'] = compute_score_binary('Recall', tp, tn, fp, fn)
     df_results['F1'] = compute_score_binary('F1', tp, tn, fp, fn)
+
+def assess_pr_auc(y_true, y_pred):
+    """
+    Average precision (area under the precision-recall curve), and its lift over
+    the base rate.
+
+    Preferred over ROC-AUC when the positives are rare. ROC-AUC weighs the false
+    positive rate against a true-negative mass that dwarfs the positives, so it
+    stays high for a model with no operational value: on this problem a model
+    scoring 0.90 has been observed to predict no positives at all. Average
+    precision instead asks what fraction of the flagged cases are real, which is
+    the question a user of the model actually has.
+
+    Its floor is the base rate rather than 0.5, so it is not comparable between
+    splits of different prevalence - the training generator subsamples the
+    negatives and therefore sits at a much higher base rate than validation. The
+    lift over that floor is returned alongside for exactly that reason.
+
+    Parameters
+    ----------
+    y_true: array
+        The true values
+    y_pred: array
+        The predicted probabilities
+
+    Returns
+    -------
+    tuple
+        The average precision, the base rate, and the ratio between the two.
+    """
+    ap = float(average_precision_score(y_true, y_pred))
+    base_rate = float(np.mean(np.asarray(y_true) > 0))
+    lift = ap / base_rate if base_rate > 0 else float('nan')
+
+    logger.info("PR AUC (average precision): %.4f (base rate %.4f, lift %.1fx)",
+                ap, base_rate, lift)
+
+    return ap, base_rate, lift
+
+
+def assess_recall_at_budget(y_true, y_pred, budget_multiples=(1, 2, 5)):
+    """
+    Recall obtained when the alarm budget is fixed in advance.
+
+    Answers the operational question directly: if we may flag a set number of
+    cases, what share of the real events do we catch? Unlike F1 or CSI it does
+    not depend on a tuned decision threshold, and unlike ROC-AUC it is not
+    diluted by the true negatives.
+
+    The budget is expressed as a multiple of the number of true positives rather
+    than as an absolute count, so it stays comparable between splits of
+    different prevalence. At a multiple of 1 the budget equals the number of
+    events, precision and recall coincide, and the value is therefore also the
+    F1 score at that operating point.
+
+    Ties in the predicted probabilities are broken by original order, which is
+    arbitrary; with continuous probabilities this is immaterial, but a model
+    emitting a near-constant output will produce a meaningless value here (as it
+    will everywhere else).
+
+    Parameters
+    ----------
+    y_true: array
+        The true values
+    y_pred: array
+        The predicted probabilities
+    budget_multiples: tuple
+        Alarm budgets, as multiples of the number of true positives.
+
+    Returns
+    -------
+    dict
+        Recall for each budget, keyed 'recall_at_{multiple}x'.
+    """
+    y_true = np.asarray(y_true) > 0
+    y_pred = np.asarray(y_pred, dtype='float64')
+    n_pos = int(y_true.sum())
+
+    if n_pos == 0 or y_pred.size == 0:
+        return {f'recall_at_{m}x': float('nan') for m in budget_multiples}
+
+    order = np.argsort(-y_pred, kind='stable')
+    hits = np.cumsum(y_true[order])
+
+    scores = {}
+    for m in budget_multiples:
+        budget = min(int(round(m * n_pos)), int(y_pred.size))
+        recall = float(hits[budget - 1]) / n_pos if budget > 0 else float('nan')
+        scores[f'recall_at_{m}x'] = recall
+        logger.info("Recall at a budget of %dx the events (%d alarms): %.4f",
+                    m, budget, recall)
+
+    return scores
+
 
 def assess_roc_auc(y_true, y_pred):
     """

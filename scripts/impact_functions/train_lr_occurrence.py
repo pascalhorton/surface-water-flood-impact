@@ -15,8 +15,12 @@ SAVE_MODEL = True
 
 config = Config()
 
-# Define the weight denominators. Optimal value is 30 for GVZ and 45 for Mobiliar.
-weight_denominators = [5, 10, 20, 30, 40, 50]
+# Weight denominators to sweep. The positive class weight is divided by this
+# value (Impact.compute_corrected_class_weights); the LR path sets no
+# batch_pos_ratio, so the effective denominator is the value itself. Anything
+# above 1 therefore makes the negatives outweigh the positives by that factor,
+# and 1 is the balanced point.
+weight_denominators = [1, 2, 5, 10, 20]
 
 # Enable to test different weight denominators
 # weight_denominators = [1, 2, 3, 4, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 60, 80, 100]

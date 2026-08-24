@@ -4,7 +4,7 @@ It is not meant to be used directly, but to be inherited by other classes.
 """
 from .impact import Impact
 from .utils.verification import compute_confusion_matrix, print_classic_scores, \
-    assess_roc_auc, store_classic_scores
+    assess_pr_auc, assess_recall_at_budget, assess_roc_auc, store_classic_scores
 
 import json
 import logging
@@ -483,6 +483,12 @@ class ImpactDl(Impact):
             store_classic_scores(tp, tn, fp, fn, df_tmp)
             roc = assess_roc_auc(y_obs, y_pred)
             df_tmp['ROC_AUC'] = [roc]
+            pr_auc, base_rate, pr_lift = assess_pr_auc(y_obs, y_pred)
+            df_tmp['PR_AUC'] = [pr_auc]
+            df_tmp['base_rate'] = [base_rate]
+            df_tmp['PR_AUC_lift'] = [pr_lift]
+            for name, value in assess_recall_at_budget(y_obs, y_pred).items():
+                df_tmp[name] = [value]
             degenerate = self._flag_degenerate_predictions(
                 y_pred, roc, tp, tn, fp, fn, period_name)
             df_tmp['degenerate'] = [degenerate]

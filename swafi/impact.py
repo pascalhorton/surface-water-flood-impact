@@ -15,7 +15,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import average_precision_score, precision_recall_curve
 
 from .utils.verification import compute_confusion_matrix, print_classic_scores, \
-    assess_roc_auc, store_classic_scores
+    assess_pr_auc, assess_recall_at_budget, assess_roc_auc, store_classic_scores
 
 logger = logging.getLogger(__name__)
 
@@ -820,15 +820,21 @@ class Impact:
     @staticmethod
     def _flag_degenerate_predictions(y_pred, roc, tp, tn, fp, fn, period_name):
         """
-        Detect a model that carries no information and say so next to its scores.
+        Mark a row whose threshold-derived scores describe the threshold search
+        rather than the model, so it is not compared against other runs.
 
-        The decision threshold is tuned to maximise F1 on validation. When the
-        model emits a near-constant probability, that optimum is 'label
-        everything positive', which produces a confusion matrix with a perfect
-        recall and a full complement of false positives - numbers that describe
-        the threshold search rather than the model. The ROC-AUC is the column
-        that gives it away, so the check keys on that and on the collapsed
-        confusion matrix, and marks the row.
+        Two distinct failures are caught. The first is a model that carries no
+        information: it emits a near-constant probability, the F1-optimal
+        threshold becomes 'label everything positive', and the confusion matrix
+        shows perfect recall with a full complement of false positives. ROC-AUC
+        near 0.5 gives that one away.
+
+        The second is a model that ranks well but whose tuned threshold sits
+        outside the range of its predictions, so every sample is labelled the
+        same way. ROC-AUC is then high and healthy - 0.90 has been observed - yet
+        F1, CSI, precision and recall are all zero. Keying on ROC-AUC alone
+        misses it entirely, which is why the confusion matrix is checked in its
+        own right.
 
         Parameters
         ----------
@@ -849,15 +855,36 @@ class Impact:
         spread = float(np.nanmax(y_pred) - np.nanmin(y_pred)) if y_pred.size else 0.0
         no_ranking = not np.isfinite(roc) or abs(roc - 0.5) < 0.01
         all_one_class = (tn + fp == 0) or (tp + fn == 0) or (tn == 0) or (fp + tp == 0)
-        degenerate = no_ranking or (all_one_class and spread < 1e-6)
+        constant_output = all_one_class and spread < 1e-6
 
-        if degenerate:
+        # The threshold can collapse onto a single class while the model still
+        # ranks perfectly well. With the positive class weight divided down, the
+        # F1 optimum can sit above every predicted probability, so nothing is
+        # called positive (tp = fp = 0), or below all of them, so everything is
+        # (tn = fn = 0). ROC-AUC stays high and the checks above pass, yet every
+        # threshold-derived column is trivial - which is what this flag exists to
+        # mark. Not gated on the spread: that is precisely the case it misses.
+        one_sided_threshold = (tp + fp == 0) or (tn + fn == 0)
+
+        degenerate = no_ranking or constant_output or one_sided_threshold
+
+        if no_ranking or constant_output:
             logger.warning(
                 "Split '%s': the model produces no usable ranking (ROC-AUC=%.4f, "
                 "prediction spread=%.3g). The confusion matrix above reflects the "
                 "F1-optimal threshold applied to a near-constant output, not model "
                 "skill - do not compare those columns across runs.",
                 period_name, roc, spread)
+        elif one_sided_threshold:
+            side = 'negative' if tp + fp == 0 else 'positive'
+            logger.warning(
+                "Split '%s': the model ranks (ROC-AUC=%.4f) but the tuned "
+                "threshold labels every sample %s (TP=%d, FP=%d, TN=%d, FN=%d). "
+                "The threshold-derived columns (F1, CSI, precision, recall) are "
+                "trivial by construction and must not be compared across runs; "
+                "the ranking columns are still valid. A class weighting that "
+                "favours the negatives is the usual cause.",
+                period_name, roc, side, tp, fp, tn, fn)
 
         return degenerate
 
@@ -884,6 +911,12 @@ class Impact:
             store_classic_scores(tp, tn, fp, fn, df_tmp)
             roc = assess_roc_auc(y, y_pred_prob)
             df_tmp['ROC_AUC'] = [roc]
+            pr_auc, base_rate, pr_lift = assess_pr_auc(y, y_pred_prob)
+            df_tmp['PR_AUC'] = [pr_auc]
+            df_tmp['base_rate'] = [base_rate]
+            df_tmp['PR_AUC_lift'] = [pr_lift]
+            for name, value in assess_recall_at_budget(y, y_pred_prob).items():
+                df_tmp[name] = [value]
             df_tmp['degenerate'] = [self._flag_degenerate_predictions(
                 y_pred_prob, roc, tp, tn, fp, fn, period_name)]
         else:
