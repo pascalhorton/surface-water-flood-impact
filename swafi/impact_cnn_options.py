@@ -322,9 +322,6 @@ class ImpactCnnOptions(ImpactDlOptions):
             self.pool_size_spatial = 1
             self.use_spatial_dropout = False
 
-        if not self.use_precip:
-            self._apply_ann_mode_defaults(args)
-
         if self.optimize_with_optuna:
             logger.info("Optimizing with Optuna; some options will be ignored.")
 

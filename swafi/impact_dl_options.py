@@ -408,26 +408,6 @@ class ImpactDlOptions(ImpactBasicOptions):
         self.checkpoint_dir = args.checkpoint_dir
         self.resume_training = args.resume_training
 
-    def _apply_ann_mode_defaults(self, args):
-        """Apply ANN-friendly defaults for options still at their parser default.
-
-        Called by subclasses when use_precip=False so that dense-only networks
-        get sensible defaults without changing the CNN defaults.
-        """
-        overrides = {
-            'dropout_rate_dense': 0.1,
-            'nb_dense_units': 256,
-            'nb_dense_units_decreasing': False,
-            'weight_denominator': 1,
-            'use_batchnorm_dense': False,
-            'use_layernorm_dense': True,
-            'use_residual_dense': True,
-            'use_feature_class_embedding': True,
-        }
-        for attr, ann_default in overrides.items():
-            if getattr(args, attr) == self.parser.get_default(attr):
-                setattr(self, attr, ann_default)
-
     def _generate_for_optuna(self, trial, hp_to_optimize):
         if not has_optuna:
             raise ValueError("Optuna is not installed")
