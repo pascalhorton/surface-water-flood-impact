@@ -234,14 +234,17 @@ def test_select_locations_with_contracts_e_date_and_empty_cells():
     # without contracts must be removed
     events = Events(use_dump=False)
     events.events = pd.DataFrame({
-        'eid': [1, 2, 3, 4, 5],
-        'cid': [10, 10, 20, 30, 40],
+        'eid': [1, 2, 3, 4, 5, 6],
+        'cid': [10, 10, 20, 30, 40, 20],
         'e_date': pd.to_datetime(['2020-05-01', '2021-05-01', '2020-07-01',
-                                  '2021-08-01', '2020-09-01']),
+                                  '2021-08-01', '2020-09-01', '2021-09-01']),
     })
     cids_list = np.array([10.0, 20.0, 30.0])
+    # Damages._set_exposure_cids resolves mask_index into cid before this runs,
+    # so the exposure carries both by the time the events are filtered.
     exposure = pd.DataFrame({
         'mask_index': [0, 0, 1, 2],
+        'cid': [10, 10, 20, 30],
         'year': [2020, 2021, 2020, 2021],
         'selection': [5, 0, 3, 0],  # cid 10 in 2021 and cid 30 in 2021 empty
     })
@@ -249,7 +252,9 @@ def test_select_locations_with_contracts_e_date_and_empty_cells():
 
     events.select_locations_with_contracts(damages)
 
-    # cid 40 not in cids_list; (10, 2021) and (30, 2021) removed
+    # cid 40 not in cids_list; (10, 2021) and (30, 2021) have no contract;
+    # (20, 2021) has no exposure row at all, which the semi-join also drops -
+    # the anti-join this replaced would have kept it.
     assert sorted(events.events['eid']) == [1, 3]
 
 

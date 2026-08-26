@@ -441,3 +441,14 @@ class ImpactDlDataGenerator(keras.utils.Sequence):
 
     def __getitem__(self, index):
         raise NotImplementedError("This method should be implemented in subclasses.")
+
+    def _generate_batch(self, idxs):
+        """Build one batch from event indices. Implemented by the subclasses.
+
+        Declared here because three methods of this class call it -
+        get_ordered_batch_from_full_dataset, get_batch_for_cid and
+        get_batch_for_indices - so without it they fail on the base class with
+        an AttributeError naming a private method, rather than saying which
+        class is incomplete.
+        """
+        raise NotImplementedError("This method should be implemented in subclasses.")

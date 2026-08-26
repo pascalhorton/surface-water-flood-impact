@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 from swafi.impact_dl_data_generator import ImpactDlDataGenerator
 from swafi.impact_cnn_data_generator import ImpactCnnDataGenerator
 from swafi.impact_tx_data_generator import ImpactTxDataGenerator
@@ -14,19 +15,30 @@ def make_event_props(n):
     return ev
 
 
-def test_impact_dl_generator_returns_label_column():
+def test_impact_dl_generator_batch_building_is_abstract():
+    """The base class holds the shared bookkeeping, not the batch assembly.
+
+    _generate_batch lives in the subclasses because the inputs differ (a 3D
+    precipitation block for the CNN, two series for the transformer), so the
+    base class must refuse rather than half-work. The label-column shape this
+    file cares about is checked on the concrete generators below.
+    """
     n = 10
     event_props = make_event_props(n)
     x_static = np.zeros((n, 2))
     y = np.zeros(n)
     gen = ImpactDlDataGenerator(event_props, x_static, y, batch_size=4, shuffle=False,
                                 mean_static=np.zeros(2), std_static=np.ones(2))
-    # Ensure generator has no X_precip attribute set so _generate_batch skips 3D inputs
-    gen.X_precip = None
-    idxs = np.arange(0, 4)
-    (x, xs), y_batch = gen._generate_batch(idxs)
-    assert hasattr(y_batch, 'shape')
-    assert y_batch.ndim == 2 and y_batch.shape[1] == 1
+
+    with pytest.raises(NotImplementedError):
+        gen._generate_batch(np.arange(4))
+
+    # The public entry points delegate to it, so they must fail the same way.
+    with pytest.raises(NotImplementedError):
+        gen.get_batch_for_indices(np.arange(4))
+
+    with pytest.raises(NotImplementedError):
+        gen[0]
 
 
 def test_impact_cnn_generator_returns_label_column():
