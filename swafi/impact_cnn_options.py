@@ -89,6 +89,10 @@ class ImpactCnnOptions(ImpactDlOptions):
         # TCN options (temporal axis)
         self.tcn_filters = None
         self.tcn_kernel_size = None
+        self.tcn_topk = None
+        self.use_time_index_channel = None
+        self.tcn_use_gated_activation = None
+        self.tcn_use_spatial_dropout = None
         self.tcn_nb_layers = None
         self.dropout_rate_tcn = None
         self.tcn_pooling = None
@@ -275,10 +279,39 @@ class ImpactCnnOptions(ImpactDlOptions):
             '--tcn-pooling',
             type=str,
             default='mean_max',
-            choices=['mean', 'max', 'mean_max', 'last', 'attention'],
+            choices=['mean', 'max', 'mean_max', 'last', 'attention',
+                     'topk', 'mean_topk'],
             help='Temporal pooling strategy after TCN: max (default), mean, '
                  'mean_max (concatenates both, keeping peak intensity and '
-                 'accumulation), last timestep, or learned attention'
+                 'accumulation), last timestep, learned attention, topk (mean '
+                 'of the --tcn-topk largest steps), or mean_topk (both)'
+        )
+        self.parser.add_argument(
+            '--tcn-topk',
+            type=int,
+            default=4,
+            help='Number of time steps averaged by the topk/mean_topk pooling. '
+                 'In steps, so it names a duration: 4 is four hours of hourly '
+                 'data. k=1 is global max pooling, k=T is global average'
+        )
+        self.parser.add_argument(
+            '--use-time-index-channel', action=argparse.BooleanOptionalAction,
+            default=False,
+            help='Append the normalised position in the window as an extra TCN '
+                 'input channel, so the network can weight by recency. Global '
+                 'pooling otherwise discards where a feature fired'
+        )
+        self.parser.add_argument(
+            '--tcn-use-gated-activation', action=argparse.BooleanOptionalAction,
+            default=False,
+            help='WaveNet-style tanh*sigmoid gating in the TCN blocks instead '
+                 'of a plain activation'
+        )
+        self.parser.add_argument(
+            '--tcn-use-spatial-dropout', action=argparse.BooleanOptionalAction,
+            default=False,
+            help='Drop whole channels rather than individual cells in the TCN '
+                 'blocks (SpatialDropout1D)'
         )
         self.parser.add_argument(
             '--preload-precip',
@@ -315,6 +348,10 @@ class ImpactCnnOptions(ImpactDlOptions):
         self.tcn_nb_layers = args.tcn_nb_layers
         self.dropout_rate_tcn = args.dropout_rate_tcn
         self.tcn_pooling = args.tcn_pooling
+        self.tcn_topk = args.tcn_topk
+        self.use_time_index_channel = args.use_time_index_channel
+        self.tcn_use_gated_activation = args.tcn_use_gated_activation
+        self.tcn_use_spatial_dropout = args.tcn_use_spatial_dropout
         self.preload_precip = args.preload_precip
 
         if self.precip_window_size == 1:
@@ -521,6 +558,13 @@ class ImpactCnnOptions(ImpactDlOptions):
             logger.info("- nb_conv_blocks:  %s", self.nb_conv_blocks)
             logger.info("- inner_activation_cnn:  %s", self.inner_activation_cnn)
             logger.info("- tcn_filters:  %s", self.tcn_filters)
+            logger.info("- tcn_topk:  %s", self.tcn_topk)
+            logger.info("- use_time_index_channel:  %s",
+                        self.use_time_index_channel)
+            logger.info("- tcn_use_gated_activation:  %s",
+                        self.tcn_use_gated_activation)
+            logger.info("- tcn_use_spatial_dropout:  %s",
+                        self.tcn_use_spatial_dropout)
             logger.info("- tcn_kernel_size:  %s", self.tcn_kernel_size)
             logger.info("- tcn_nb_layers:  %s", self.tcn_nb_layers)
             logger.info("- dropout_rate_tcn:  %s", self.dropout_rate_tcn)

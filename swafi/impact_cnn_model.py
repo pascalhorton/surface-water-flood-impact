@@ -278,6 +278,14 @@ class ModelCnn(keras.models.Model):
                 # 1×1 spatial: squeeze to (T, C)
                 x = keras.layers.Reshape((t_len, n_channels), name='reshape_1px')(input_3d)
 
+            # Position within the window, as an extra channel. Causal
+            # convolutions keep the ordering, but the global pooling that
+            # follows discards where a feature fired: without this the network
+            # cannot distinguish a burst 40 hours before the event from one 2
+            # hours before. Added before the projection so the TCN sees it.
+            if getattr(self.options, 'use_time_index_channel', False):
+                x = TimeIndexChannel(name='time_index')(x)
+
             # Project to TCN input dimension → (T, tcn_filters)
             x = keras.layers.Dense(self.options.tcn_filters, name='tcn_proj')(x)
 
@@ -286,6 +294,8 @@ class ModelCnn(keras.models.Model):
                 x = self._tcn_block(x, dilation_rate=2 ** i,
                                     filters=self.options.tcn_filters,
                                     kernel_size=self.options.tcn_kernel_size, i=i)
+
+            self._log_receptive_field(t_len)
 
             # Temporal pooling
             pooling = getattr(self.options, 'tcn_pooling', 'max')
@@ -297,6 +307,21 @@ class ModelCnn(keras.models.Model):
                     keras.layers.GlobalAveragePooling1D(name='temporal_mean')(x),
                     keras.layers.GlobalMaxPooling1D(name='temporal_max')(x),
                 ])
+            elif pooling in ('topk', 'mean_topk'):
+                # The mean of the k largest activations. Between the two above:
+                # the mean over 49 steps dilutes a short burst, the max keeps a
+                # single step and cannot tell a one-hour peak from a six-hour
+                # one. k is in time steps, so it names a duration.
+                k = int(getattr(self.options, 'tcn_topk', 4))
+                k = max(1, min(k, t_len))
+                topk = TopKMeanPooling(k=k, name='temporal_topk')(x)
+                if pooling == 'topk':
+                    x = topk
+                else:
+                    x = keras.layers.Concatenate(name='temporal_mean_topk')([
+                        keras.layers.GlobalAveragePooling1D(name='temporal_mean')(x),
+                        topk,
+                    ])
             elif pooling == 'mean':
                 x = keras.layers.GlobalAveragePooling1D(name='temporal_mean')(x)
             elif pooling == 'last':
@@ -471,6 +496,30 @@ class ModelCnn(keras.models.Model):
                         "(spatial %s must be divisible by pool_size^nb_conv_blocks)",
                         self.options.nb_conv_blocks, spatial_size)
 
+    def _log_receptive_field(self, t_len):
+        """Report how much of the input window a single unit can actually see.
+
+        Easy to get wrong silently: each block holds two convolutions, so the
+        default 3 blocks of kernel 3 with dilations 1/2/4 reach 29 steps, not
+        the 15 a one-conv-per-block reading would give. Against a 49-step
+        window that is 59% - the pooling still reads every position, but no
+        single feature spans more than 29 steps.
+        """
+        k = self.options.tcn_kernel_size
+        dilations = [2 ** i for i in range(self.options.tcn_nb_layers)]
+        rf = 1 + 2 * (k - 1) * sum(dilations)
+        if t_len is None:
+            return
+        pct = 100.0 * rf / t_len
+        msg = ("TCN receptive field: %d steps of %d (%.0f%%), "
+               "kernel %d, dilations %s")
+        args = (rf, t_len, pct, k, dilations)
+        if rf < t_len:
+            logger.warning(msg + " - no single unit spans the whole window",
+                           *args)
+        else:
+            logger.info(msg, *args)
+
     def _tcn_block(self, x, dilation_rate, filters, kernel_size, i):
         """
         Temporal Convolutional Network (TCN) block with dilated causal Conv1D
@@ -493,31 +542,110 @@ class ModelCnn(keras.models.Model):
         -------
         Output tensor of shape (batch, T, filters).
         """
+        gated = getattr(self.options, 'tcn_use_gated_activation', False)
+        spatial_drop = getattr(self.options, 'tcn_use_spatial_dropout', False)
+
         residual = x
         for j in range(2):
-            x = keras.layers.Conv1D(
-                filters=filters,
-                kernel_size=kernel_size,
-                dilation_rate=dilation_rate,
-                padding='causal',
-                use_bias=False,
-                kernel_initializer='he_normal',
-                name=f'tcn_conv_{i}_{j}'
-            )(x)
-            x = keras.layers.LayerNormalization(name=f'tcn_ln_{i}_{j}')(x)
-            x = keras.layers.Activation(
-                self.options.inner_activation_cnn, name=f'tcn_act_{i}_{j}'
-            )(x)
-            if self.options.dropout_rate_tcn > 0:
-                x = keras.layers.Dropout(
-                    rate=self.options.dropout_rate_tcn, name=f'tcn_drop_{i}_{j}'
+            if gated:
+                # WaveNet gating: tanh carries the signal, sigmoid decides how
+                # much of it passes. A multiplicative gate can shut a time step
+                # off entirely, which a ReLU on a mostly-zero input cannot do as
+                # cleanly. Note this DOUBLES the convolution parameters of the
+                # block - both branches run at full width - so an experiment
+                # comparing it with the plain activation needs a capacity
+                # control, or it credits gating with what width bought.
+                conv_kwargs = dict(
+                    filters=filters, kernel_size=kernel_size,
+                    dilation_rate=dilation_rate, padding='causal',
+                    use_bias=False, kernel_initializer='he_normal')
+                filt = keras.layers.Conv1D(
+                    name=f'tcn_conv_{i}_{j}', **conv_kwargs)(x)
+                gate = keras.layers.Conv1D(
+                    name=f'tcn_gate_{i}_{j}', **conv_kwargs)(x)
+                filt = keras.layers.Activation('tanh', name=f'tcn_tanh_{i}_{j}')(filt)
+                gate = keras.layers.Activation('sigmoid', name=f'tcn_sig_{i}_{j}')(gate)
+                x = keras.layers.Multiply(name=f'tcn_gated_{i}_{j}')([filt, gate])
+                x = keras.layers.LayerNormalization(name=f'tcn_ln_{i}_{j}')(x)
+            else:
+                x = keras.layers.Conv1D(
+                    filters=filters,
+                    kernel_size=kernel_size,
+                    dilation_rate=dilation_rate,
+                    padding='causal',
+                    use_bias=False,
+                    kernel_initializer='he_normal',
+                    name=f'tcn_conv_{i}_{j}'
                 )(x)
+                x = keras.layers.LayerNormalization(name=f'tcn_ln_{i}_{j}')(x)
+                x = keras.layers.Activation(
+                    self.options.inner_activation_cnn, name=f'tcn_act_{i}_{j}'
+                )(x)
+            if self.options.dropout_rate_tcn > 0:
+                if spatial_drop:
+                    x = keras.layers.SpatialDropout1D(
+                        rate=self.options.dropout_rate_tcn,
+                        name=f'tcn_drop_{i}_{j}'
+                    )(x)
+                else:
+                    x = keras.layers.Dropout(
+                        rate=self.options.dropout_rate_tcn, name=f'tcn_drop_{i}_{j}'
+                    )(x)
         # Residual: 1×1 conv to match dimensions if needed
         if residual.shape[-1] != filters:
             residual = keras.layers.Conv1D(
                 filters, 1, kernel_initializer='he_normal', name=f'tcn_res_{i}'
             )(residual)
         return keras.layers.Add(name=f'tcn_add_{i}')([x, residual])
+
+
+@keras.saving.register_keras_serializable(package="swafi")
+class TopKMeanPooling(keras.layers.Layer):
+    """Mean of the k largest activations of each channel over time.
+
+    k = 1 reduces to global max pooling and k = T to global average pooling, so
+    the layer interpolates between the two extremes the model already had.
+    """
+
+    def __init__(self, k=4, **kwargs):
+        super().__init__(**kwargs)
+        self.k = int(k)
+
+    def call(self, inputs):
+        # (batch, T, C) -> (batch, C, T) so top_k runs over time.
+        x = tf.transpose(inputs, perm=[0, 2, 1])
+        k = tf.minimum(self.k, tf.shape(x)[-1])
+        values, _ = tf.math.top_k(x, k=k)
+        return tf.reduce_mean(values, axis=-1)
+
+    def compute_output_shape(self, input_shape):
+        return (input_shape[0], input_shape[2])
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({"k": self.k})
+        return config
+
+
+@keras.saving.register_keras_serializable(package="swafi")
+class TimeIndexChannel(keras.layers.Layer):
+    """Append the normalised position in the window as an extra channel.
+
+    Runs from 0 at the start of the window to 1 at the last step, so the value
+    is independent of the number of time steps and a model trained hourly is
+    not silently rescaled when the same option is used at 5 minutes.
+    """
+
+    def call(self, inputs):
+        t_len = tf.shape(inputs)[1]
+        idx = tf.linspace(0.0, 1.0, t_len)
+        idx = tf.cast(idx, inputs.dtype)
+        idx = tf.reshape(idx, (1, -1, 1))
+        idx = tf.tile(idx, [tf.shape(inputs)[0], 1, 1])
+        return tf.concat([inputs, idx], axis=-1)
+
+    def compute_output_shape(self, input_shape):
+        return (input_shape[0], input_shape[1], input_shape[2] + 1)
 
 
 @keras.saving.register_keras_serializable(package="swafi")

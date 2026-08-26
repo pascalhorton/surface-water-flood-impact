@@ -15,5 +15,13 @@ minversion = "6.0"
 # a collection error.
 addopts = ["-ra", "--showlocals", "--strict-markers", "--strict-config", "-p", "no:zarr"]
 xfail_strict = true
-filterwarnings = ["error"]
+filterwarnings = [
+    "error",
+    # Keras serialises variables with np.asarray(v, copy=False), which
+    # NumPy 2 deprecates. It is raised from
+    # keras/src/backend/tensorflow/core.py, not from this project, and
+    # there is nothing to fix here until Keras stops doing it - without
+    # this line every model save/load test fails on the warning alone.
+    "ignore:__array__ implementation doesn't accept a copy keyword:DeprecationWarning",
+]
 testpaths = ["tests"]
