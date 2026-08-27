@@ -289,9 +289,14 @@ class ModelCnn(keras.models.Model):
             # Project to TCN input dimension → (T, tcn_filters)
             x = keras.layers.Dense(self.options.tcn_filters, name='tcn_proj')(x)
 
-            # TCN blocks with exponentially increasing dilation rates
+            # TCN blocks with exponentially increasing dilation rates.
+            # The base controls how fast the receptive field grows, and unlike
+            # depth or kernel size it costs nothing: base 3 over 3 blocks of
+            # kernel 3 reaches 53 steps against base 2's 29, with exactly the
+            # same weights.
+            base = int(getattr(self.options, 'tcn_dilation_base', None) or 2)
             for i in range(self.options.tcn_nb_layers):
-                x = self._tcn_block(x, dilation_rate=2 ** i,
+                x = self._tcn_block(x, dilation_rate=base ** i,
                                     filters=self.options.tcn_filters,
                                     kernel_size=self.options.tcn_kernel_size, i=i)
 
@@ -312,7 +317,7 @@ class ModelCnn(keras.models.Model):
                 # the mean over 49 steps dilutes a short burst, the max keeps a
                 # single step and cannot tell a one-hour peak from a six-hour
                 # one. k is in time steps, so it names a duration.
-                k = int(getattr(self.options, 'tcn_topk', 4))
+                k = int(getattr(self.options, 'tcn_topk', None) or 4)
                 k = max(1, min(k, t_len))
                 topk = TopKMeanPooling(k=k, name='temporal_topk')(x)
                 if pooling == 'topk':
@@ -321,6 +326,23 @@ class ModelCnn(keras.models.Model):
                     x = keras.layers.Concatenate(name='temporal_mean_topk')([
                         keras.layers.GlobalAveragePooling1D(name='temporal_mean')(x),
                         topk,
+                    ])
+            elif pooling in ('segmax', 'mean_segmax'):
+                # The max over the whole window says how hard it rained but not
+                # when. Splitting the window first and taking a max per segment
+                # puts position into the pooling itself, rather than asking a
+                # position channel to survive the convolutions and then a global
+                # reduction. Two segments emit 2 x filters, which is exactly
+                # what mean_max emits, so that comparison is parameter-matched.
+                nb_seg = int(getattr(self.options, 'tcn_nb_segments', None) or 2)
+                seg = SegmentMaxPooling(nb_segments=nb_seg,
+                                        name='temporal_segmax')(x)
+                if pooling == 'segmax':
+                    x = seg
+                else:
+                    x = keras.layers.Concatenate(name='temporal_mean_segmax')([
+                        keras.layers.GlobalAveragePooling1D(name='temporal_mean')(x),
+                        seg,
                     ])
             elif pooling == 'mean':
                 x = keras.layers.GlobalAveragePooling1D(name='temporal_mean')(x)
@@ -369,6 +391,7 @@ class ModelCnn(keras.models.Model):
                 x = x1d
 
         # Fully connected
+        head_shape = []
         for i in range(self.options.nb_dense_layers):
             if self.options.nb_dense_units_decreasing:
                 nb_units = self.options.nb_dense_units // (2 ** i)
@@ -377,6 +400,10 @@ class ModelCnn(keras.models.Model):
                 nb_units = self.options.nb_dense_units
 
             x_skip = x  # save for residual
+
+            in_units = x_skip.shape[-1]
+            head_shape.append((None if in_units is None else int(in_units),
+                               nb_units))
 
             x = keras.layers.Dense(nb_units, name=f'dense_{i}')(x)
 
@@ -401,6 +428,8 @@ class ModelCnn(keras.models.Model):
                         nb_units, use_bias=False, name=f'res_proj_{i}'
                     )(x_skip)
                     x = keras.layers.Add(name=f'res_dense_{i}')([x, x_proj])
+
+        self._log_dense_head(head_shape)
 
         inputs = []
         if self.input_3d_size is not None:
@@ -506,7 +535,8 @@ class ModelCnn(keras.models.Model):
         single feature spans more than 29 steps.
         """
         k = self.options.tcn_kernel_size
-        dilations = [2 ** i for i in range(self.options.tcn_nb_layers)]
+        base = int(getattr(self.options, 'tcn_dilation_base', None) or 2)
+        dilations = [base ** i for i in range(self.options.tcn_nb_layers)]
         rf = 1 + 2 * (k - 1) * sum(dilations)
         if t_len is None:
             return
@@ -517,6 +547,45 @@ class ModelCnn(keras.models.Model):
         if rf < t_len:
             logger.warning(msg + " - no single unit spans the whole window",
                            *args)
+        else:
+            logger.info(msg, *args)
+
+    def _log_dense_head(self, head_shape):
+        """Report the head's widths, and how many of its skips are identities.
+
+        Three flags decide this between them - nb_dense_layers, nb_dense_units
+        and nb_dense_units_decreasing - and none of them mentions the residuals.
+        Whenever a layer changes width the skip connection cannot be an add, so
+        it becomes a learned projection: a full weight matrix, and a second
+        parallel linear path rather than the identity gradient route that is
+        the reason to switch residuals on. The default head is 64 -> 128 -> 64
+        and therefore has NO identity skip at all, while spending 16,384
+        parameters, about a third of the model, on the projections. That is a
+        defensible configuration - it is the standard projection shortcut - but
+        it should be chosen rather than discovered from a parameter audit.
+        """
+        if not head_shape:
+            return
+
+        widths = " -> ".join(
+            [str(head_shape[0][0])] + [str(out) for _, out in head_shape])
+
+        if not getattr(self.options, 'use_residual_dense', False):
+            logger.info("Dense head: %s, no residual connections", widths)
+            return
+
+        projected = [(i, o) for i, o in head_shape if i is not None and i != o]
+        identity = len(head_shape) - len(projected)
+        proj_params = sum(i * o for i, o in projected)
+
+        msg = ("Dense head: %s, %d residual skip%s (%d identity, %d projected), "
+               "%s parameters in the projections")
+        args = (widths, len(head_shape), "" if len(head_shape) == 1 else "s",
+                identity, len(projected), f"{proj_params:,}")
+        if identity == 0:
+            logger.warning(
+                msg + " - no skip is an identity, so the residuals are parallel "
+                "linear paths rather than gradient shortcuts", *args)
         else:
             logger.info(msg, *args)
 
@@ -624,6 +693,46 @@ class TopKMeanPooling(keras.layers.Layer):
     def get_config(self):
         config = super().get_config()
         config.update({"k": self.k})
+        return config
+
+
+@keras.saving.register_keras_serializable(package="swafi")
+class SegmentMaxPooling(keras.layers.Layer):
+    """Max over time within each of n equal segments, concatenated.
+
+    n = 1 is global max pooling. Segment boundaries are computed from the
+    runtime length rather than fixed, so the same setting means the same thing
+    at hourly and at 5-minute resolution: n = 2 is always "first half, second
+    half", never "the first 24 steps".
+
+    Emits n x channels, so n = 2 is parameter-matched to mean_max downstream.
+    """
+
+    def __init__(self, nb_segments=2, **kwargs):
+        super().__init__(**kwargs)
+        self.nb_segments = max(1, int(nb_segments))
+
+    def call(self, inputs):
+        t_len = tf.shape(inputs)[1]
+        n = self.nb_segments
+        outputs = []
+        for i in range(n):
+            start = (t_len * i) // n
+            end = (t_len * (i + 1)) // n
+            # Guard the degenerate case of fewer steps than segments: without
+            # this an empty slice reduces to -inf and poisons the whole model
+            # rather than failing loudly.
+            start = tf.minimum(start, t_len - 1)
+            end = tf.minimum(tf.maximum(end, start + 1), t_len)
+            outputs.append(tf.reduce_max(inputs[:, start:end, :], axis=1))
+        return tf.concat(outputs, axis=-1) if n > 1 else outputs[0]
+
+    def compute_output_shape(self, input_shape):
+        return (input_shape[0], input_shape[2] * self.nb_segments)
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({"nb_segments": self.nb_segments})
         return config
 
 

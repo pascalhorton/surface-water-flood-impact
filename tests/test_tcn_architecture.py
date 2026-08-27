@@ -16,7 +16,8 @@ import numpy as np
 import pytest
 import tensorflow as tf
 
-from swafi.impact_cnn_model import ModelCnn, TimeIndexChannel, TopKMeanPooling
+from swafi.impact_cnn_model import (ModelCnn, SegmentMaxPooling,
+                                    TimeIndexChannel, TopKMeanPooling)
 from swafi.impact_cnn_options import ImpactCnnOptions
 
 T_LEN = 49
@@ -91,6 +92,11 @@ def test_time_index_channel_is_resolution_independent():
 
 @pytest.mark.parametrize("extra", [
     pytest.param([], id="defaults"),
+    pytest.param(["--tcn-dilation-base", "3"], id="dilation_base_3"),
+    pytest.param(["--tcn-pooling", "segmax"], id="segmax"),
+    pytest.param(["--tcn-pooling", "segmax", "--tcn-nb-segments", "4"],
+                 id="segmax_4"),
+    pytest.param(["--tcn-pooling", "mean_segmax"], id="mean_segmax"),
     pytest.param(["--tcn-pooling", "topk"], id="topk"),
     pytest.param(["--tcn-pooling", "mean_topk", "--tcn-topk", "6"],
                  id="mean_topk"),
@@ -155,3 +161,155 @@ def test_receptive_field_formula(nb_layers, kernel, expected):
     """Two convolutions per block, so the naive one-conv reading undercounts."""
     dilations = [2 ** i for i in range(nb_layers)]
     assert 1 + 2 * (kernel - 1) * sum(dilations) == expected
+
+
+# --- Phase I: dilation base, segment pooling -------------------------------
+
+
+def test_segment_max_reduces_to_global_max_at_one_segment():
+    x = np.random.rand(4, T_LEN, 5).astype("float32")
+    got = SegmentMaxPooling(nb_segments=1)(tf.constant(x)).numpy()
+    np.testing.assert_allclose(got, x.max(axis=1), atol=1e-6)
+
+
+def test_segment_max_splits_the_window_and_keeps_order():
+    """Two segments must report the early and the late maximum separately."""
+    x = np.zeros((1, 10, 1), dtype="float32")
+    x[0, 1, 0] = 3.0    # first half
+    x[0, 7, 0] = 9.0    # second half
+    got = SegmentMaxPooling(nb_segments=2)(tf.constant(x)).numpy()
+    assert got.shape == (1, 2)
+    np.testing.assert_allclose(got[0], [3.0, 9.0], atol=1e-6)
+
+
+def test_segment_max_boundaries_follow_the_window_length():
+    """A burst 20% into the window lands in segment 0 at either resolution.
+
+    The point of computing boundaries from the runtime length: nb_segments = 2
+    has to mean first half / second half hourly and at 5 minutes alike, not a
+    fixed number of steps that silently becomes 4% of a sub-hourly window.
+    """
+    for t_len in (49, 577):
+        x = np.zeros((1, t_len, 1), dtype="float32")
+        x[0, int(0.2 * t_len), 0] = 5.0
+        got = SegmentMaxPooling(nb_segments=2)(tf.constant(x)).numpy()
+        assert got[0, 0] == pytest.approx(5.0)
+        assert got[0, 1] == pytest.approx(0.0)
+
+
+def test_segment_max_survives_more_segments_than_steps():
+    """Must not emit -inf from an empty slice, which would poison the model."""
+    x = np.random.rand(2, 3, 4).astype("float32")
+    got = SegmentMaxPooling(nb_segments=8)(tf.constant(x)).numpy()
+    assert got.shape == (2, 32)
+    assert np.isfinite(got).all()
+
+
+def test_segmax_two_is_parameter_matched_to_mean_max():
+    """Both emit 2 x filters, so the comparison is pooling, not capacity."""
+    mean_max = _build(["--tcn-pooling", "mean_max"])
+    segmax = _build(["--tcn-pooling", "segmax", "--tcn-nb-segments", "2"])
+    assert mean_max.count_params() == segmax.count_params()
+
+
+def test_more_segments_are_not_parameter_matched():
+    """Documents why the sweep uses two segments and not four."""
+    two = _build(["--tcn-pooling", "segmax", "--tcn-nb-segments", "2"])
+    four = _build(["--tcn-pooling", "segmax", "--tcn-nb-segments", "4"])
+    assert four.count_params() > two.count_params()
+
+
+def test_dilation_base_costs_no_parameters():
+    """The whole point of the option: receptive field without capacity."""
+    base2 = _build(["--tcn-dilation-base", "2"])
+    base3 = _build(["--tcn-dilation-base", "3"])
+    assert base2.count_params() == base3.count_params()
+
+
+@pytest.mark.parametrize("nb_layers,kernel,base,expected", [
+    (3, 3, 2, 29),    # the current default, 29 of a 49-step window
+    (3, 3, 3, 53),    # covers it, at identical parameter count
+    (4, 3, 2, 61),    # covers it by depth, +12% parameters
+    (3, 5, 2, 57),    # covers it by kernel width, +23% parameters
+])
+def test_receptive_field_with_dilation_base(nb_layers, kernel, base, expected):
+    dilations = [base ** i for i in range(nb_layers)]
+    assert 1 + 2 * (kernel - 1) * sum(dilations) == expected
+
+
+def test_phase_i_options_do_not_move_the_default():
+    """arch_base has to keep reproducing 0.0854; the defaults must not shift."""
+    plain = _build([])
+    explicit = _build(["--tcn-dilation-base", "2", "--tcn-pooling", "mean_max",
+                       "--tcn-nb-segments", "2"])
+    assert plain.count_params() == explicit.count_params()
+
+
+def test_segment_pooling_survives_a_save_load_roundtrip(tmp_path):
+    model = _build(["--tcn-pooling", "mean_segmax", "--tcn-nb-segments", "3"])
+    x3 = np.random.rand(4, T_LEN, 1, 1, 1).astype("float32")
+    x1 = np.random.rand(4, 10).astype("float32")
+    before = model.predict([x3, x1], verbose=0)
+
+    path = tmp_path / "segmax.keras"
+    model.save(path)
+    reloaded = keras.models.load_model(path)
+
+    # nb_segments has to come back through get_config, or the reloaded model
+    # pools differently and the saved weights no longer line up.
+    np.testing.assert_allclose(before, reloaded.predict([x3, x1], verbose=0),
+                               atol=1e-6)
+
+
+# --- dense head structure ---------------------------------------------------
+
+
+def test_dense_head_warns_when_no_skip_is_an_identity(caplog):
+    """The default head projects both skips, which is the surprising case.
+
+    Three flags decide it between them and none of them mentions residuals, so
+    the warning is the only place a run records that its residual connections
+    are parallel linear paths rather than gradient shortcuts.
+    """
+    with caplog.at_level("INFO", logger="swafi.impact_cnn_model"):
+        _build(["--nb-dense-layers", "2", "--nb-dense-units", "128"])
+    line = [r for r in caplog.records if "Dense head" in r.getMessage()]
+    assert len(line) == 1
+    assert line[0].levelname == "WARNING"
+    msg = line[0].getMessage()
+    assert "0 identity, 2 projected" in msg
+    # 74 x 128 + 128 x 64, the pooled width being 64 TCN channels plus the 10
+    # tabular inputs of this fixture. Precipitation-only runs read 16,384.
+    assert "17,664 parameters" in msg
+
+
+def test_dense_head_reports_identity_skips_without_warning(caplog):
+    """Constant width at the pooled width: every skip is a plain add."""
+    with caplog.at_level("INFO", logger="swafi.impact_cnn_model"):
+        _build(["--nb-dense-layers", "2", "--nb-dense-units", "74",
+                "--no-nb-dense-units-decreasing"])
+    line = [r for r in caplog.records if "Dense head" in r.getMessage()]
+    assert len(line) == 1
+    assert line[0].levelname == "INFO"
+    assert "2 identity, 0 projected" in line[0].getMessage()
+
+
+def test_dense_head_reports_widths_in_order(caplog):
+    with caplog.at_level("INFO", logger="swafi.impact_cnn_model"):
+        _build(["--nb-dense-layers", "3", "--nb-dense-units", "128"])
+    msg = [r.getMessage() for r in caplog.records if "Dense head" in r.getMessage()][0]
+    assert "74 -> 128 -> 64 -> 32" in msg
+
+
+def test_dense_head_says_so_when_residuals_are_off(caplog):
+    with caplog.at_level("INFO", logger="swafi.impact_cnn_model"):
+        _build(["--nb-dense-layers", "2", "--no-use-residual-dense"])
+    msg = [r.getMessage() for r in caplog.records if "Dense head" in r.getMessage()][0]
+    assert "no residual connections" in msg
+
+
+def test_dense_head_singular_for_one_layer(caplog):
+    with caplog.at_level("INFO", logger="swafi.impact_cnn_model"):
+        _build(["--nb-dense-layers", "1", "--nb-dense-units", "128"])
+    msg = [r.getMessage() for r in caplog.records if "Dense head" in r.getMessage()][0]
+    assert "1 residual skip (" in msg

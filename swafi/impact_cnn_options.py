@@ -58,6 +58,8 @@ class ImpactCnnOptions(ImpactDlOptions):
     tcn_kernel_size: int
         Kernel size for dilated Conv1D in TCN.
     tcn_nb_layers: int
+    tcn_dilation_base: int
+    tcn_nb_segments: int
         Number of dilated Conv1D layers in TCN (dilation rates: 1, 2, 4, ...).
     dropout_rate_tcn: float
         Dropout rate after each TCN layer.
@@ -90,6 +92,8 @@ class ImpactCnnOptions(ImpactDlOptions):
         self.tcn_filters = None
         self.tcn_kernel_size = None
         self.tcn_topk = None
+        self.tcn_dilation_base = None
+        self.tcn_nb_segments = None
         self.use_time_index_channel = None
         self.tcn_use_gated_activation = None
         self.tcn_use_spatial_dropout = None
@@ -270,6 +274,14 @@ class ImpactCnnOptions(ImpactDlOptions):
             help='Number of dilated Conv1D layers in TCN (dilation rates: 1,2,4,...)'
         )
         self.parser.add_argument(
+            '--tcn-dilation-base',
+            type=int,
+            default=2,
+            help='Growth factor of the dilation rates: 2 gives 1,2,4, and 3 '
+                 'gives 1,3,9. Raises the receptive field at no parameter '
+                 'cost, unlike more layers or a wider kernel'
+        )
+        self.parser.add_argument(
             '--dropout-rate-tcn',
             type=float,
             default=0.1,
@@ -280,11 +292,22 @@ class ImpactCnnOptions(ImpactDlOptions):
             type=str,
             default='mean_max',
             choices=['mean', 'max', 'mean_max', 'last', 'attention',
-                     'topk', 'mean_topk'],
+                     'topk', 'mean_topk', 'segmax', 'mean_segmax'],
             help='Temporal pooling strategy after TCN: max (default), mean, '
                  'mean_max (concatenates both, keeping peak intensity and '
                  'accumulation), last timestep, learned attention, topk (mean '
-                 'of the --tcn-topk largest steps), or mean_topk (both)'
+                 'of the --tcn-topk largest steps), mean_topk (both), segmax '
+                 '(a max per --tcn-nb-segments segments, keeping when it '
+                 'rained as well as how hard), or mean_segmax (both)'
+        )
+        self.parser.add_argument(
+            '--tcn-nb-segments',
+            type=int,
+            default=2,
+            help='Number of equal time segments pooled separately by the '
+                 'segmax/mean_segmax pooling. Boundaries follow the window '
+                 'length, so 2 always means first half / second half. At 2, '
+                 'segmax emits the same width as mean_max'
         )
         self.parser.add_argument(
             '--tcn-topk',
@@ -346,9 +369,11 @@ class ImpactCnnOptions(ImpactDlOptions):
         self.tcn_filters = args.tcn_filters
         self.tcn_kernel_size = args.tcn_kernel_size
         self.tcn_nb_layers = args.tcn_nb_layers
+        self.tcn_dilation_base = args.tcn_dilation_base
         self.dropout_rate_tcn = args.dropout_rate_tcn
         self.tcn_pooling = args.tcn_pooling
         self.tcn_topk = args.tcn_topk
+        self.tcn_nb_segments = args.tcn_nb_segments
         self.use_time_index_channel = args.use_time_index_channel
         self.tcn_use_gated_activation = args.tcn_use_gated_activation
         self.tcn_use_spatial_dropout = args.tcn_use_spatial_dropout
@@ -559,6 +584,7 @@ class ImpactCnnOptions(ImpactDlOptions):
             logger.info("- inner_activation_cnn:  %s", self.inner_activation_cnn)
             logger.info("- tcn_filters:  %s", self.tcn_filters)
             logger.info("- tcn_topk:  %s", self.tcn_topk)
+            logger.info("- tcn_nb_segments:  %s", self.tcn_nb_segments)
             logger.info("- use_time_index_channel:  %s",
                         self.use_time_index_channel)
             logger.info("- tcn_use_gated_activation:  %s",
@@ -567,6 +593,7 @@ class ImpactCnnOptions(ImpactDlOptions):
                         self.tcn_use_spatial_dropout)
             logger.info("- tcn_kernel_size:  %s", self.tcn_kernel_size)
             logger.info("- tcn_nb_layers:  %s", self.tcn_nb_layers)
+            logger.info("- tcn_dilation_base:  %s", self.tcn_dilation_base)
             logger.info("- dropout_rate_tcn:  %s", self.dropout_rate_tcn)
 
         logger.info("-" * 80)
