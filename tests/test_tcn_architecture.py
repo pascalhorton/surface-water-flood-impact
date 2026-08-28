@@ -17,7 +17,8 @@ import pytest
 import tensorflow as tf
 
 from swafi.impact_cnn_model import (ModelCnn, SegmentMaxPooling,
-                                    TimeIndexChannel, TopKMeanPooling)
+                                    SoftArgmaxPooling, TimeIndexChannel,
+                                    TopKMeanPooling)
 from swafi.impact_cnn_options import ImpactCnnOptions
 
 T_LEN = 49
@@ -97,6 +98,10 @@ def test_time_index_channel_is_resolution_independent():
     pytest.param(["--tcn-pooling", "segmax", "--tcn-nb-segments", "4"],
                  id="segmax_4"),
     pytest.param(["--tcn-pooling", "mean_segmax"], id="mean_segmax"),
+    pytest.param(["--tcn-pooling", "softargmax"], id="softargmax"),
+    pytest.param(["--tcn-pooling", "softargmax", "--tcn-softargmax-beta", "8"],
+                 id="softargmax_sharp"),
+    pytest.param(["--tcn-pooling", "mean_softargmax"], id="mean_softargmax"),
     pytest.param(["--tcn-pooling", "topk"], id="topk"),
     pytest.param(["--tcn-pooling", "mean_topk", "--tcn-topk", "6"],
                  id="mean_topk"),
@@ -313,3 +318,136 @@ def test_dense_head_singular_for_one_layer(caplog):
         _build(["--nb-dense-layers", "1", "--nb-dense-units", "128"])
     msg = [r.getMessage() for r in caplog.records if "Dense head" in r.getMessage()][0]
     assert "1 residual skip (" in msg
+
+
+# --- soft-argmax pooling ----------------------------------------------------
+
+
+def _spike_at(position, t_len=T_LEN, channels=3, height=1.0):
+    """A single peak at one time step, zeros everywhere else."""
+    x = np.zeros((1, t_len, channels), dtype="float32")
+    x[0, position, :] = height
+    return x
+
+
+def test_softargmax_emits_peak_then_position():
+    x = np.random.rand(4, T_LEN, 5).astype("float32")
+    got = SoftArgmaxPooling(beta=1.0)(tf.constant(x)).numpy()
+    assert got.shape == (4, 10)
+    # First half is the plain maximum: Phase H showed softening it costs 23%.
+    np.testing.assert_allclose(got[:, :5], x.max(axis=1), atol=1e-6)
+    # Second half is a position, so it lives in [0, 1].
+    assert (got[:, 5:] >= 0.0).all() and (got[:, 5:] <= 1.0).all()
+
+
+@pytest.mark.parametrize("position,expected", [
+    (0, 0.0),
+    (T_LEN // 2, 0.5),
+    (T_LEN - 1, 1.0),
+])
+def test_softargmax_locates_a_sharp_peak(position, expected):
+    """With a sharp temperature the reported position is the peak's own."""
+    got = SoftArgmaxPooling(beta=50.0)(tf.constant(_spike_at(position))).numpy()
+    assert got[0, 3] == pytest.approx(expected, abs=0.02)
+
+
+def test_softargmax_position_is_monotone_in_peak_time():
+    layer = SoftArgmaxPooling(beta=50.0)
+    positions = [layer(tf.constant(_spike_at(p))).numpy()[0, 3]
+                 for p in (2, 12, 24, 36, 46)]
+    assert all(b > a for a, b in zip(positions, positions[1:]))
+
+
+def test_softargmax_position_is_resolution_independent():
+    """Normalised, so the same peak fraction reports the same number."""
+    a = SoftArgmaxPooling(beta=50.0)(
+        tf.constant(_spike_at(24, t_len=49))).numpy()[0, 3]
+    b = SoftArgmaxPooling(beta=50.0)(
+        tf.constant(_spike_at(288, t_len=577))).numpy()[0, 3]
+    assert a == pytest.approx(b, abs=0.02)
+
+
+def test_softargmax_flat_temperature_reports_the_window_centre():
+    """A flat input carries no timing, and must not fake one."""
+    x = np.ones((1, T_LEN, 2), dtype="float32")
+    got = SoftArgmaxPooling(beta=1.0)(tf.constant(x)).numpy()
+    assert got[0, 2] == pytest.approx(0.5, abs=1e-4)
+    assert got[0, 3] == pytest.approx(0.5, abs=1e-4)
+
+
+def test_softargmax_temperature_is_learnable_and_positive():
+    layer = SoftArgmaxPooling(beta=8.0)
+    layer.build((None, T_LEN, 4))
+    assert len(layer.trainable_weights) == 1
+    # Held in log space, so no value of the weight can flip the softmax into
+    # selecting the minimum.
+    assert float(tf.exp(layer.log_beta).numpy()) == pytest.approx(8.0, rel=1e-5)
+
+
+def test_softargmax_costs_one_parameter_over_mean_max():
+    """Matched for practical purposes; the extra weight is the temperature."""
+    mean_max = _build(["--tcn-pooling", "mean_max"])
+    soft = _build(["--tcn-pooling", "softargmax"])
+    assert soft.count_params() == mean_max.count_params() + 1
+
+
+def test_softargmax_beta_reaches_the_layer():
+    """The flag has to be assigned in parse_args, not merely declared."""
+    sys.argv = ["test"] + BASE_ARGS + ["--tcn-pooling", "softargmax",
+                                       "--tcn-softargmax-beta", "8"]
+    options = ImpactCnnOptions()
+    options.parse_args()
+    assert options.tcn_softargmax_beta == 8.0
+
+
+def test_softargmax_survives_a_save_load_roundtrip(tmp_path):
+    model = _build(["--tcn-pooling", "softargmax",
+                    "--tcn-softargmax-beta", "8"])
+    x3 = np.random.rand(4, T_LEN, 1, 1, 1).astype("float32")
+    x1 = np.random.rand(4, 10).astype("float32")
+    before = model.predict([x3, x1], verbose=0)
+
+    path = tmp_path / "softargmax.keras"
+    model.save(path)
+    reloaded = keras.models.load_model(path)
+
+    np.testing.assert_allclose(before, reloaded.predict([x3, x1], verbose=0),
+                               atol=1e-6)
+
+
+# --- three-term pooling: accumulation, peak and position --------------------
+
+
+def test_mean_softargmax_is_one_term_wider_than_softargmax():
+    """Adding the mean back costs a third of the pooled width, not nothing."""
+    two_term = _build(["--tcn-pooling", "softargmax"])
+    three_term = _build(["--tcn-pooling", "mean_softargmax"])
+    assert three_term.count_params() > two_term.count_params()
+
+
+def test_three_term_poolings_are_matched_to_each_other():
+    """msegmax and msoft differ only in how they encode position.
+
+    Both emit 3 x filters, so the sweep can compare bucketed timing with
+    continuous timing without a capacity difference between them. The single
+    extra parameter is the soft-argmax temperature.
+    """
+    mean_segmax = _build(["--tcn-pooling", "mean_segmax",
+                          "--tcn-nb-segments", "2"])
+    mean_soft = _build(["--tcn-pooling", "mean_softargmax"])
+    assert mean_soft.count_params() == mean_segmax.count_params() + 1
+
+
+def test_mean_softargmax_keeps_the_accumulation_term():
+    """The mean branch must actually be present, not silently dropped."""
+    model = _build(["--tcn-pooling", "mean_softargmax"])
+    names = set()
+
+    def walk(layer):
+        for sub in getattr(layer, "layers", []):
+            names.add(sub.name)
+            walk(sub)
+
+    walk(model)
+    assert "temporal_mean" in names
+    assert "temporal_softargmax" in names

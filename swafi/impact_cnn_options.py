@@ -60,6 +60,7 @@ class ImpactCnnOptions(ImpactDlOptions):
     tcn_nb_layers: int
     tcn_dilation_base: int
     tcn_nb_segments: int
+    tcn_softargmax_beta: float
         Number of dilated Conv1D layers in TCN (dilation rates: 1, 2, 4, ...).
     dropout_rate_tcn: float
         Dropout rate after each TCN layer.
@@ -94,6 +95,7 @@ class ImpactCnnOptions(ImpactDlOptions):
         self.tcn_topk = None
         self.tcn_dilation_base = None
         self.tcn_nb_segments = None
+        self.tcn_softargmax_beta = None
         self.use_time_index_channel = None
         self.tcn_use_gated_activation = None
         self.tcn_use_spatial_dropout = None
@@ -292,13 +294,25 @@ class ImpactCnnOptions(ImpactDlOptions):
             type=str,
             default='mean_max',
             choices=['mean', 'max', 'mean_max', 'last', 'attention',
-                     'topk', 'mean_topk', 'segmax', 'mean_segmax'],
+                     'topk', 'mean_topk', 'segmax', 'mean_segmax',
+                     'softargmax', 'mean_softargmax'],
             help='Temporal pooling strategy after TCN: max (default), mean, '
                  'mean_max (concatenates both, keeping peak intensity and '
                  'accumulation), last timestep, learned attention, topk (mean '
                  'of the --tcn-topk largest steps), mean_topk (both), segmax '
                  '(a max per --tcn-nb-segments segments, keeping when it '
-                 'rained as well as how hard), or mean_segmax (both)'
+                 'rained as well as how hard), mean_segmax (both), or '
+                 'softargmax (the peak and its softmax-weighted position, the '
+                 'continuous form of segmax), or mean_softargmax (that plus '
+                 'the accumulation term, so how much, how hard and when)'
+        )
+        self.parser.add_argument(
+            '--tcn-softargmax-beta',
+            type=float,
+            default=1.0,
+            help='Initial softmax temperature of the softargmax pooling. '
+                 'Learnable from there; higher starts more sharply peaked on '
+                 'the maximum, lower starts closer to a mean over time'
         )
         self.parser.add_argument(
             '--tcn-nb-segments',
@@ -374,6 +388,7 @@ class ImpactCnnOptions(ImpactDlOptions):
         self.tcn_pooling = args.tcn_pooling
         self.tcn_topk = args.tcn_topk
         self.tcn_nb_segments = args.tcn_nb_segments
+        self.tcn_softargmax_beta = args.tcn_softargmax_beta
         self.use_time_index_channel = args.use_time_index_channel
         self.tcn_use_gated_activation = args.tcn_use_gated_activation
         self.tcn_use_spatial_dropout = args.tcn_use_spatial_dropout
@@ -585,6 +600,7 @@ class ImpactCnnOptions(ImpactDlOptions):
             logger.info("- tcn_filters:  %s", self.tcn_filters)
             logger.info("- tcn_topk:  %s", self.tcn_topk)
             logger.info("- tcn_nb_segments:  %s", self.tcn_nb_segments)
+            logger.info("- tcn_softargmax_beta:  %s", self.tcn_softargmax_beta)
             logger.info("- use_time_index_channel:  %s",
                         self.use_time_index_channel)
             logger.info("- tcn_use_gated_activation:  %s",

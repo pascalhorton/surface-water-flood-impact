@@ -3,6 +3,7 @@ Class for the CNN model.
 """
 
 import logging
+import math
 
 import keras
 import tensorflow as tf
@@ -326,6 +327,28 @@ class ModelCnn(keras.models.Model):
                     x = keras.layers.Concatenate(name='temporal_mean_topk')([
                         keras.layers.GlobalAveragePooling1D(name='temporal_mean')(x),
                         topk,
+                    ])
+            elif pooling in ('softargmax', 'mean_softargmax'):
+                # Peak height and peak timing. The continuous relative of
+                # segmax: same 2 x filters out, but the position is read off a
+                # softmax rather than bucketed, so it is not tied to a segment
+                # count that has to divide the window.
+                #
+                # mean_softargmax keeps the accumulation term as well, giving
+                # how much, how hard and when. segmax and softargmax both buy
+                # timing by spending the mean, which conflates two things: that
+                # position helps, and that the mean was worth dropping. The
+                # three-term version separates them.
+                beta = float(getattr(self.options, 'tcn_softargmax_beta', None)
+                             or 1.0)
+                soft = SoftArgmaxPooling(beta=beta,
+                                         name='temporal_softargmax')(x)
+                if pooling == 'softargmax':
+                    x = soft
+                else:
+                    x = keras.layers.Concatenate(name='temporal_mean_soft')([
+                        keras.layers.GlobalAveragePooling1D(name='temporal_mean')(x),
+                        soft,
                     ])
             elif pooling in ('segmax', 'mean_segmax'):
                 # The max over the whole window says how hard it rained but not
@@ -693,6 +716,61 @@ class TopKMeanPooling(keras.layers.Layer):
     def get_config(self):
         config = super().get_config()
         config.update({"k": self.k})
+        return config
+
+
+@keras.saving.register_keras_serializable(package="swafi")
+class SoftArgmaxPooling(keras.layers.Layer):
+    """Peak height and peak timing, per channel.
+
+    Emits the maximum over time and the softmax-weighted mean position of that
+    maximum, normalised to [0, 1] so it means the same thing at hourly and at
+    5-minute resolution. That is 2 x channels, exactly what mean_max emits, so
+    the swap holds capacity fixed and trades total accumulation for timing.
+
+    Keeping a hard max for the height is deliberate. Phase H showed that
+    softening the maximum - averaging the six largest steps instead - cost 23%
+    average precision, so the peak itself is carrying the signal and only the
+    accumulation term is worth spending.
+
+    The temperature decides how sharply the weights concentrate on the peak. It
+    is learnable because the right value depends on the activation scale
+    arriving at the pooling, which is not knowable in advance, and it is held in
+    log space so it cannot cross zero and start selecting the minimum. Its
+    initial value is exposed, since a temperature that starts far too flat may
+    not travel far in forty epochs.
+    """
+
+    def __init__(self, beta=1.0, **kwargs):
+        super().__init__(**kwargs)
+        self.beta = float(beta)
+
+    def build(self, input_shape):
+        self.log_beta = self.add_weight(
+            name="log_beta",
+            shape=(),
+            initializer=keras.initializers.Constant(math.log(self.beta)),
+            trainable=True,
+        )
+        super().build(input_shape)
+
+    def call(self, inputs):
+        beta = tf.exp(self.log_beta)
+        weights = tf.nn.softmax(beta * inputs, axis=1)
+        t_len = tf.shape(inputs)[1]
+        idx = tf.linspace(0.0, 1.0, t_len)
+        idx = tf.cast(idx, inputs.dtype)
+        idx = tf.reshape(idx, (1, -1, 1))
+        position = tf.reduce_sum(weights * idx, axis=1)
+        peak = tf.reduce_max(inputs, axis=1)
+        return tf.concat([peak, position], axis=-1)
+
+    def compute_output_shape(self, input_shape):
+        return (input_shape[0], input_shape[2] * 2)
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({"beta": self.beta})
         return config
 
 
