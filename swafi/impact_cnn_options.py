@@ -34,6 +34,7 @@ class ImpactCnnOptions(ImpactDlOptions):
         The precipitation time step [min]. Must divide the day evenly. A
         sub-hourly step (< 60) requires the 5min dataset.
     precip_days_before: int
+    precip_hours_before: int
         The number of days before the event to use for the precipitation.
     precip_days_after: int
         The number of days after the event to use for the precipitation.
@@ -77,6 +78,7 @@ class ImpactCnnOptions(ImpactDlOptions):
         self.precip_resolution = None
         self.precip_time_step = None
         self.precip_days_before = None
+        self.precip_hours_before = None
         self.precip_days_after = None
 
         # Model options
@@ -202,6 +204,16 @@ class ImpactCnnOptions(ImpactDlOptions):
             type=int,
             default=2,
             help='The number of days before the claim/event to use for the precipitation'
+        )
+        self.parser.add_argument(
+            '--precip-hours-before',
+            type=int,
+            default=0,
+            help='Extra whole hours before the day-aligned window start. The '
+                 'event definition is day-based, so the window otherwise begins '
+                 'at midnight, which cuts through any storm carried over from '
+                 'the previous evening - 7%% of claim events peak in hour 0 of '
+                 'the event day. Must be a whole number of time steps'
         )
         self.parser.add_argument(
             '--precip-days-after',
@@ -371,6 +383,7 @@ class ImpactCnnOptions(ImpactDlOptions):
         self.precip_resolution = args.precip_resolution
         self.precip_time_step = args.precip_time_step
         self.precip_days_before = args.precip_days_before
+        self.precip_hours_before = args.precip_hours_before
         self.precip_days_after = args.precip_days_after
         self.dropout_rate_cnn = args.dropout_rate_cnn
         self.use_spatial_dropout = args.use_spatial_dropout
@@ -588,6 +601,7 @@ class ImpactCnnOptions(ImpactDlOptions):
             logger.info("- precip_resolution:  %s", self.precip_resolution)
             logger.info("- precip_time_step [min]:  %s", self.precip_time_step)
             logger.info("- precip_days_before:  %s", self.precip_days_before)
+            logger.info("- precip_hours_before:  %s", self.precip_hours_before)
             logger.info("- precip_days_after:  %s", self.precip_days_after)
             logger.info("- use_spatial_dropout:  %s", self.use_spatial_dropout)
             logger.info("- dropout_rate_cnn:  %s", self.dropout_rate_cnn)

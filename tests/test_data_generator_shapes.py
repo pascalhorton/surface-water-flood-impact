@@ -63,3 +63,56 @@ def test_impact_tx_generator_returns_label_column():
                                 mean_static=np.zeros(1), std_static=np.ones(1))
     (x_precip_daily, x_precip_hf, x_static_out), y_batch = gen.__getitem__(0)
     assert y_batch.ndim == 2 and y_batch.shape[1] == 1
+
+
+# --- the window start -------------------------------------------------------
+
+
+def _window_length(days_before, days_after, hours_before, time_step=60):
+    """Time steps in the extracted window, without touching any real data."""
+    gen = ImpactCnnDataGenerator.__new__(ImpactCnnDataGenerator)
+    gen.X_precip = object()
+    gen.time_dim_size = None
+    gen.precip_time_step = time_step
+    gen.precip_days_before = days_before
+    gen.precip_days_after = days_after
+    gen.precip_hours_before = hours_before
+    return gen.get_time_dim_size()
+
+
+def test_hours_before_defaults_to_no_change():
+    """Every configuration run before this option existed must be untouched."""
+    assert _window_length(1, 0, 0) == 49
+    assert _window_length(0, 0, 0) == 25
+    assert _window_length(2, 1, 0) == 97
+
+
+@pytest.mark.parametrize("days_before,hours_before,expected", [
+    (0, 6, 31),
+    (0, 12, 37),
+    (1, 6, 55),
+])
+def test_hours_before_extends_the_window(days_before, hours_before, expected):
+    assert _window_length(days_before, 0, hours_before) == expected
+
+
+def test_hours_before_must_be_a_whole_number_of_steps():
+    """A partial step would silently misalign the series against the events."""
+    with pytest.raises(AssertionError, match="whole number"):
+        _window_length(0, 0, 1, time_step=90)
+
+
+def test_thirty_hour_window_splits_at_the_diurnal_minimum():
+    """Why 6 hours and not some other number.
+
+    The event definition is day-based, so with a whole-day window the two-way
+    pooling split lands on midnight. Claims follow the convective cycle and peak
+    at 18:00, with 7% of them in hour 0 of the event day - evening storms that
+    ran over and were split into a second event. Six extra hours moves the split
+    to 09:00, the quietest part of the day, which separates one convective day
+    from the next instead of cutting through a storm.
+    """
+    t_len = _window_length(0, 0, 6)
+    midnight = 6                      # index of e_date in the window
+    split = t_len // 2                # SegmentMaxPooling boundary for n = 2
+    assert split - midnight == 9      # 09:00 on the event day

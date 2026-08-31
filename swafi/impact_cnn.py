@@ -147,6 +147,8 @@ class ImpactCnn(ImpactDl):
             precip_resolution=self.options.precip_resolution,
             precip_time_step=self.options.precip_time_step,
             precip_days_before=self.options.precip_days_before,
+            precip_hours_before=getattr(
+                self.options, 'precip_hours_before', None) or 0,
             precip_days_after=self.options.precip_days_after,
             tmp_dir=self.tmp_dir,
             transform_static=self.options.transform_static,
@@ -188,6 +190,8 @@ class ImpactCnn(ImpactDl):
             precip_resolution=self.options.precip_resolution,
             precip_time_step=self.options.precip_time_step,
             precip_days_before=self.options.precip_days_before,
+            precip_hours_before=getattr(
+                self.options, 'precip_hours_before', None) or 0,
             precip_days_after=self.options.precip_days_after,
             tmp_dir=self.tmp_dir,
             transform_static=self.options.transform_static,
@@ -224,6 +228,8 @@ class ImpactCnn(ImpactDl):
             precip_resolution=self.options.precip_resolution,
             precip_time_step=self.options.precip_time_step,
             precip_days_before=self.options.precip_days_before,
+            precip_hours_before=getattr(
+                self.options, 'precip_hours_before', None) or 0,
             precip_days_after=self.options.precip_days_after,
             tmp_dir=self.tmp_dir,
             transform_static=self.options.transform_static,
@@ -259,6 +265,8 @@ class ImpactCnn(ImpactDl):
             precip_resolution=self.options.precip_resolution,
             precip_time_step=self.options.precip_time_step,
             precip_days_before=self.options.precip_days_before,
+            precip_hours_before=getattr(
+                self.options, 'precip_hours_before', None) or 0,
             precip_days_after=self.options.precip_days_after,
             tmp_dir=self.tmp_dir,
             transform_static=self.options.transform_static,

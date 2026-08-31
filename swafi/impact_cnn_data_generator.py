@@ -16,6 +16,7 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
     def __init__(self, event_props, x_static, x_precip, x_dem, y=None, batch_size=32,
                  shuffle=True, precip_window_size=2, precip_resolution=1,
                  precip_time_step=60, precip_days_before=1, precip_days_after=1,
+                 precip_hours_before=0,
                  tmp_dir=None, transform_static='standardize', transform_precip='normalize',
                  log_transform_precip=True, mean_static=None, std_static=None,
                  mean_precip=None, std_precip=None, min_static=None,
@@ -109,6 +110,7 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
         self.precip_resolution = precip_resolution
         self.precip_time_step = precip_time_step
         self.precip_days_before = precip_days_before
+        self.precip_hours_before = int(precip_hours_before or 0)
         self.precip_days_after = precip_days_after
 
         self.mean_precip = mean_precip
@@ -163,6 +165,15 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
             time_dim_size += self.precip_days_after + self.precip_days_before + 1
             time_dim_size *= steps_per_day
             time_dim_size += 1  # Because the 1st and last time steps are included.
+            # getattr, not self.: a generator restored from an older pickle,
+            # or built attribute-by-attribute in a test, will not have this.
+            hours_before = getattr(self, 'precip_hours_before', 0) or 0
+            if hours_before:
+                extra = hours_before * 60
+                assert extra % minutes == 0, \
+                    (f"precip_hours_before ({hours_before} h) must be "
+                     f"a whole number of {minutes}-minute steps.")
+                time_dim_size += extra // minutes
         self.time_dim_size = time_dim_size
 
         return time_dim_size
@@ -354,7 +365,9 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
         pixels_nb = int(self.precip_window_size / self.precip_resolution)
 
         # Temporal selection
-        t_start = event[0] - np.timedelta64(self.precip_days_before, 'D')
+        t_start = (event[0] - np.timedelta64(self.precip_days_before, 'D')
+                   - np.timedelta64(
+                       getattr(self, 'precip_hours_before', 0) or 0, 'h'))
         t_end = event[0] + np.timedelta64(self.precip_days_after + 1, 'D')  # +1 for the day itself.
 
         # Spatial domain
