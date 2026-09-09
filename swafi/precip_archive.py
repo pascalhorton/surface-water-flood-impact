@@ -174,10 +174,19 @@ class PrecipitationArchive(Precipitation):
 
     def preload_full_grid(self):
         """
-        Load the full (lazy) dataset into memory. Optional: patch reads from the
-        zarr store are cheap, but an in-memory grid makes batch generation with
-        large spatial windows faster still (if it fits in RAM).
+        Load the (already trimmed) dataset into memory, once.
+
+        Not an optional optimisation: it is effectively required for any window
+        larger than one pixel.
+        Repeat calls are a no-op. The generators are built per split and each
+        one asks for the preload, so without this guard the whole domain would
+        be decompressed two or three times over, holding two copies while it
+        did.
         """
+        if self.full_grid_data is not None:
+            logger.debug("Full precipitation grid already in memory.")
+            return
+
         logger.info("Preloading full precipitation grid into memory...")
         self.full_grid_data = self.data.compute()
         logger.info("Full grid loaded: shape %s, size %.1f GB",

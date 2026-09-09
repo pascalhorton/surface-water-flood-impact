@@ -76,3 +76,41 @@ def test_time_dim_size(days_before, days_after, step_min, expected):
     g.precip_days_after = days_after
     g.precip_time_step = step_min
     assert g.get_time_dim_size() == expected
+
+
+# --- the full-grid preload --------------------------------------------------
+
+
+def test_preload_full_grid_computes_once():
+    """The generators are built per split and each one asks for the preload.
+
+    Without a guard the whole (trimmed) domain is decompressed two or three
+    times over and two copies are held while it happens - about 3.3 GB each for
+    GVZ. The guard is what makes --preload-precip usable, so it is worth a test:
+    a second call must not touch the store.
+    """
+    from swafi.precip_archive import PrecipitationArchive
+
+    class _CountingData:
+        def __init__(self):
+            self.computes = 0
+
+        def compute(self):
+            self.computes += 1
+            return _Loaded()
+
+    class _Loaded:
+        sizes = {"time": 2, "y": 2, "x": 2}
+        nbytes = 32
+
+    archive = PrecipitationArchive.__new__(PrecipitationArchive)
+    archive.full_grid_data = None
+    archive.data = _CountingData()
+
+    archive.preload_full_grid()
+    assert archive.data.computes == 1
+    first = archive.full_grid_data
+
+    archive.preload_full_grid()
+    assert archive.data.computes == 1, "the grid was recomputed on a second call"
+    assert archive.full_grid_data is first

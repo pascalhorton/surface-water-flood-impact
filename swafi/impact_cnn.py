@@ -431,7 +431,9 @@ class ImpactCnn(ImpactDl):
         precip_window_size: int
             The precipitation window size [km].
         """
-        precip_window_size_m = max(precip_window_size, 15) * 1000
+        # The margin only has to cover half a window on each side, so that a
+        # patch centred on an edge cell still falls inside the domain.
+        precip_window_size_m = max(precip_window_size, 5) * 1000
         x_min = self.df['x'].min() - precip_window_size_m / 2
         x_max = self.df['x'].max() + precip_window_size_m / 2
         y_min = self.df['y'].min() - precip_window_size_m / 2
