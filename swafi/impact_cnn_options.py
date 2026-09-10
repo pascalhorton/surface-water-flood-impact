@@ -44,6 +44,7 @@ class ImpactCnnOptions(ImpactDlOptions):
         Whether to use spatial dropout or not.
     use_batchnorm_cnn: bool
         Whether to use batch normalization or not for the spatial CNN.
+    spatial_reduction: str
     kernel_size_spatial: int
         The kernel size for the spatial convolution.
     nb_filters: int
@@ -85,6 +86,7 @@ class ImpactCnnOptions(ImpactDlOptions):
         self.dropout_rate_cnn = None
         self.use_spatial_dropout = None
         self.use_batchnorm_cnn = None
+        self.spatial_reduction = None
         self.kernel_size_spatial = None
         self.nb_filters = None
         self.pool_size_spatial = None
@@ -240,6 +242,17 @@ class ImpactCnnOptions(ImpactDlOptions):
             help='Use batch normalization for the CNN'
         )
         self.parser.add_argument(
+            '--spatial-reduction',
+            type=str,
+            default='conv',
+            choices=['conv', 'radial'],
+            help='How a spatial window is reduced before the TCN. conv is the '
+                 'convolution-and-flatten branch, whose width grows with the '
+                 'window AREA; radial emits the centre cell plus the mean and '
+                 'max of each ring, which grows with the radius and leaves a '
+                 '7 km window within 0.4%% of a single pixel on parameters'
+        )
+        self.parser.add_argument(
             '--kernel-size-spatial',
             type=int,
             default=3,
@@ -388,6 +401,7 @@ class ImpactCnnOptions(ImpactDlOptions):
         self.dropout_rate_cnn = args.dropout_rate_cnn
         self.use_spatial_dropout = args.use_spatial_dropout
         self.use_batchnorm_cnn = args.use_batchnorm_cnn
+        self.spatial_reduction = args.spatial_reduction
         self.kernel_size_spatial = args.kernel_size_spatial
         self.nb_filters = args.nb_filters
         self.pool_size_spatial = args.pool_size_spatial
@@ -606,6 +620,7 @@ class ImpactCnnOptions(ImpactDlOptions):
             logger.info("- use_spatial_dropout:  %s", self.use_spatial_dropout)
             logger.info("- dropout_rate_cnn:  %s", self.dropout_rate_cnn)
             logger.info("- use_batchnorm_cnn:  %s", self.use_batchnorm_cnn)
+            logger.info("- spatial_reduction:  %s", self.spatial_reduction)
             logger.info("- kernel_size_spatial:  %s", self.kernel_size_spatial)
             logger.info("- nb_filters:  %s", self.nb_filters)
             logger.info("- pool_size_spatial:  %s", self.pool_size_spatial)

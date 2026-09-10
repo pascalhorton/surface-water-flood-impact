@@ -230,7 +230,14 @@ class ModelCnn(keras.models.Model):
 
             n_channels = self.input_3d_size[3]
 
-            if pixels_per_side > 1:
+            if pixels_per_side > 1 and getattr(
+                    self.options, 'spatial_reduction', None) == 'radial':
+                # Centre cell plus mean/max per ring: 1 + 2*radius channels,
+                # so the cost grows with the radius and not with the area. No
+                # convolution, batch-norm or dropout is created on this path.
+                x = RadialSpatialReduction(name='spatial_radial')(input_3d)
+
+            elif pixels_per_side > 1:
                 # Spatial 2D CNN applied per time step via TimeDistributed
                 # Input is already (T, H, W, C) — no permutation needed.
                 x = input_3d
@@ -717,6 +724,76 @@ class TopKMeanPooling(keras.layers.Layer):
         config = super().get_config()
         config.update({"k": self.k})
         return config
+
+
+@keras.saving.register_keras_serializable(package="swafi")
+class RadialSpatialReduction(keras.layers.Layer):
+    """Reduce a spatial window to the centre cell plus per-ring statistics.
+
+    Emits, per time step and per input channel: the centre value, then the mean
+    and the max over each concentric ring, rings being Chebyshev distance from
+    the centre. A 3x3 window gives 3 numbers, 5x5 gives 5, 7x7 gives 7 - the
+    output grows with the RADIUS, where a flatten grows with the area.
+
+    Two things this buys over conv-and-flatten.
+
+    The centre cell keeps its identity. The target is whether THIS cell
+    recorded a claim, and Phase N2 found that max-pooling the neighbourhood -
+    which replaces the cell's own rainfall with the neighbourhood maximum -
+    cost 14% at 3 km and 18.5% at 5 km, at matched parameters. A flatten does
+    preserve the centre, but only implicitly: the following Dense has to learn
+    which of H*W*filters entries it is.
+
+    And the window size stops costing anything. Feeding tcn_proj, a 7 km window
+    is 7 channels against a single pixel's 1, which is 192 parameters more out
+    of 46,529.
+
+    The rings are unweighted and direction-blind, which is the assumption worth
+    stating: distance from the cell is taken to matter and bearing is not.
+    """
+
+    def build(self, input_shape):
+        # (batch, time, height, width, channels)
+        height, width = int(input_shape[2]), int(input_shape[3])
+        assert height == width, \
+            f"RadialSpatialReduction expects a square window, got {height}x{width}"
+        assert height % 2 == 1, \
+            f"RadialSpatialReduction expects an odd window so a centre exists, got {height}"
+
+        centre = height // 2
+        rows = np.abs(np.arange(height) - centre)[:, None]
+        cols = np.abs(np.arange(width) - centre)[None, :]
+        chebyshev = np.maximum(rows, cols)
+
+        self.radius = int(chebyshev.max())
+        self._masks = [(chebyshev == k).astype("float32")
+                       for k in range(self.radius + 1)]
+        super().build(input_shape)
+
+    def call(self, inputs):
+        outputs = []
+        for ring, mask in enumerate(self._masks):
+            m = tf.constant(mask, dtype=inputs.dtype)
+            m = tf.reshape(m, (1, 1, mask.shape[0], mask.shape[1], 1))
+
+            if ring == 0:
+                # One cell, so its mean is the value itself.
+                outputs.append(tf.reduce_sum(inputs * m, axis=[2, 3]))
+                continue
+
+            count = tf.reduce_sum(m)
+            outputs.append(tf.reduce_sum(inputs * m, axis=[2, 3]) / count)
+
+            floor = tf.constant(inputs.dtype.min, dtype=inputs.dtype)
+            outputs.append(
+                tf.reduce_max(tf.where(m > 0, inputs, floor), axis=[2, 3]))
+
+        return tf.concat(outputs, axis=-1)
+
+    def compute_output_shape(self, input_shape):
+        radius = int(input_shape[2]) // 2
+        return (input_shape[0], input_shape[1],
+                int(input_shape[4]) * (1 + 2 * radius))
 
 
 @keras.saving.register_keras_serializable(package="swafi")
