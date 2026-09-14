@@ -116,3 +116,64 @@ def test_thirty_hour_window_splits_at_the_diurnal_minimum():
     midnight = 6                      # index of e_date in the window
     split = t_len // 2                # SegmentMaxPooling boundary for n = 2
     assert split - midnight == 9      # 09:00 on the event day
+
+
+def _full_dataset_indices(gen):
+    """Every index a full pass over the generator actually returns."""
+    seen = []
+    for i in range(gen.get_number_of_batches_for_full_dataset()):
+        _, y_batch = gen.get_ordered_batch_from_full_dataset(i)
+        seen.append(np.asarray(y_batch).reshape(-1))
+    return np.concatenate(seen) if seen else np.array([])
+
+
+def _labelled_generator(n, batch_size):
+    """A generator whose label is its own index, so a pass is self-identifying."""
+    event_props = make_event_props(n)
+    x_static = np.zeros((n, 2))
+    y = np.arange(n, dtype=float)
+    return ImpactCnnDataGenerator(
+        event_props, x_static, x_precip=None, x_dem=None, y=y,
+        batch_size=batch_size, shuffle=False,
+        mean_static=np.zeros(2), std_static=np.ones(2))
+
+
+@pytest.mark.parametrize("n, batch_size", [
+    (10, 4),    # a ragged last batch
+    (12, 4),    # an exact multiple, where the last batch ends on the boundary
+    (1, 4),     # a single sample, entirely inside one short batch
+    (5, 1),     # one sample per batch
+    (7, 100),   # one batch larger than the dataset
+])
+def test_full_dataset_pass_returns_every_sample_once(n, batch_size):
+    """A pass over the full dataset must return all of it, in order.
+
+    The clamp on the last batch used to be len(y) - 1, which silently dropped
+    the final sample of every set. It cost one row in 282,048 on the validation
+    split, so no score moved by anything visible, but assessment ran on a
+    dataset it did not have.
+    """
+    gen = _labelled_generator(n, batch_size)
+    seen = _full_dataset_indices(gen)
+
+    assert len(seen) == n, f"a full pass returned {len(seen)} of {n} samples"
+    np.testing.assert_array_equal(seen, np.arange(n))
+
+
+def test_full_dataset_pass_includes_the_last_sample():
+    """The regression itself, stated as its own case.
+
+    The bug was invisible in aggregate metrics and only showed up as a length,
+    so pin the specific property rather than trusting a mean to reveal it.
+    """
+    n = 10
+    gen = _labelled_generator(n, batch_size=4)
+    seen = _full_dataset_indices(gen)
+    assert n - 1 in seen, "the final sample was never returned by any batch"
+
+
+def test_full_dataset_batches_do_not_overlap():
+    """Consecutive batches must tile the dataset, not overlap or leave gaps."""
+    gen = _labelled_generator(23, batch_size=5)
+    seen = _full_dataset_indices(gen)
+    assert len(np.unique(seen)) == len(seen), "a sample was returned twice"
