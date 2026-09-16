@@ -3,6 +3,9 @@ Class to handle the precipitation archive data.
 """
 import hashlib
 import logging
+import os
+import shutil
+import uuid
 import warnings
 from pathlib import Path
 
@@ -14,6 +17,7 @@ from tqdm import tqdm
 
 from .config import Config
 from .precip import Precipitation
+from .utils.zarr_store import init_zarr_template, write_time_region
 
 config = Config()
 
@@ -109,6 +113,12 @@ def get_cdf_levels(spread, nb_levels=CDF_NB_LEVELS):
 
 
 class PrecipitationArchive(Precipitation):
+    # Native time steps resampled and written per slab when building a derived
+    # store. About three months of 5-minute data: large enough that the per-slab
+    # overhead is negligible, small enough that the dask graph stays in the tens
+    # of thousands of tasks. See _build_derived_store.
+    DERIVED_STORE_SLAB_STEPS = 90 * 24 * 12
+
     def __init__(self, year_start=None, year_end=None, cid_file=None):
         """
         The generic PrecipitationArchive class. The data is backed by a zarr
@@ -790,6 +800,10 @@ class PrecipitationArchive(Precipitation):
         and time step [h], materializing it once from the currently opened base
         store (kept in TMP_DIR and reused across runs).
 
+        Safe to call from concurrent runs: the store is built into a private
+        directory and renamed into place, so parallel arms that need the same
+        time step cannot write over one another. See _publish_derived_store.
+
         Parameters
         ----------
         resolution: int
@@ -817,21 +831,170 @@ class PrecipitationArchive(Precipitation):
         done_marker = Path(str(derived_path) + '.done')
 
         if not done_marker.exists():
+            # Build into a private directory and move it into place only once it
+            # is whole, so that concurrent runs cannot interleave their writes.
+            #
+            # The previous version wrote straight to derived_path with mode='w'
+            # and touched the marker afterwards. Two runs needing the same time
+            # step - which is any sweep with two arms at one resolution - then
+            # both saw no marker, both recreated the same directory, and
+            # whichever finished first published a marker over a store the other
+            # was still rewriting. A rename is atomic within a filesystem, and
+            # the temporary directory is a sibling of the target, so the store
+            # becomes visible to readers in one step or not at all.
             logger.info("Building derived precipitation store '%s'.", derived_path)
             self.resolution = resolution
             self.time_step = time_step
-            derived = self._resample(self.data)
-            derived = derived.chunk(
-                {self.time_axis_dim: 720,
-                 self.y_axis_dim: 32, self.x_axis_dim: 32})
-            derived = derived.drop_encoding()
-            # mode='w' overwrites leftovers of an interrupted build (no marker).
-            derived.to_zarr(derived_path, mode='w', consolidated=False)
-            done_marker.touch()
+            building = derived_path.with_name(
+                f'{derived_path.name}.building'
+                f'-{os.getpid()}-{uuid.uuid4().hex[:8]}')
+            try:
+                self._build_derived_store(building)
+                self._publish_derived_store(building, derived_path, done_marker)
+            finally:
+                # Present only if the store was never renamed away: a failed
+                # build, or a race this run lost.
+                if building.exists():
+                    shutil.rmtree(building, ignore_errors=True)
 
         self.data = xr.open_zarr(derived_path, consolidated=False)
         self.resolution = resolution
         self.time_step = time_step
+
+    def _build_derived_store(self, building, chunks=(720, 32, 32)):
+        """Materialize the derived store one slab of time at a time.
+
+        WHY NOT IN ONE CALL. Resampling is lazy, so `_resample(self.data)`
+        followed by a single `to_zarr` looks like the obvious way to write this,
+        and it is what this method replaced. The problem is the size of the dask
+        graph: a 5-minute resample builds on the order of a thousand tasks per
+        day of input, so eighteen years is several million tasks. The scheduler
+        then spends longer culling and optimizing that graph than it would take
+        to read the data - measured at days, single-threaded, with not one chunk
+        written and memory climbing - because none of the work starts until the
+        whole graph has been walked.
+
+        Slabs bound it. Each one resamples about three months of native steps,
+        a graph of a few tens of thousands of tasks, computes it to a small
+        array, and writes it into its region of the store. Total work is the
+        same, peak memory is flat, and the log shows progress instead of
+        silence.
+
+        The slab length is rounded to whole chunks of the store's time axis so
+        that no chunk is written by two slabs.
+
+        Parameters
+        ----------
+        building: Path
+            The directory to write the store into. Not the published path: see
+            _publish_derived_store.
+        chunks: tuple
+            Chunk sizes of the derived store, as (time, y, x).
+        """
+        src_times = pd.DatetimeIndex(self.data[self.time_axis_dim].values)
+        target_minutes = time_step_to_minutes(self.time_step)
+        native_minutes = time_step_to_minutes(self.native_time_step)
+
+        if target_minutes != native_minutes:
+            freq = f'{target_minutes}min'
+            # _resample bins right-closed and right-labelled, so a native step
+            # belongs to the bin ending at the next multiple of the target step.
+            # ceil() reproduces that mapping without touching the data.
+            bins = src_times.ceil(freq)
+            out_times = pd.date_range(bins[0], bins[-1], freq=freq)
+            assert len(out_times) == len(bins.unique()), (
+                f"the source time axis has gaps: {len(bins.unique())} bins are "
+                f"populated out of {len(out_times)} between {bins[0]} and "
+                f"{bins[-1]}. Slab boundaries assume a regular grid.")
+        else:
+            freq = None
+            bins = src_times
+            out_times = src_times
+
+        # The spatial axes after any coarsening, taken from _resample itself so
+        # that they cannot drift from what the slabs will produce.
+        probe = self._resample(
+            self.data.isel({self.time_axis_dim: slice(0, 1)}))
+        out_y = probe[self.y_axis_dim].values
+        out_x = probe[self.x_axis_dim].values
+
+        init_zarr_template(building, out_times, out_y, out_x, chunks)
+
+        ratio = max(1, target_minutes // native_minutes)
+        per_slab = max(1, self.DERIVED_STORE_SLAB_STEPS // ratio)
+        per_slab = max(chunks[0], (per_slab // chunks[0]) * chunks[0])
+
+        n_out = len(out_times)
+        n_slabs = int(np.ceil(n_out / per_slab))
+        logger.info("Resampling %s steps into %s in %d slab(s) of %d.",
+                    f'{len(src_times):,}', f'{n_out:,}', n_slabs, per_slab)
+
+        for k in range(n_slabs):
+            a = k * per_slab
+            b = min(a + per_slab, n_out)
+            i0 = int(np.searchsorted(bins, out_times[a], side='left'))
+            i1 = (len(src_times) if b >= n_out
+                  else int(np.searchsorted(bins, out_times[b], side='left')))
+
+            slab = self._resample(
+                self.data.isel({self.time_axis_dim: slice(i0, i1)}))
+            got = pd.DatetimeIndex(slab[self.time_axis_dim].values)
+            # If this ever fails the slab would be written to the wrong rows,
+            # silently shifting the whole series in time. Check, do not assume.
+            assert got.equals(out_times[a:b]), (
+                f"slab {k} covers {got[0]}..{got[-1]} ({len(got)} steps) but "
+                f"was cut for {out_times[a]}..{out_times[b - 1]} "
+                f"({b - a} steps)")
+
+            values = np.asarray(slab[self.precip_var].to_numpy(),
+                                dtype='float32')
+            write_time_region(building, values, a)
+            logger.info("  slab %d/%d written (%s to %s).",
+                        k + 1, n_slabs, out_times[a].date(),
+                        out_times[b - 1].date())
+
+    @staticmethod
+    def _publish_derived_store(building, derived_path, done_marker):
+        """Move a freshly built derived store into place, atomically.
+
+        First writer wins, and a loser discards its own copy rather than
+        overwriting the winner. That is safe because every run builds the same
+        store from the same base data, so the copies are interchangeable; what
+        must not happen is two of them writing to one directory.
+
+        The marker is kept as the completeness test rather than the presence of
+        the directory, so that stores built by the previous scheme stay valid
+        and are not silently rebuilt.
+
+        Parameters
+        ----------
+        building: Path
+            The private directory the store was just written to.
+        derived_path: Path
+            Where the store belongs.
+        done_marker: Path
+            The marker published once the store is readable.
+        """
+        if done_marker.exists():
+            logger.info("Another run published '%s' first; discarding this copy.",
+                        derived_path.name)
+            return
+
+        if derived_path.exists():
+            # A directory with no marker: the remains of an interrupted build,
+            # or of the pre-rename scheme. No reader will have accepted it, and
+            # renaming onto an existing directory fails, so clear it first.
+            shutil.rmtree(derived_path, ignore_errors=True)
+
+        try:
+            os.rename(building, derived_path)
+        except OSError:
+            # Another run renamed into place between the check above and here.
+            logger.info("Another run published '%s' first; discarding this copy.",
+                        derived_path.name)
+            return
+
+        done_marker.touch()
 
     def _resample(self, data):
         with dask.config.set(**{'array.slicing.split_large_chunks': True}):
