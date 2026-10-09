@@ -46,6 +46,7 @@ class ImpactCnnOptions(ImpactDlOptions):
         Whether to use batch normalization or not for the spatial CNN.
     spatial_reduction: str
     kernel_size_spatial: int
+    kernel_size_temporal: int
         The kernel size for the spatial convolution.
     nb_filters: int
         The number of filters for the spatial CNN.
@@ -88,6 +89,7 @@ class ImpactCnnOptions(ImpactDlOptions):
         self.use_batchnorm_cnn = None
         self.spatial_reduction = None
         self.kernel_size_spatial = None
+        self.kernel_size_temporal = None
         self.nb_filters = None
         self.pool_size_spatial = None
         self.nb_conv_blocks = None
@@ -245,12 +247,28 @@ class ImpactCnnOptions(ImpactDlOptions):
             '--spatial-reduction',
             type=str,
             default='conv',
-            choices=['conv', 'radial'],
+            choices=['conv', 'conv3d', 'radial'],
             help='How a spatial window is reduced before the TCN. conv is the '
-                 'convolution-and-flatten branch, whose width grows with the '
-                 'window AREA; radial emits the centre cell plus the mean and '
-                 'max of each ring, which grows with the radius and leaves a '
-                 '7 km window within 0.4%% of a single pixel on parameters'
+                 'convolution-and-flatten branch, a 2D kernel applied to each '
+                 'time step independently, whose width grows with the window '
+                 'AREA; conv3d convolves space and TIME together, which is the '
+                 'only one of the three that can represent a neighbour whose '
+                 'rain arrives before or after the centre; radial emits the '
+                 'centre cell plus the mean and max of each ring, which grows '
+                 'with the radius and leaves a 7 km window within 0.4%% of a '
+                 'single pixel on parameters'
+        )
+        self.parser.add_argument(
+            '--kernel-size-temporal',
+            type=int,
+            default=3,
+            help='Temporal extent of the conv3d kernel, in time steps. Only '
+                 'used by --spatial-reduction conv3d. The spatial extent stays '
+                 '--kernel-size-spatial, so a value of 3 with a spatial kernel '
+                 'of 3 gives a (3, 3, 3) kernel: plus or minus one step and one '
+                 'pixel. Sized from the advection it has to span - at 10 m/s a '
+                 'cell crosses 1 km in 1.7 min, so one 5-minute step covers a '
+                 'ring-1 neighbour and two cover a slow storm'
         )
         self.parser.add_argument(
             '--kernel-size-spatial',
@@ -403,6 +421,7 @@ class ImpactCnnOptions(ImpactDlOptions):
         self.use_batchnorm_cnn = args.use_batchnorm_cnn
         self.spatial_reduction = args.spatial_reduction
         self.kernel_size_spatial = args.kernel_size_spatial
+        self.kernel_size_temporal = args.kernel_size_temporal
         self.nb_filters = args.nb_filters
         self.pool_size_spatial = args.pool_size_spatial
         self.nb_conv_blocks = args.nb_conv_blocks
@@ -425,6 +444,15 @@ class ImpactCnnOptions(ImpactDlOptions):
             self.kernel_size_spatial = 1
             self.pool_size_spatial = 1
             self.use_spatial_dropout = False
+            # conv3d and radial both need a window to work on. Fall back rather
+            # than build a 3D kernel over a 1x1 grid, and record the fallback so
+            # the options file does not claim a mode that never ran.
+            if self.spatial_reduction in ('conv3d', 'radial'):
+                logger.warning(
+                    "--spatial-reduction %s needs a window wider than one "
+                    "pixel; falling back to 'conv'.", self.spatial_reduction)
+                self.spatial_reduction = 'conv'
+            self.kernel_size_temporal = 1
 
         if self.optimize_with_optuna:
             logger.info("Optimizing with Optuna; some options will be ignored.")

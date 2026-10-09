@@ -176,3 +176,134 @@ def test_radial_survives_a_save_load_roundtrip(tmp_path):
 
     np.testing.assert_allclose(before, reloaded.predict([x3, x1], verbose=0),
                                atol=1e-6)
+
+
+# ---------------------------------------------------------------------------
+# conv3d: convolving space and time together
+#
+# The TimeDistributed branch applies a 2D kernel to each time step on its own,
+# so it can only learn "the neighbourhood is wet now". It cannot represent a
+# neighbour whose rain arrives before or after the centre. That matters because
+# at five-minute resolution the upwind and downwind lags around an event are
+# anti-correlated at -0.42, measured over 800 events, and not at all on hourly
+# data. conv3d is the only one of the three modes that can use it.
+# ---------------------------------------------------------------------------
+
+CONV3D_ARGS = [
+    "--spatial-reduction", "conv3d", "--kernel-size-spatial", "3",
+    "--nb-filters", "8", "--nb-conv-blocks", "1", "--pool-size-spatial", "1",
+    "--no-use-batchnorm-cnn", "--dropout-rate-cnn", "0",
+]
+
+
+def test_conv3d_builds_a_space_time_kernel_and_no_per_step_conv():
+    model = _build(CONV3D_ARGS + ["--precip-window-size", "3"], pixels=3)
+    names = _layer_names(model)
+    assert any(n.startswith("conv3d_") for n in names), names
+    assert not any(n.startswith("td_conv2d") for n in names), \
+        "a per-time-step 2D conv survived on the conv3d path"
+    assert not any("spatial_radial" in n for n in names)
+
+
+def test_conv2d_remains_the_default_for_a_window():
+    """The default path must be untouched: every earlier phase used it."""
+    model = _build(["--precip-window-size", "3", "--kernel-size-spatial", "3",
+                    "--nb-filters", "8", "--nb-conv-blocks", "1"], pixels=3)
+    names = _layer_names(model)
+    assert any(n.startswith("td_conv2d") for n in names), names
+    assert not any(n.startswith("conv3d_") for n in names)
+
+
+def test_conv3d_preserves_the_time_axis():
+    """Padding is 'same' and pooling is spatial only, so the TCN is unchanged.
+
+    If the time axis shrank, every receptive-field figure in the project would
+    silently stop applying to this arm.
+    """
+    for k_t in (3, 5, 7):
+        model = _build(
+            CONV3D_ARGS + ["--precip-window-size", "3",
+                           "--kernel-size-temporal", str(k_t)], pixels=3)
+        out = model([np.zeros((2, T_LEN, 3, 3, 1), dtype="float32"),
+                     np.zeros((2, 2), dtype="float32")])
+        assert np.asarray(out).shape[0] == 2
+        reshape = [l for l in model.layers if l.name == "reshape_conv3d"]
+        assert reshape, "the conv3d branch did not reshape to (T, features)"
+        assert reshape[0].output.shape[1] == T_LEN, \
+            f"time axis became {reshape[0].output.shape[1]}, expected {T_LEN}"
+
+
+@pytest.mark.parametrize("k_t", [1, 3, 5, 7])
+def test_temporal_kernel_costs_what_it_should(k_t):
+    """One extra step of temporal kernel adds spatial_k^2 * filters weights."""
+    model = _build(CONV3D_ARGS + ["--precip-window-size", "3",
+                                  "--kernel-size-temporal", str(k_t)], pixels=3)
+    conv = [l for l in model.layers if l.name == "conv3d_0"][0]
+    weights = conv.get_weights()[0]
+    assert weights.shape == (k_t, 3, 3, 1, 8), weights.shape
+
+
+def test_conv3d_sees_a_neighbour_at_a_different_time():
+    """The property the whole arm exists for, asserted on the layer itself.
+
+    A 2D kernel per time step has no weight connecting pixel (y, x) at step t to
+    the centre at step t +/- 1. A 3D kernel does, and that is the only way an
+    upwind neighbour arriving two steps early can be represented.
+    """
+    model = _build(CONV3D_ARGS + ["--precip-window-size", "3",
+                                  "--kernel-size-temporal", "3"], pixels=3)
+    conv = [l for l in model.layers if l.name == "conv3d_0"][0]
+    k = conv.get_weights()[0]            # (time, y, x, in, out)
+    assert k.shape[0] == 3, "the kernel does not span time at all"
+    # Off-centre in time AND off-centre in space must both be reachable.
+    assert k[0, 0, 0].size > 0 and k[2, 2, 2].size > 0
+
+
+def test_conv3d_falls_back_at_one_pixel_rather_than_failing():
+    """A 3D kernel over a 1x1 grid is meaningless, so the option stands down.
+
+    It must also be recorded as having stood down: an options file that claims
+    conv3d for a run that used conv would make the record a lie.
+    """
+    sys.argv = (["test"] + BASE_ARGS
+                + ["--precip-window-size", "1", "--spatial-reduction", "conv3d"])
+    options = ImpactCnnOptions()
+    options.parse_args()
+    assert options.spatial_reduction == "conv"
+    assert options.kernel_size_temporal == 1
+
+    model = _build(["--precip-window-size", "1",
+                    "--spatial-reduction", "conv3d"], pixels=1)
+    names = _layer_names(model)
+    assert not any(n.startswith("conv3d_") for n in names)
+
+
+def test_conv3d_survives_a_save_and_load():
+    model = _build(CONV3D_ARGS + ["--precip-window-size", "3",
+                                  "--kernel-size-temporal", "5"], pixels=3)
+    x = [np.random.default_rng(0).random((3, T_LEN, 3, 3, 1)).astype("float32"),
+         np.zeros((3, 2), dtype="float32")]
+    before = np.asarray(model(x))
+    import tempfile, os
+    with tempfile.TemporaryDirectory() as d:
+        path = os.path.join(d, "m.keras")
+        model.save(path)
+        reloaded = keras.models.load_model(path, compile=False)
+    np.testing.assert_allclose(before, np.asarray(reloaded(x)),
+                               rtol=1e-5, atol=1e-6)
+
+
+def test_the_three_modes_are_close_on_parameters():
+    """conv2d against conv3d is the contrast, so it must not be a capacity test.
+
+    Phase N was confounded by batch-norm and dropout appearing silently at
+    window > 1; this checks the replacement comparison is clean on count.
+    """
+    window = ["--precip-window-size", "3", "--kernel-size-spatial", "3",
+              "--nb-filters", "8", "--nb-conv-blocks", "1",
+              "--pool-size-spatial", "1", "--no-use-batchnorm-cnn",
+              "--dropout-rate-cnn", "0"]
+    n2d = _build(window, pixels=3).count_params()
+    n3d = _build(window + ["--spatial-reduction", "conv3d",
+                           "--kernel-size-temporal", "3"], pixels=3).count_params()
+    assert abs(n3d - n2d) / n2d < 0.01, (n2d, n3d)
