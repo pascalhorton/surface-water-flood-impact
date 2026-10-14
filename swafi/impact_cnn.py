@@ -107,7 +107,9 @@ class ImpactCnn(ImpactDl):
         # Drop events with missing exposure data
         df.dropna(subset=['nb_contracts'], inplace=True)
 
-        df.rename(columns={'i_max_date': 'date'}, inplace=True)
+        # The same rule training uses, so the window at inference is the
+        # window the model was trained on (see Impact.set_reference_date).
+        df = self.set_reference_date(df)
         df['date'] = pd.to_datetime(df['date'])
 
         x_static = df[self.features].to_numpy()
@@ -146,10 +148,8 @@ class ImpactCnn(ImpactDl):
             precip_window_size=self.options.precip_window_size,
             precip_resolution=self.options.precip_resolution,
             precip_time_step=self.options.precip_time_step,
-            precip_days_before=self.options.precip_days_before,
-            precip_hours_before=getattr(
-                self.options, 'precip_hours_before', None) or 0,
-            precip_days_after=self.options.precip_days_after,
+            precip_hours_before=self.options.precip_hours_before,
+            precip_hours_after=self.options.precip_hours_after,
             tmp_dir=self.tmp_dir,
             transform_static=self.options.transform_static,
             transform_precip=self.options.transform_precip,
@@ -189,10 +189,8 @@ class ImpactCnn(ImpactDl):
             precip_window_size=self.options.precip_window_size,
             precip_resolution=self.options.precip_resolution,
             precip_time_step=self.options.precip_time_step,
-            precip_days_before=self.options.precip_days_before,
-            precip_hours_before=getattr(
-                self.options, 'precip_hours_before', None) or 0,
-            precip_days_after=self.options.precip_days_after,
+            precip_hours_before=self.options.precip_hours_before,
+            precip_hours_after=self.options.precip_hours_after,
             tmp_dir=self.tmp_dir,
             transform_static=self.options.transform_static,
             transform_precip=self.options.transform_precip,
@@ -227,10 +225,8 @@ class ImpactCnn(ImpactDl):
             precip_window_size=self.options.precip_window_size,
             precip_resolution=self.options.precip_resolution,
             precip_time_step=self.options.precip_time_step,
-            precip_days_before=self.options.precip_days_before,
-            precip_hours_before=getattr(
-                self.options, 'precip_hours_before', None) or 0,
-            precip_days_after=self.options.precip_days_after,
+            precip_hours_before=self.options.precip_hours_before,
+            precip_hours_after=self.options.precip_hours_after,
             tmp_dir=self.tmp_dir,
             transform_static=self.options.transform_static,
             transform_precip=self.options.transform_precip,
@@ -264,10 +260,8 @@ class ImpactCnn(ImpactDl):
             precip_window_size=self.options.precip_window_size,
             precip_resolution=self.options.precip_resolution,
             precip_time_step=self.options.precip_time_step,
-            precip_days_before=self.options.precip_days_before,
-            precip_hours_before=getattr(
-                self.options, 'precip_hours_before', None) or 0,
-            precip_days_after=self.options.precip_days_after,
+            precip_hours_before=self.options.precip_hours_before,
+            precip_hours_after=self.options.precip_hours_after,
             tmp_dir=self.tmp_dir,
             transform_static=self.options.transform_static,
             transform_precip=self.options.transform_precip,
@@ -478,8 +472,8 @@ class ImpactCnn(ImpactDl):
         p_end = pd.to_datetime(f'{self.precipitation_hf.year_end}-12-31').date()
 
         self.df = self.df[events['date'] > p_start + pd.Timedelta(
-            days=self.options.precip_days_before)]
+            hours=self.options.precip_hours_before)]
         events = events[events['date'] > p_start + pd.Timedelta(
-            days=self.options.precip_days_before)]
+            hours=self.options.precip_hours_before)]
         self.df = self.df[events['date'] < p_end - pd.Timedelta(
-            days=self.options.precip_days_after)]
+            hours=self.options.precip_hours_after)]

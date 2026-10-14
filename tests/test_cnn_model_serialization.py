@@ -42,8 +42,8 @@ def make_options(pixels_per_side: int = 1) -> ImpactCnnOptions:
     opts.precip_window_size = pixels_per_side
     opts.precip_resolution = 1
     opts.precip_time_step = 1
-    opts.precip_days_before = 1
-    opts.precip_days_after = 0
+    opts.precip_hours_before = 0
+    opts.precip_hours_after = 24  # the standing window, in hours
 
     return opts
 

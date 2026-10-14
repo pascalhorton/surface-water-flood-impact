@@ -1,5 +1,5 @@
 """
-Two things in the event detection follow the resolution of the data rather
+Three things in the event detection follow the resolution of the data rather
 than the weather.
 
 THE POSITIONS. The threshold is tested at every native time step, so the
@@ -12,14 +12,22 @@ end-labelled values and pandas' centring a 12-hour window sits at
 (t-7h, t+5h] on hourly data against (t-6h05, t+5h55] at five minutes. Two
 catalogues can test the same instant and still disagree on the sum there.
 
+THE DATE. An event is dated on the intensity peak inside its exceeding
+window, and the peak was searched on the native series: the heaviest five
+minutes and the heaviest hour date the same storm on different days whenever
+they straddle midnight. The precision is never used - the peak is floored to
+a day and the event becomes [e_date, e_date + 24h] - so it bought nothing and
+moved dates, and a moved date changes which claims link to the event.
+
 Phase Q measured the consequence on the real catalogues: each held 91.0% of
 the 3,024 damaging days in their union, differing on borderline crossings
 rather than on the rain.
 
-detection_step_h pins both: detect as if the data had this time step. A
+detection_step_h pins all three: detect as if the data had this time step. A
 5-minute extraction with detection_step_h=1.0 asks the same question of the
-same instants as an hourly one, and it is exactly a no-op on hourly data, so
-switching it on does not move the hourly catalogue.
+same instants as an hourly one and dates the answer the same way, and it is
+exactly a no-op on hourly data, so switching it on does not move the hourly
+catalogue.
 """
 import numpy as np
 import pandas as pd
@@ -229,10 +237,9 @@ def test_a_5min_extraction_reproduces_the_hourly_catalogue():
     """The requirement: one catalogue, whichever product detects it.
 
     The same rain at both resolutions, so any difference is the detection
-    and nothing else. Dated on the exceedances rather than the intensity
-    peak, because the peak of a 5-minute series and the peak of an hourly
-    one are different instants by construction and that is a separate
-    convention (see the test below).
+    and nothing else. Dated on the exceedances here, to isolate which
+    windows cross the threshold at all; the test below does the same with
+    peak dating, which is what the extraction runs.
     """
     values, times = _borderline_series()
     h_values, h_times = _to_hourly(values, times)
@@ -252,24 +259,102 @@ def test_a_5min_extraction_reproduces_the_hourly_catalogue():
     assert fine_pinned == hourly
 
 
-def test_peak_dating_is_the_only_residual_and_it_is_small():
-    """With peak dating on, the two catalogues can still differ by a day.
+def test_peak_dating_reproduces_the_hourly_dates_too():
+    """The requirement again, with the dating rule the extraction uses.
 
-    The event is dated on the intensity peak inside the window, and the peak
-    of a 5-minute series need not fall in the same day as the peak of its
-    hourly aggregate. The detection agrees; the dating convention is what is
-    left, and it moves few days.
+    Peak dating searched the native series, so a pinned detection still left
+    a few days dated differently: the heaviest five minutes and the heaviest
+    hour straddle midnight now and then. The peak now follows the same
+    reference step, so there is no residual left to tolerate.
     """
     values, times = _borderline_series()
     h_values, h_times = _to_hourly(values, times)
 
     hourly = _dates(_extract(h_values, h_times, 1.0, step_h=None))
     fine_pinned = _dates(_extract(values, times, STEP_5MIN, step_h=1.0))
+    fine_native = _dates(_extract(values, times, STEP_5MIN, step_h=None))
 
-    union = hourly | fine_pinned
-    agreement = len(hourly & fine_pinned) / len(union)
-    # Phase Q's two real catalogues agreed on 82.0% of their union.
-    assert agreement > 0.95, f"agreement fell to {agreement:.3f}"
+    assert len(hourly) > 100, "the series should produce a usable catalogue"
+    assert fine_pinned == hourly
+    # And the dating was a real part of it: today's extraction does not give
+    # the hourly dates.
+    assert fine_native != hourly
+
+
+def test_the_peak_search_is_the_hourly_totals_at_the_hourly_labels():
+    """What the pinned search looks at, element by element.
+
+    An hourly product offers 24 totals a day, each covering (T-1h, T]. The
+    pinned search on 5-minute data must offer exactly those and nothing else.
+    """
+    n = 288 * 2
+    times = pd.DatetimeIndex(pd.date_range('2021-05-01', periods=n,
+                                           freq='5min'))
+    rng = np.random.default_rng(5)
+    values = rng.gamma(2.0, 2.0, n)
+    mask = Precipitation._detection_positions(times, STEP_5MIN, 1.0)
+
+    searched = Precipitation._peak_search_series(values, mask, STEP_5MIN, 1.0)
+
+    # Only the whole hours hold a candidate.
+    assert np.isneginf(searched[~mask]).all()
+    # And each candidate is the hour that ends on its label. min_count: the
+    # label at the very start of the series has no complete hour behind it,
+    # and an hour the data cannot fill is one no product would offer.
+    hourly = (pd.Series(values, index=times)
+              .resample('1h', closed='right', label='right')
+              .sum(min_count=12))
+    checked = 0
+    for t, v in hourly.items():
+        if t not in times:
+            continue
+        i = times.get_loc(t)
+        if np.isnan(v):
+            assert np.isneginf(searched[i])
+        else:
+            assert searched[i] == pytest.approx(v)
+            checked += 1
+    assert checked > 40, "most hours of the two days should be comparable"
+
+
+def test_the_peak_search_is_a_no_op_at_the_native_step():
+    """Nothing is coarsened when the reference step is the data's own."""
+    n = 288
+    times = pd.DatetimeIndex(pd.date_range('2021-05-01', periods=n,
+                                           freq='5min'))
+    values = np.random.default_rng(6).gamma(2.0, 2.0, n)
+    ones = np.ones(n, dtype=bool)
+
+    for step_h in (None, STEP_5MIN):
+        mask = Precipitation._detection_positions(times, STEP_5MIN, step_h)
+        searched = Precipitation._peak_search_series(
+            values, mask, STEP_5MIN, step_h)
+        assert np.array_equal(searched, values)
+        assert np.array_equal(mask, ones)
+
+
+def test_an_incomplete_reference_step_cannot_be_a_peak():
+    """A gap carries out of its hour, as a missing hour does in the product.
+
+    An hourly product leaves the hour missing when it cannot be built; the
+    pinned search must not date an event on an hour it only partly knows,
+    even if what it knows is the largest thing in the window.
+    """
+    n = 288
+    times = pd.DatetimeIndex(pd.date_range('2021-05-01', periods=n,
+                                           freq='5min'))
+    values = np.full(n, 0.1)
+    # The heaviest five minutes of the day, in an hour with one gap.
+    values[100] = 50.0
+    values[101] = np.nan
+    filled = np.where(np.isfinite(values), values, -np.inf)
+    mask = Precipitation._detection_positions(times, STEP_5MIN, 1.0)
+
+    searched = Precipitation._peak_search_series(filled, mask, STEP_5MIN, 1.0)
+
+    # 100 and 101 sit in the hour labelled 09:00 (steps 96..107).
+    assert np.isneginf(searched[times.get_loc(pd.Timestamp('2021-05-01 09:00'))])
+    assert np.isfinite(searched[mask]).any(), "other hours stay available"
 
 
 # ----------------------------------------- the mechanism, day by known day ---

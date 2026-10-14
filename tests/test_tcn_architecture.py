@@ -25,8 +25,8 @@ T_LEN = 49
 BASE_ARGS = [
     "--dataset", "gvz", "--event-method", "simple",
     "--precip-dataset", "hourly", "--precip-window-size", "1",
-    "--precip-time-step", "60", "--precip-days-before", "1",
-    "--precip-days-after", "0", "--nb-dense-layers", "2",
+    "--precip-time-step", "60", "--precip-hours-before", "24",
+    "--precip-hours-after", "24", "--nb-dense-layers", "2",
     "--nb-dense-units", "128", "--tcn-filters", "32",
     "--random-state", "42", "--run-name", "test",
 ]

@@ -375,6 +375,59 @@ class Precipitation:
                 & (times.second.to_numpy() == 0)
                 & (times.microsecond.to_numpy() == 0))
 
+    @staticmethod
+    def _peak_search_series(precip_filled, eval_mask, dt,
+                            detection_step_h=None):
+        """The series the event date is read off (see _build_peak_event_dates).
+
+        The date comes from the intensity peak inside the exceeding window,
+        and on a 5-minute product the heaviest five minutes and the heaviest
+        hour are different instants: either side of midnight they date the
+        same storm on different days. That precision is never used - the peak
+        is floored to a day and the event becomes [e_date, e_date + 24h] - so
+        searching it natively adds no information, only a date that moves with
+        the resolution of the product, and a date that moves changes which
+        claims link to the event.
+
+        detection_step_h therefore governs the search too: the candidates are
+        the accumulations over one reference step, taken at the reference
+        positions, which is exactly what a product of that step would offer.
+        An hourly reference on 5-minute data searches the same 24 hourly
+        totals an hourly series holds, so the date is the one the hourly
+        extraction gives.
+
+        None, or a reference step equal to the native one, returns the input
+        untouched.
+
+        Parameters
+        ----------
+        precip_filled: np.ndarray
+            The native precipitation with the invalid steps at -inf.
+        eval_mask: np.ndarray
+            The boolean mask of the reference positions (_detection_positions).
+        dt: float
+            The native time step [h].
+        detection_step_h: float|None
+            The reference step [h] the detection is pinned to.
+
+        Returns
+        -------
+        np.ndarray
+            The series to search, -inf wherever no candidate sits.
+        """
+        if detection_step_h is None:
+            return precip_filled
+        per_ref = int(round(float(detection_step_h) / dt))
+        if per_ref <= 1:
+            return precip_filled
+        # Trailing, like the native values themselves: the reference step
+        # labelled T holds (T - detection_step_h, T]. A gap anywhere inside it
+        # carries the -inf out, so an incomplete reference step can never be
+        # taken for a peak - the same thing an hourly product does by leaving
+        # the hour missing.
+        totals = pd.Series(precip_filled).rolling(per_ref).sum().to_numpy()
+        return np.where(eval_mask & np.isfinite(totals), totals, -np.inf)
+
     def _extract_events_simple(self, times, precip, dt, window_minutes,
                                api_days_nb, api_reg, detection_window_h=1.0,
                                detection_threshold=None, detection_centered=True,
@@ -445,12 +498,20 @@ class Precipitation:
             catalogues can test the same instant and still disagree on the sum
             there.
 
-            This parameter pins both, so a 5-minute extraction with
+            The DATE: an event is dated on the intensity peak inside its
+            exceeding window, and that peak was looked for on the native
+            series, so the heaviest five minutes and the heaviest hour date
+            the same storm on different days whenever they straddle midnight.
+            The precision is never used downstream (the peak is floored to a
+            day), so it bought nothing and moved dates, and a moved date
+            changes which claims link to the event.
+
+            This parameter pins all three, so a 5-minute extraction with
             detection_step_h=1.0 asks the same question of the same instants
-            as an hourly extraction does, and the two catalogues differ only
-            where the underlying products differ. It is exactly a no-op on
-            hourly data, which a test pins, so the hourly catalogue does not
-            move when this is switched on.
+            as an hourly extraction does and dates the answer the same way;
+            the two catalogues then differ only where the underlying products
+            differ. It is exactly a no-op on hourly data, which a test pins,
+            so the hourly catalogue does not move when this is switched on.
         ref: dict|None
             A per-cell training reference (q98 threshold + CDFs) to normalise
             against, produced by a previous extraction with build_ref=True. When
@@ -543,8 +604,14 @@ class Precipitation:
 
         exceed = (detection >= threshold) & eval_mask
         if detection_peak_days:
+            # The peak is searched on the reference step the detection is
+            # pinned to, so that the date is a property of the weather and not
+            # of the product's sampling rate (see _peak_search_series).
             events = self._build_peak_event_dates(
-                times, precip_filled, exceed, lo_off, hi_off)
+                times,
+                self._peak_search_series(precip_filled, eval_mask, dt,
+                                         detection_step_h),
+                exceed, lo_off, hi_off)
         else:
             events = self._build_simple_event_dates(pd.Series(times[exceed]))
         if len(events) == 0:
@@ -709,7 +776,10 @@ class Precipitation:
         times: pd.DatetimeIndex
             The time axis of the cell.
         precip_filled: np.ndarray
-            The precipitation values with NaN replaced by -inf.
+            The series to read the peak off, with the positions that hold no
+            candidate at -inf. _peak_search_series builds it: the native
+            values when the detection is not pinned, the reference-step
+            accumulations at the reference positions when it is.
         exceed: np.ndarray
             The boolean mask of the detection exceedances.
         lo_off, hi_off: int

@@ -33,10 +33,9 @@ class ImpactCnnOptions(ImpactDlOptions):
     precip_time_step: int
         The precipitation time step [min]. Must divide the day evenly. A
         sub-hourly step (< 60) requires the 5min dataset.
-    precip_days_before: int
     precip_hours_before: int
         The number of days before the event to use for the precipitation.
-    precip_days_after: int
+    precip_hours_after: int
         The number of days after the event to use for the precipitation.
     dropout_rate_cnn: float
         The dropout rate for the spatial CNN.
@@ -79,9 +78,8 @@ class ImpactCnnOptions(ImpactDlOptions):
         self.precip_window_size = None
         self.precip_resolution = None
         self.precip_time_step = None
-        self.precip_days_before = None
         self.precip_hours_before = None
-        self.precip_days_after = None
+        self.precip_hours_after = None
 
         # Model options
         self.dropout_rate_cnn = None
@@ -204,26 +202,28 @@ class ImpactCnnOptions(ImpactDlOptions):
                  '--precip-dataset 5min; the native 5-min step is 5.'
         )
         self.parser.add_argument(
-            '--precip-days-before',
-            type=int,
-            default=2,
-            help='The number of days before the claim/event to use for the precipitation'
-        )
-        self.parser.add_argument(
             '--precip-hours-before',
             type=int,
             default=0,
-            help='Extra whole hours before the day-aligned window start. The '
-                 'event definition is day-based, so the window otherwise begins '
-                 'at midnight, which cuts through any storm carried over from '
-                 'the previous evening - 7%% of claim events peak in hour 0 of '
-                 'the event day. Must be a whole number of time steps'
+            help='Hours of precipitation before the event reference time. '
+                 'Under the simple event definition that is midnight at the '
+                 'start of the event day, which is a poor place to cut: it '
+                 'truncates any storm carried over from the previous evening, '
+                 'and 7.2%% of claim events peak in hour 0 of the event day, '
+                 'seven times the rate of hours 2 and 3. Phase K nevertheless '
+                 'measured that extending backwards costs skill (0 h 28.9 '
+                 'lift, 6 h 24.0, 24 h 22.2, at matched pooling), hence the '
+                 'default of 0. Must be a whole number of time steps'
         )
         self.parser.add_argument(
-            '--precip-days-after',
+            '--precip-hours-after',
             type=int,
-            default=1,
-            help='The number of days after the claim/event to use for the precipitation'
+            default=24,
+            help='Hours of precipitation after the event reference time. '
+                 'With 0 before, the default of 24 is exactly the event day, '
+                 'which is the standing configuration of Phases K, Q and R '
+                 'and the best window Phase K measured. Must be a whole '
+                 'number of time steps'
         )
         self.parser.add_argument(
             '--dropout-rate-cnn',
@@ -413,9 +413,8 @@ class ImpactCnnOptions(ImpactDlOptions):
         self.precip_window_size = args.precip_window_size
         self.precip_resolution = args.precip_resolution
         self.precip_time_step = args.precip_time_step
-        self.precip_days_before = args.precip_days_before
         self.precip_hours_before = args.precip_hours_before
-        self.precip_days_after = args.precip_days_after
+        self.precip_hours_after = args.precip_hours_after
         self.dropout_rate_cnn = args.dropout_rate_cnn
         self.use_spatial_dropout = args.use_spatial_dropout
         self.use_batchnorm_cnn = args.use_batchnorm_cnn
@@ -468,7 +467,7 @@ class ImpactCnnOptions(ImpactDlOptions):
         hp_to_optimize: list|str
             The list of hyperparameters to optimize. Can be the string 'default'
             Options are: weight_denominator, precip_window_size, precip_time_step,
-            precip_days_before, precip_resolution, precip_days_after, transform_static,
+            precip_resolution, transform_static,
             transform_precip, log_transform_precip, batch_size, learning_rate,
             dropout_rate_dense, dropout_rate_cnn, use_spatial_dropout,
             use_batchnorm_cnn, use_batchnorm_dense, kernel_size_spatial,
@@ -484,8 +483,10 @@ class ImpactCnnOptions(ImpactDlOptions):
         """
         if isinstance(hp_to_optimize, str) and hp_to_optimize == 'default':
             if self.use_precip:
+                # The window length is not searched: Phase K settled that it
+                # should be short, and a window that moves between studies
+                # makes two results differ by more than what is under test.
                 hp_to_optimize = [
-                    'precip_days_before',
                     'log_transform_precip',
                     'nb_conv_blocks',
                     'nb_filters',
@@ -557,12 +558,6 @@ class ImpactCnnOptions(ImpactDlOptions):
         if 'precip_time_step' in hp_to_optimize:
             self.precip_time_step = trial.suggest_categorical(
                 'precip_time_step', [60, 120, 240, 360, 720, 1440])
-        if 'precip_days_before' in hp_to_optimize:
-            self.precip_days_before = trial.suggest_int(
-                'precip_days_before', 1, 10)
-        if 'precip_days_after' in hp_to_optimize:
-            self.precip_days_after = trial.suggest_int(
-                'precip_days_after', 1, 2)
         if 'dropout_rate_cnn' in hp_to_optimize:
             self.dropout_rate_cnn = trial.suggest_float(
                 'dropout_rate_cnn', 0.0, 0.4)
@@ -642,9 +637,9 @@ class ImpactCnnOptions(ImpactDlOptions):
             logger.info("- precip_window_size:  %s", self.precip_window_size)
             logger.info("- precip_resolution:  %s", self.precip_resolution)
             logger.info("- precip_time_step [min]:  %s", self.precip_time_step)
-            logger.info("- precip_days_before:  %s", self.precip_days_before)
-            logger.info("- precip_hours_before:  %s", self.precip_hours_before)
-            logger.info("- precip_days_after:  %s", self.precip_days_after)
+            logger.info(
+                "- precip window:  %s h before to %s h after the event time",
+                self.precip_hours_before, self.precip_hours_after)
             logger.info("- use_spatial_dropout:  %s", self.use_spatial_dropout)
             logger.info("- dropout_rate_cnn:  %s", self.dropout_rate_cnn)
             logger.info("- use_batchnorm_cnn:  %s", self.use_batchnorm_cnn)
@@ -689,8 +684,12 @@ class ImpactCnnOptions(ImpactDlOptions):
                 "precip_window_size must be divisible by precip_resolution"
             assert self.precip_window_size >= self.precip_resolution, \
                 "precip_window_size must be >= precip_resolution"
-            assert self.precip_days_before >= 0, "precip_days_before must be >= 0"
-            assert self.precip_days_after >= 0, "precip_days_after must be >= 0"
+            assert self.precip_hours_before >= 0, \
+                "precip_hours_before must be >= 0"
+            assert self.precip_hours_after >= 0, \
+                "precip_hours_after must be >= 0"
+            assert (self.precip_hours_before + self.precip_hours_after) > 0, \
+                "the precipitation window cannot be empty"
 
             # The time step is in minutes and must divide the day evenly (so the
             # daily time grid, and the derived store, are exact).

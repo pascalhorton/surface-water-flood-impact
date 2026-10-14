@@ -15,8 +15,7 @@ logger = logging.getLogger(__name__)
 class ImpactCnnDataGenerator(ImpactDlDataGenerator):
     def __init__(self, event_props, x_static, x_precip, x_dem, y=None, batch_size=32,
                  shuffle=True, precip_window_size=2, precip_resolution=1,
-                 precip_time_step=60, precip_days_before=1, precip_days_after=1,
-                 precip_hours_before=0,
+                 precip_time_step=60, precip_hours_before=0, precip_hours_after=24,
                  tmp_dir=None, transform_static='standardize', transform_precip='normalize',
                  log_transform_precip=True, mean_static=None, std_static=None,
                  mean_precip=None, std_precip=None, min_static=None,
@@ -46,10 +45,11 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
         precip_time_step: int
             The desired time step of the precipitation data [min]. Must divide
             the day evenly (e.g. 5, 10, 15, 30, 60).
-        precip_days_before: int
-            The number of days before the event to include in the 3D predictors.
-        precip_days_after: int
-            The number of days after the event to include in the 3D predictors.
+        precip_hours_before: int
+            Hours of precipitation before the event reference time (see
+            get_precip_window_bounds).
+        precip_hours_after: int
+            Hours of precipitation after the event reference time.
         tmp_dir: Path
             The temporary directory to use.
         transform_static: str
@@ -109,9 +109,8 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
         self.precip_window_size = precip_window_size
         self.precip_resolution = precip_resolution
         self.precip_time_step = precip_time_step
-        self.precip_days_before = precip_days_before
         self.precip_hours_before = int(precip_hours_before or 0)
-        self.precip_days_after = precip_days_after
+        self.precip_hours_after = int(precip_hours_after or 0)
 
         self.mean_precip = mean_precip
         self.std_precip = std_precip
@@ -149,11 +148,74 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
         if self.X_dem is not None:
             self.X_dem.load()
 
+    def get_precip_window_bounds(self, event_time):
+        """The time span extracted for an event, around its reference time.
+
+        The anchor is whatever event time the caller supplies. Under the
+        simple event definition - which every phase uses - Impact.split_sample
+        takes the e_date branch, so it is MIDNIGHT at the start of the event
+        day, and the window 0 h to 24 h is the event day itself. The claim
+        based definitions anchor instead on a claim date forced to 18:00, or
+        on i_max_date, depending on ref_date.
+
+        The intensity peak therefore sits SOMEWHERE INSIDE the window rather
+        than at a fixed offset: i_max_date - e_date lies in [0, 24] h for all
+        1.16 M events, since the simple definition dates an event by the day
+        its peak falls in. A window of 0 h to 24 h thus holds the peak and the
+        rain that led up to it on that day, and nothing of the day before.
+
+        The two sides are independent, which is what the evidence asks for:
+        Phase K measured the event day alone (0/24, lift 28.9) against the
+        same day plus the previous evening (6/24, 24.0) and plus the whole
+        previous day (24/24, 22.2), at matched pooling. Adding the earlier
+        rain cost skill.
+
+        Hours, not days, because a day cannot say "the previous evening" -
+        which is why precip_hours_before had to be bolted on beside
+        precip_days_before, and why the day arithmetic kept an unnamed extra
+        day after the anchor for so long without anyone noticing.
+
+        Returns
+        -------
+        tuple(np.datetime64, np.datetime64)
+            The inclusive bounds of the window.
+        """
+        t_start = event_time - np.timedelta64(self.precip_hours_before, 'h')
+        t_end = event_time + np.timedelta64(self.precip_hours_after, 'h')
+        return t_start, t_end
+
     def get_time_dim_size(self):
         """ Get the number of time steps in the 3D predictors. """
-        if self.time_dim_size is not None:
-            return self.time_dim_size
+        computed = self._compute_time_dim_size()
+        # getattr, not self.: the same reason _compute_time_dim_size uses it
+        # for precip_hours_before - a generator restored from an older pickle,
+        # or built attribute-by-attribute in a test, may not carry it.
+        stored = getattr(self, 'time_dim_size', None)
+        if stored is not None:
+            if stored != computed:
+                # Only a generator restored from a pickle can get here: the
+                # attribute is otherwise this method's own memo. It means the
+                # stored length and the stored parameters disagree, and the
+                # extraction would hand back a window of the wrong length -
+                # which the caller pads or blanks, silently. The likely cause
+                # is the window, which used to be given in days and added
+                # one more day after the anchor than it named.
+                raise ValueError(
+                    f"This generator stores a time dimension of "
+                    f"{stored} steps, but its parameters imply "
+                    f"{computed} (precip_hours_before="
+                    f"{self.precip_hours_before}, precip_hours_after="
+                    f"{self.precip_hours_after}, "
+                    f"precip_time_step={self.precip_time_step}). "
+                    f"The window is now given in hours around the event "
+                    f"reference time; a configuration written in days needs "
+                    f"converting.")
+            return stored
+        self.time_dim_size = computed
+        return computed
 
+    def _compute_time_dim_size(self):
+        """The window length in time steps, from the parameters alone."""
         time_dim_size = 0
         if self.X_precip is not None:
             # The time step is in minutes; a step of 1440/minutes must divide the
@@ -161,20 +223,18 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
             minutes = self.precip_time_step
             assert 1440 % minutes == 0, \
                 f"The time step ({minutes} min) must divide the day evenly."
-            steps_per_day = 1440 // minutes
-            time_dim_size += self.precip_days_after + self.precip_days_before + 1
-            time_dim_size *= steps_per_day
-            time_dim_size += 1  # Because the 1st and last time steps are included.
-            # getattr, not self.: a generator restored from an older pickle,
-            # or built attribute-by-attribute in a test, will not have this.
-            hours_before = getattr(self, 'precip_hours_before', 0) or 0
-            if hours_before:
-                extra = hours_before * 60
-                assert extra % minutes == 0, \
-                    (f"precip_hours_before ({hours_before} h) must be "
+            # A partial step would silently misalign the series against the
+            # events, so each side must land on the step grid.
+            for name in ('precip_hours_before', 'precip_hours_after'):
+                hours = getattr(self, name)
+                assert (hours * 60) % minutes == 0, \
+                    (f"{name} ({hours} h) must be "
                      f"a whole number of {minutes}-minute steps.")
-                time_dim_size += extra // minutes
-        self.time_dim_size = time_dim_size
+            # Hours on either side of the event time (see
+            # get_precip_window_bounds), plus one: both endpoints included.
+            span_min = (self.precip_hours_before
+                        + self.precip_hours_after) * 60
+            time_dim_size = span_min // minutes + 1
 
         return time_dim_size
 
@@ -364,11 +424,8 @@ class ImpactCnnDataGenerator(ImpactDlDataGenerator):
         precip_window_size_m = self.precip_window_size * 1000
         pixels_nb = int(self.precip_window_size / self.precip_resolution)
 
-        # Temporal selection
-        t_start = (event[0] - np.timedelta64(self.precip_days_before, 'D')
-                   - np.timedelta64(
-                       getattr(self, 'precip_hours_before', 0) or 0, 'h'))
-        t_end = event[0] + np.timedelta64(self.precip_days_after + 1, 'D')  # +1 for the day itself.
+        # Temporal selection, around the event's reference time
+        t_start, t_end = self.get_precip_window_bounds(event[0])
 
         # Spatial domain
         x_start = event[1] - precip_window_size_m / 2

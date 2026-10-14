@@ -26,9 +26,9 @@ class ImpactLstmOptions(ImpactDlOptions):
         Whether to include the local DEM value as a second channel.
     precip_time_step: int
         Precipitation time step [h].
-    precip_days_before: int
+    precip_hours_before: int
         Number of days before the event to include.
-    precip_days_after: int
+    precip_hours_after: int
         Number of days after the event to include.
     lstm_units: int
         Number of hidden units per LSTM layer.
@@ -48,8 +48,8 @@ class ImpactLstmOptions(ImpactDlOptions):
         self.use_dem = None
         self.use_api_init = None
         self.precip_time_step = None
-        self.precip_days_before = None
-        self.precip_days_after = None
+        self.precip_hours_before = None
+        self.precip_hours_after = None
         self.lstm_units = None
         self.lstm_nb_layers = None
         self.attention_heads = None
@@ -106,16 +106,21 @@ class ImpactLstmOptions(ImpactDlOptions):
             help='Precipitation time step [h]'
         )
         self.parser.add_argument(
-            '--precip-days-before',
+            '--precip-hours-before',
             type=int,
-            default=4,
-            help='Number of days before the event to include'
+            default=96,
+            help='Hours of precipitation before the event reference time '
+                 '(midnight of the event day under the simple definition). '
+                 '96 h is the 4 days this took before the option was '
+                 'expressed in hours'
         )
         self.parser.add_argument(
-            '--precip-days-after',
+            '--precip-hours-after',
             type=int,
-            default=1,
-            help='Number of days after the event to include'
+            default=48,
+            help='Hours of precipitation after the event reference time. '
+                 '48 h is what the old default of 1 day extracted: the '
+                 'day-based arithmetic added one more day than it named'
         )
         self.parser.add_argument(
             '--lstm-units',
@@ -155,8 +160,8 @@ class ImpactLstmOptions(ImpactDlOptions):
         self.use_dem = args.use_dem
         self.use_api_init = args.use_api_init
         self.precip_time_step = args.precip_time_step
-        self.precip_days_before = args.precip_days_before
-        self.precip_days_after = args.precip_days_after
+        self.precip_hours_before = args.precip_hours_before
+        self.precip_hours_after = args.precip_hours_after
         self.lstm_units = args.lstm_units
         self.lstm_nb_layers = args.lstm_nb_layers
         self.attention_heads = args.attention_heads
@@ -182,8 +187,10 @@ class ImpactLstmOptions(ImpactDlOptions):
         bool
         """
         if isinstance(hp_to_optimize, str) and hp_to_optimize == 'default':
+            # The window length is not searched: Phase K settled that it
+            # should be short, and a window that moves between studies makes
+            # two results differ by more than what is under test.
             hp_to_optimize = [
-                'precip_days_before',
                 'log_transform_precip',
                 'lstm_units',
                 'lstm_nb_layers',
@@ -205,10 +212,6 @@ class ImpactLstmOptions(ImpactDlOptions):
 
         self._generate_for_optuna(trial, hp_to_optimize)
 
-        if 'precip_days_before' in hp_to_optimize:
-            self.precip_days_before = trial.suggest_int('precip_days_before', 1, 10)
-        if 'precip_days_after' in hp_to_optimize:
-            self.precip_days_after = trial.suggest_int('precip_days_after', 1, 2)
         if 'lstm_units' in hp_to_optimize:
             self.lstm_units = trial.suggest_categorical('lstm_units', [32, 64, 128, 256])
         if 'lstm_nb_layers' in hp_to_optimize:
@@ -230,8 +233,9 @@ class ImpactLstmOptions(ImpactDlOptions):
         logger.info("- use_api_init:  %s", self.use_api_init)
         if self.use_precip:
             logger.info("- precip_time_step:  %s", self.precip_time_step)
-            logger.info("- precip_days_before:  %s", self.precip_days_before)
-            logger.info("- precip_days_after:  %s", self.precip_days_after)
+            logger.info(
+                "- precip window:  %s h before to %s h after the event time",
+                self.precip_hours_before, self.precip_hours_after)
             logger.info("- lstm_units:  %s", self.lstm_units)
             logger.info("- lstm_nb_layers:  %s", self.lstm_nb_layers)
             logger.info("- attention_heads:  %s", self.attention_heads)
@@ -244,8 +248,10 @@ class ImpactLstmOptions(ImpactDlOptions):
             return False
 
         if self.use_precip:
-            assert self.precip_days_before >= 0, "precip_days_before must be >= 0"
-            assert self.precip_days_after >= 0, "precip_days_after must be >= 0"
+            assert self.precip_hours_before >= 0, \
+                "precip_hours_before must be >= 0"
+            assert self.precip_hours_after >= 0, \
+                "precip_hours_after must be >= 0"
             assert self.precip_time_step > 0, "precip_time_step must be > 0"
             assert self.lstm_units > 0, "lstm_units must be > 0"
             assert self.lstm_nb_layers > 0, "lstm_nb_layers must be > 0"
