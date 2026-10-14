@@ -21,6 +21,21 @@ DETECTION_THRESHOLD = 10
 # Both are no-ops when the window is a single time step.
 DETECTION_CENTERED = True
 DETECTION_PEAK_DAYS = True
+# Detect as if the data had this time step [h]. Without it, two things in the
+# detection follow the resolution of the product rather than the weather: the
+# POSITIONS the threshold is tested at (24 chances a day to cross 10 mm at an
+# hourly step, 288 at five minutes) and the WALL-CLOCK SPAN of the window (a
+# centred 12-hour window sits at (t-7h, t+5h] hourly and (t-6h05, t+5h55] at
+# five minutes). Phase Q measured the consequence: the hourly and 5-minute
+# catalogues each held 91.0% of the 3,024 damaging days in their union,
+# disagreeing on borderline crossings rather than on the rain.
+#
+# 1.0 asks the same question of the same instants whatever the product, so a
+# 5-minute extraction yields the hourly catalogue up to the difference between
+# the products themselves. It is exactly a no-op on hourly data, so the hourly
+# extraction keeps its file names and is reused rather than re-run; the
+# 5-minute one gets a _step1h tag and nothing already extracted is overwritten.
+DETECTION_STEP_H = 1.0
 Y_START = 2005
 Y_END = 2024
 MAX_WORKERS = 10  # Memory ~ MAX_WORKERS x part footprint (~2.2 GB/tile for 5 years of 5-min data)
@@ -54,7 +69,8 @@ if __name__ == "__main__":
     else:
         det_tag = detection_tag(DETECTION_WINDOW_H, DETECTION_THRESHOLD,
                                 DETECTION_CENTERED, DETECTION_PEAK_DAYS,
-                                5 / 60 if PRECIP_DATASET == '5min' else 1.0)
+                                5 / 60 if PRECIP_DATASET == '5min' else 1.0,
+                                DETECTION_STEP_H)
 
     # The parts directory is a resumable cache: it must be unique per
     # configuration, otherwise parts from another run would be reused.
@@ -81,6 +97,7 @@ if __name__ == "__main__":
         detection_threshold=DETECTION_THRESHOLD,
         detection_centered=DETECTION_CENTERED,
         detection_peak_days=DETECTION_PEAK_DAYS,
+        detection_step_h=DETECTION_STEP_H,
         max_workers=MAX_WORKERS,
         save_reference_path=save_reference_path,
     )

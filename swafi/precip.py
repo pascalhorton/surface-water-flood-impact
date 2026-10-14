@@ -79,6 +79,7 @@ class Precipitation:
     def extract_events(self, coords_row=None, method='simple', api_days_nb=30, api_reg=0.8,
                        detection_window_h=1.0, detection_threshold=None,
                        detection_centered=True, detection_peak_days=True,
+                       detection_step_h=None,
                        reference=None, collect_reference=None):
         """
         Extract events for one cell (coords_row given) or the whole domain.
@@ -93,6 +94,11 @@ class Precipitation:
         detection_peak_days: bool
             Whether to date the events on the intensity peak of each exceeding
             window instead of on the exceedances themselves.
+        detection_step_h: float|None
+            Detect as if the data had this time step [h]: both the tested
+            positions and the span of the detection window follow it. None
+            (default) uses the native step, which ties the catalogue to the
+            resolution of the data (see _extract_events_simple).
         reference: dict|None
             Mapping cid -> per-cell training reference to normalise against
             (see _extract_events_simple). None re-estimates on the current period.
@@ -105,6 +111,7 @@ class Precipitation:
             return self._extract_events(coords_row, method, api_days_nb, api_reg,
                                         detection_window_h, detection_threshold,
                                         detection_centered, detection_peak_days,
+                                        detection_step_h,
                                         reference, collect_reference)
 
         list_of_events = []
@@ -113,6 +120,7 @@ class Precipitation:
             events = self._extract_events(coords_row, method, api_days_nb, api_reg,
                                           detection_window_h, detection_threshold,
                                           detection_centered, detection_peak_days,
+                                          detection_step_h,
                                           reference, collect_reference)
             if events is not None:
                 list_of_events.append(events)
@@ -122,6 +130,7 @@ class Precipitation:
     def _extract_events(self, coords_row, method='simple', api_days_nb=30, api_reg=0.8,
                         detection_window_h=1.0, detection_threshold=None,
                         detection_centered=True, detection_peak_days=True,
+                        detection_step_h=None,
                         reference=None, collect_reference=None):
         cell = self.data.sel(x=coords_row.x, y=coords_row.y)
         times = pd.DatetimeIndex(pd.to_datetime(cell['time'].values))
@@ -219,7 +228,7 @@ class Precipitation:
             events, cell_ref = self._extract_events_simple(
                 times, precip, dt, window_minutes,
                 api_days_nb, api_reg, detection_window_h, detection_threshold,
-                detection_centered, detection_peak_days,
+                detection_centered, detection_peak_days, detection_step_h,
                 ref=ref_in, build_ref=collect_reference is not None)
             if collect_reference is not None and cell_ref is not None:
                 collect_reference[cid] = cell_ref
@@ -239,10 +248,138 @@ class Precipitation:
 
         return events
 
+    @staticmethod
+    def _detection_span(detection_window_h, dt, detection_centered=True,
+                        detection_step_h=None):
+        """Inclusive step offsets of the detection window around its label.
+
+        The window is a number of steps, so its extent in wall-clock time
+        follows the resolution of the data unless something pins it. With
+        end-labelled values (the step labelled T holds the accumulation over
+        (T - dt, T]) and pandas' centring, a 12-hour window covers
+
+            (t - 7h,    t + 5h   ]   on hourly data,      labels [t-6, t+5]
+            (t - 6h05,  t + 5h55 ]   at five minutes,     labels [t-72, t+71]
+
+        the same twelve hours offset by one coarse step. Two catalogues can
+        therefore test the very same instants and still disagree on what the
+        sum there is.
+
+        detection_step_h pins it: the window is laid out as a product of that
+        step would lay it out, then converted to native steps, so the covered
+        interval is the same whatever the data resolution. None keeps the
+        native layout, which is the behaviour of every extraction predating
+        this.
+
+        Returns
+        -------
+        tuple(int, int)
+            (lo, hi): the window at label i covers precip[i + lo : i + hi + 1].
+        """
+        if detection_window_h is None:
+            return 0, 0
+
+        ref = dt if detection_step_h is None else float(detection_step_h)
+        w_ref = max(1, int(round(detection_window_h / ref)))
+        per_ref = ref / dt  # native steps in one reference step
+
+        if detection_centered:
+            # pandas' centring for a window of w_ref reference steps puts the
+            # label at [t - w_ref // 2, t + w_ref - 1 - w_ref // 2]; with
+            # end-labelling that is the interval (t - (k_lo + 1) * ref,
+            # t + k_hi * ref].
+            k_lo = w_ref // 2
+            k_hi = w_ref - 1 - k_lo
+        else:
+            # Trailing: (t - w_ref * ref, t].
+            k_lo, k_hi = w_ref - 1, 0
+
+        lo = -int(round((k_lo + 1) * per_ref)) + 1
+        hi = int(round(k_hi * per_ref))
+        return lo, hi
+
+    @staticmethod
+    def _detection_series(precip, lo_off, hi_off):
+        """Sum of precip over [i + lo_off, i + hi_off] at every label i.
+
+        Bit-identical to rolling(w, center=True).sum() when the offsets are
+        the ones pandas' centring produces, which a test pins: pandas builds
+        a centred window the same way, by shifting a trailing one.
+        """
+        n = hi_off - lo_off + 1
+        if n == 1 and hi_off == 0:
+            return precip  # a one-step window keeps the native values
+        rolled = pd.Series(precip).rolling(n).sum().to_numpy()
+        if hi_off == 0:
+            return rolled
+        out = np.full(rolled.shape, np.nan)
+        if hi_off > 0:
+            out[:-hi_off] = rolled[hi_off:]
+        else:
+            out[-hi_off:] = rolled[:hi_off]
+        return out
+
+    @staticmethod
+    def _detection_positions(times, dt, detection_step_h=None):
+        """Boolean mask of the steps the detection threshold is tested on.
+
+        None tests every native step, which is what ties a catalogue to the
+        resolution it was detected on. A reference step in hours tests only
+        the timestamps on that wall-clock grid, anchored at midnight, so an
+        hourly reference picks out of 5-minute data the same instants an
+        hourly series offers of its own accord.
+
+        Parameters
+        ----------
+        times: pd.DatetimeIndex
+            The time axis of the cell.
+        dt: float
+            The time step [h] of that axis.
+        detection_step_h: float|None
+            The wall-clock spacing [h] between tested positions.
+
+        Returns
+        -------
+        np.ndarray
+            A boolean mask over times.
+        """
+        if detection_step_h is None:
+            return np.ones(len(times), dtype=bool)
+
+        stride_min = int(round(detection_step_h * 60))
+        step_min = int(round(dt * 60))
+        if stride_min <= 0:
+            raise ValueError(
+                f"detection_step_h must be positive, got "
+                f"{detection_step_h}.")
+        if step_min <= 0:
+            raise ValueError(f"The time step is {dt} h, which rounds to 0 min.")
+        if stride_min % step_min != 0:
+            raise ValueError(
+                f"detection_step_h={detection_step_h} is {stride_min} min, "
+                f"which is not a multiple of the {step_min} min time step: "
+                f"most of the grid it asks for does not exist in the data.")
+        if 1440 % stride_min != 0:
+            raise ValueError(
+                f"detection_step_h={detection_step_h} is {stride_min} min, "
+                f"which does not divide a day: the grid would shift from one "
+                f"day to the next and the catalogue would depend on where the "
+                f"series happens to start.")
+        if stride_min == step_min:
+            # Every step is on the grid; keep it an explicit no-op so that the
+            # file-name tag and the behaviour agree.
+            return np.ones(len(times), dtype=bool)
+
+        minute_of_day = (times.hour * 60 + times.minute).to_numpy()
+        return ((minute_of_day % stride_min == 0)
+                & (times.second.to_numpy() == 0)
+                & (times.microsecond.to_numpy() == 0))
+
     def _extract_events_simple(self, times, precip, dt, window_minutes,
                                api_days_nb, api_reg, detection_window_h=1.0,
                                detection_threshold=None, detection_centered=True,
-                               detection_peak_days=True, ref=None, build_ref=False):
+                               detection_peak_days=True, detection_step_h=None,
+                               ref=None, build_ref=False):
         """
         Simple event extraction on numpy arrays. Reproduces the per-window
         pandas rolling/rank/max results, but takes the per-event maxima on
@@ -285,6 +422,35 @@ class Precipitation:
             window (see _build_peak_event_dates) instead of on the exceedances
             themselves. False (default) keeps one event per exceedance day,
             which counts a storm once per day its detection window slides over.
+        detection_step_h: float|None
+            Detect as if the data had this time step [h], anchored at
+            midnight. None (default) uses the native step.
+
+            WHY THIS EXISTS. Two things in the detection follow the resolution
+            of the data rather than the weather.
+
+            The POSITIONS: the window slides with the time step, so the number
+            of chances a day gets to cross the threshold scales with the
+            resolution - 24 a day at an hourly step, 288 at five minutes. A
+            day whose 12-hour sum peaks at 9.8 mm over hourly offsets can
+            reach 10 mm at some 5-minute offset, so it enters one catalogue
+            and not the other. Measured in Phase Q: the hourly and 5-minute
+            catalogues each held 91.0% of the 3,024 damaging days in their
+            union, and the 9% they disagreed on were borderline crossings of
+            this kind, not differences in the rain.
+
+            The WINDOW: a window of w steps covers w * dt of wall clock, and
+            with end-labelling and pandas' centring a 12-hour window sits at
+            (t-7h, t+5h] hourly against (t-6h05, t+5h55] at five minutes. Two
+            catalogues can test the same instant and still disagree on the sum
+            there.
+
+            This parameter pins both, so a 5-minute extraction with
+            detection_step_h=1.0 asks the same question of the same instants
+            as an hourly extraction does, and the two catalogues differ only
+            where the underlying products differ. It is exactly a no-op on
+            hourly data, which a test pins, so the hourly catalogue does not
+            move when this is switched on.
         ref: dict|None
             A per-cell training reference (q98 threshold + CDFs) to normalise
             against, produced by a previous extraction with build_ref=True. When
@@ -317,23 +483,18 @@ class Precipitation:
         # unless centred: a centred window flags the steps the rain falls
         # around, a trailing one flags the steps it accumulated before, which
         # lags the storm by up to the window length.
-        if detection_window_h is None:
-            w_det = 1
-        else:
-            w_det = max(1, int(round(detection_window_h / dt)))
-        if w_det == 1:
-            detection = precip
-        elif detection_centered:
-            detection = pd.Series(precip).rolling(
-                w_det, center=True).sum().to_numpy()
-        else:
-            detection = pd.Series(precip).rolling(w_det).sum().to_numpy()
-        # Span of the detection window relative to the step it labels
-        if detection_centered:
-            lo_off, hi_off = -(w_det // 2), w_det - 1 - w_det // 2
-        else:
-            lo_off, hi_off = -(w_det - 1), 0
+        # Span of the detection window relative to the step it labels, and
+        # the accumulation over it. Both follow detection_step_h, so that a
+        # finer product sums the same wall-clock interval as a coarse one.
+        lo_off, hi_off = self._detection_span(
+            detection_window_h, dt, detection_centered, detection_step_h)
+        detection = self._detection_series(precip, lo_off, hi_off)
         detection_valid = np.isfinite(detection)
+        if not detection_valid.any():
+            return None, None
+        # The positions the threshold is tested on (see detection_step_h).
+        eval_mask = self._detection_positions(times, dt, detection_step_h)
+        detection_valid &= eval_mask
         if not detection_valid.any():
             return None, None
         if detection_threshold is not None:
@@ -342,6 +503,10 @@ class Precipitation:
         elif ref is not None:
             threshold = ref['q98']
         else:
+            # Over the tested positions only, for the same reason
+            # detection_step_h exists: sampling one rolling window more often
+            # oversamples its peaks, so the q98 of a 12-hour sum read every
+            # 5 minutes is not the q98 of the same sum read hourly.
             threshold = np.quantile(detection[detection_valid], 0.98)
         if build_ref:
             # The detection threshold actually applied on this cell (the q98 of
@@ -376,7 +541,7 @@ class Precipitation:
                 ref_out['windows'][name] = build_cdf(
                     win_sums[:, k][np.isfinite(win_sums[:, k])])
 
-        exceed = detection >= threshold
+        exceed = (detection >= threshold) & eval_mask
         if detection_peak_days:
             events = self._build_peak_event_dates(
                 times, precip_filled, exceed, lo_off, hi_off)

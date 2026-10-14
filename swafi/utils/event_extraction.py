@@ -28,7 +28,7 @@ _tile_size_5min = 32000
 
 def detection_tag(detection_window_h=1.0, detection_threshold=None,
                   detection_centered=True, detection_peak_days=True,
-                  time_step_h=1.0):
+                  time_step_h=1.0, detection_step_h=None):
     """Build the file-name tag identifying the event detection settings.
 
     Caches (part directories, merged parquet, test-event pickles) must be unique
@@ -58,6 +58,18 @@ def detection_tag(detection_window_h=1.0, detection_threshold=None,
         if detection_peak_days:
             tag += "_peakdays"
 
+    # A detection step equal to the data's own step changes neither the
+    # tested positions nor the window, so it is left out of the tag: the
+    # hourly extraction keeps its name when detection_step_h=1.0 is switched
+    # on, and is reused rather than re-run to produce the very same events.
+    if detection_step_h is not None:
+        step_min = int(round(detection_step_h * 60))
+        if step_min != int(round(time_step_h * 60)):
+            if step_min % 60:
+                tag += f"_step{step_min}min"
+            else:
+                tag += f"_step{step_min // 60:g}h"
+
     return tag
 
 
@@ -80,7 +92,8 @@ def _get_precipitation(precip_dataset, y_start, y_end, config):
 def process_part(i, part, config, y_start, y_end, method, filter_size, output_dir,
                  precip_dataset='hourly', detection_window_h=1.0, n_parts=None,
                  reference=None, collect_reference=False, detection_threshold=None,
-                 detection_centered=True, detection_peak_days=True):
+                 detection_centered=True, detection_peak_days=True,
+                 detection_step_h=None):
     # The part count is embedded in the file name so that a resume with a
     # different partitioning (e.g. a machine with another CPU count for the
     # hourly split) does not silently reuse parts covering different cells.
@@ -109,6 +122,7 @@ def process_part(i, part, config, y_start, y_end, method, filter_size, output_di
             detection_threshold=detection_threshold,
             detection_centered=detection_centered,
             detection_peak_days=detection_peak_days,
+            detection_step_h=detection_step_h,
             reference=reference, collect_reference=collect)
         if events is not None:
             list_of_events.append(events)
@@ -153,7 +167,8 @@ def _split_parts(config, precip_dataset):
 def _run_workers(parts, config, y_start, y_end, method, filter_size, output_dir,
                  precip_dataset='hourly', detection_window_h=1.0, max_workers=None,
                  reference=None, collect_reference=False, detection_threshold=None,
-                 detection_centered=True, detection_peak_days=True):
+                 detection_centered=True, detection_peak_days=True,
+                 detection_step_h=None):
     n_parts = len(parts)
     with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
         futures = []
@@ -168,7 +183,7 @@ def _run_workers(parts, config, y_start, y_end, method, filter_size, output_dir,
                 process_part, i, part, config, y_start, y_end, method, filter_size,
                 output_dir, precip_dataset, detection_window_h, n_parts,
                 part_ref, collect_reference, detection_threshold,
-                detection_centered, detection_peak_days))
+                detection_centered, detection_peak_days, detection_step_h))
         results = [
             f.result()
             for f in tqdm(concurrent.futures.as_completed(futures),
@@ -210,7 +225,7 @@ def extract_events_parallel(y_start, y_end, method, filter_size=None,
                             precip_dataset='hourly', detection_window_h=1.0, max_workers=None,
                             reference_path=None, save_reference_path=None,
                             detection_threshold=None, detection_centered=True,
-                            detection_peak_days=True):
+                            detection_peak_days=True, detection_step_h=None):
     """Extract events for all domain cells in parallel and return a DataFrame.
 
     reference_path: str|Path|None
@@ -227,6 +242,10 @@ def extract_events_parallel(y_start, y_end, method, filter_size=None,
     detection_peak_days: bool
         Whether to date the events on the intensity peak of each exceeding
         window (see Precipitation._build_peak_event_dates).
+    detection_step_h: float|None
+        The wall-clock spacing [h] of the positions the threshold is tested on.
+        None tests every native step, which ties the catalogue to the data
+        resolution (see Precipitation._extract_events_simple).
     """
     config = Config()
     parts = _split_parts(config, precip_dataset)
@@ -236,7 +255,7 @@ def extract_events_parallel(y_start, y_end, method, filter_size=None,
         _run_workers(parts, config, y_start, y_end, method, filter_size, tmp_dir,
                      precip_dataset, detection_window_h, max_workers, reference,
                      collect, detection_threshold, detection_centered,
-                     detection_peak_days)
+                     detection_peak_days, detection_step_h)
         events = _merge_parts(tmp_dir, len(parts))
         if collect:
             save_reference(_merge_references(tmp_dir, len(parts)), save_reference_path)
@@ -250,11 +269,12 @@ def run_parallel_extraction(y_start, y_end, method, filter_size=None,
                             detection_window_h=1.0, max_workers=None,
                             reference_path=None, save_reference_path=None,
                             detection_threshold=None, detection_centered=True,
-                            detection_peak_days=True):
+                            detection_peak_days=True, detection_step_h=None):
     """Extract events in parallel, saving intermediate parts to output_dir and merging to output_path.
 
     reference_path / save_reference_path / detection_threshold /
-    detection_centered / detection_peak_days: see extract_events_parallel. Training extraction
+    detection_centered / detection_peak_days / detection_step_h: see
+    extract_events_parallel. Training extraction
     passes save_reference_path to persist the per-cell reference; test
     extraction passes reference_path to reuse it.
     """
@@ -266,7 +286,7 @@ def run_parallel_extraction(y_start, y_end, method, filter_size=None,
     _run_workers(parts, config, y_start, y_end, method, filter_size, output_dir,
                  precip_dataset, detection_window_h, max_workers, reference,
                  collect, detection_threshold, detection_centered,
-                 detection_peak_days)
+                 detection_peak_days, detection_step_h)
     logger.info("All parts processed. Saved in '%s'.", output_dir)
     events = _merge_parts(output_dir, len(parts))
     events = _stamp_precip_dataset(events, precip_dataset)
