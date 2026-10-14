@@ -148,3 +148,4 @@ config.yaml
 **_9.py
 **_10.py
 .claude/
+*.done
