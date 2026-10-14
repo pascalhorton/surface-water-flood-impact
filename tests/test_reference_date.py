@@ -11,11 +11,15 @@ after midnight the storm peaked, which is 0 to 24 h and differs per event.
 Impact.set_reference_date is now the single rule. These tests pin it, and pin
 that the two callers agree.
 """
+import inspect
+
 import numpy as np
 import pandas as pd
 import pytest
 
 from swafi.impact import Impact
+from swafi.impact_cnn import ImpactCnn
+from swafi.impact_lstm import ImpactLstm
 
 
 def _simple_events():
@@ -51,14 +55,45 @@ def test_the_simple_definition_anchors_on_midnight():
         pd.to_datetime(['2021-06-15', '2021-06-16', '2021-06-17']))
 
 
-@pytest.mark.parametrize("ref_date", ['middle', 'end', 'i_max', 'i_max_only'])
-def test_e_date_wins_whatever_ref_date_says(ref_date):
-    """The event is already dated on its peak's day; ref_date is for the
-    claim-based definitions, which have no e_date to use."""
+@pytest.mark.parametrize("ref_date", ['auto', 'e_date'])
+def test_the_day_anchor_can_be_asked_for_or_left_to_default(ref_date):
     out = Impact.set_reference_date(_simple_events(), ref_date)
 
     assert list(out['date']) == list(
         pd.to_datetime(['2021-06-15', '2021-06-16', '2021-06-17']))
+
+
+def test_the_peak_anchor_overrides_e_date_when_asked_for():
+    """The capability that did not exist: comparing the two anchors.
+
+    e_date used to win whatever ref_date said, so the peak anchor was
+    unreachable under the simple definition and no experiment ever measured
+    it against the day anchor.
+    """
+    out = Impact.set_reference_date(_simple_events(), 'i_max_only')
+
+    assert list(out['date']) == list(pd.to_datetime(
+        ['2021-06-15 17:00', '2021-06-16 03:00', '2021-06-17 23:00']))
+    # e_date goes, so nothing downstream can mistake it for the anchor.
+    assert 'e_date' not in out.columns
+
+
+@pytest.mark.parametrize("ref_date", ['middle', 'end', 'i_max'])
+def test_the_claim_modes_are_refused_without_claim_dates(ref_date):
+    """They used to fall through to e_date silently, which hid the mistake."""
+    with pytest.raises(ValueError, match="date_claim"):
+        Impact.set_reference_date(_simple_events(), ref_date)
+
+
+def test_the_day_anchor_is_refused_without_an_event_date():
+    with pytest.raises(ValueError, match="e_date"):
+        Impact.set_reference_date(_claim_events(), 'e_date')
+
+
+def test_auto_falls_back_to_the_peak_without_an_event_date():
+    out = Impact.set_reference_date(_claim_events(), 'auto')
+
+    assert out['date'].iloc[1] == pd.Timestamp('2021-06-16 03:00')
 
 
 def test_the_peak_lies_inside_the_window_it_anchors():
@@ -105,11 +140,6 @@ def test_no_caller_derives_the_anchor_for_itself():
     inference generators used to, which shifted every window against training
     by however long after midnight the storm peaked.
     """
-    import inspect
-
-    from swafi.impact_cnn import ImpactCnn
-    from swafi.impact_lstm import ImpactLstm
-
     for cls in (ImpactCnn, ImpactLstm):
         src = inspect.getsource(cls.get_data_generator_inference)
         assert 'set_reference_date' in src, (

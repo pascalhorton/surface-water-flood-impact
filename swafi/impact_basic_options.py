@@ -30,6 +30,7 @@ class ImpactBasicOptions:
     event_file_label: str
         The event file label (default: 'default_occurrence').
     event_method: str|None
+    event_ref_date: str
         The event extraction method. Options: 'simple', 'classic'. Default: None.
     precip_dataset: str
         The precipitation dataset the events were extracted from. Options:
@@ -75,6 +76,7 @@ class ImpactBasicOptions:
         self.dataset = None
         self.event_file_label = None
         self.event_method = None
+        self.event_ref_date = 'auto'
         self.precip_dataset = None
         self.min_nb_claims = None
         self.target_type = None
@@ -178,6 +180,14 @@ class ImpactBasicOptions:
             choices=['simple', 'classic'],
             help="The event extraction method ('simple' or 'classic').")
         self.parser.add_argument(
+            "--event-ref-date", type=str, default='auto',
+            choices=['auto', 'e_date', 'i_max_only', 'middle', 'end', 'i_max'],
+            help="What the precipitation window is anchored on (see "
+                 "Impact.set_reference_date). 'auto' is the historical "
+                 "behaviour: midnight of the event day for the simple "
+                 "definition. 'i_max_only' anchors on the intensity peak "
+                 "instead, which fixes the storm's position in the tensor.")
+        self.parser.add_argument(
             "--precip-dataset", type=str, default='hourly',
             choices=['hourly', '5min'],
             help="The precipitation dataset the events were extracted from "
@@ -247,6 +257,7 @@ class ImpactBasicOptions:
         self.dataset = args.dataset
         self.event_file_label = args.event_file_label
         self.event_method = args.event_method
+        self.event_ref_date = args.event_ref_date
         self.precip_dataset = args.precip_dataset
         self.min_nb_claims = args.min_nb_claims
         self.target_type = args.target_type
@@ -288,6 +299,7 @@ class ImpactBasicOptions:
         logger.info("- dataset:  %s", self.dataset)
         logger.info("- event_file_label:  %s", self.event_file_label)
         logger.info("- event_method:  %s", self.event_method)
+        logger.info("- event_ref_date:  %s", self.event_ref_date)
         logger.info("- precip_dataset:  %s", self.precip_dataset)
         logger.info("- min_nb_claims:  %s", self.min_nb_claims)
         logger.info("- target_type:  %s", self.target_type)

@@ -99,7 +99,8 @@ def _setup_model(options, events, precip, dem):
     if cnn.options.use_static_attributes or cnn.options.use_event_attributes:
         cnn.select_features(cnn.options.replace_simple_features)
         cnn.load_features(cnn.options.simple_feature_classes)
-    cnn.split_sample(valid_test_size=0.25, test_size=0)
+    cnn.split_sample(valid_test_size=0.25, test_size=0,
+                     ref_date=cnn.options.event_ref_date)
     cnn.reduce_negatives_for_training(cnn.options.factor_neg_reduction)
     if not options.use_poisson_head:
         cnn.compute_balanced_class_weights(cnn.options.factor_neg_reduction)

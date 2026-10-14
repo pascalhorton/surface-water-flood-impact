@@ -294,8 +294,10 @@ class Impact:
         self.df = self.df[(self.df['nb_claims'] == 0) |
                           (self.df['nb_claims'] >= threshold)]
 
+    ANCHOR_MODES = ('auto', 'e_date', 'i_max_only', 'middle', 'end', 'i_max')
+
     @staticmethod
-    def set_reference_date(df, ref_date='i_max_only'):
+    def set_reference_date(df, ref_date='auto'):
         """Set the 'date' column the precipitation window is anchored on.
 
         The window handed to the data generators is built around this column
@@ -305,30 +307,66 @@ class Impact:
         inference generators used to rename i_max_date themselves, which
         shifted every window by 0 to 24 h against training.
 
-        Under the simple event definition e_date wins whatever ref_date says -
-        the event is already dated on its intensity peak's day, and midnight
-        makes the window the event day. The other modes exist for the
-        claim-based definitions, where the reference is a claim date forced to
-        18:00 to avoid overfitting the time of day, with a fallback for the
-        events that carry no claim.
+        'auto' keeps what the pipeline has always done: e_date when the
+        events carry it (the simple definition), the intensity peak otherwise.
+        The anchor was only ever implicit, so no experiment has compared the
+        two; 'i_max_only' now overrides e_date so that it can be.
+
+        WHAT THE CHOICE MEANS. e_date is midnight at the start of the event
+        day, so a 0-24 h window is that day, and the peak sits somewhere
+        inside it - i_max_date - e_date lies in [0, 24] h by construction.
+        i_max_only puts the peak at a fixed offset in every sample instead,
+        which matters more the finer the data: a day-anchored window lets the
+        storm sit at any of 24 positions at an hourly step and any of 288 at
+        five minutes, and the pooling head is not shift-invariant.
+
+        The claim-based modes ('middle', 'end', 'i_max') anchor on a claim
+        date forced to 18:00, to avoid overfitting the time of day, with a
+        per-mode fallback for events carrying no claim. They need date_claim.
 
         Parameters
         ----------
         df: pd.DataFrame
             The events, with e_date or with e_start/e_end/date_claim.
         ref_date: str
-            'middle', 'end', 'i_max' or 'i_max_only'; ignored when e_date is
-            present.
+            One of ANCHOR_MODES.
 
         Returns
         -------
         pd.DataFrame
             The same frame, with a 'date' column.
         """
-        if 'e_date' in df.columns:
+        if ref_date not in Impact.ANCHOR_MODES:
+            raise ValueError(f"Unknown reference date: {ref_date}. "
+                             f"Options are: {', '.join(Impact.ANCHOR_MODES)}")
+
+        has_e_date = 'e_date' in df.columns
+        if ref_date == 'auto':
+            # What the pipeline has always done, now said out loud.
+            ref_date = 'e_date' if has_e_date else 'i_max_only'
+
+        if ref_date == 'e_date':
+            if not has_e_date:
+                raise ValueError(
+                    "ref_date='e_date' needs an e_date column, which only "
+                    "the simple event definition produces.")
             # Simple event definition
             df.rename(columns={'e_date': 'date'}, inplace=True)
             return df
+        if ref_date == 'i_max_only':
+            # Explicitly the peak, whether or not e_date is also available.
+            # Dropped rather than left in place: a stale e_date beside a
+            # 'date' built from the peak is how the two would be confused.
+            if has_e_date:
+                df = df.drop(columns=['e_date'])
+            df.rename(columns={'i_max_date': 'date'}, inplace=True)
+            df['date'] = pd.to_datetime(df['date'])
+            return df
+
+        if 'date_claim' not in df.columns:
+            raise ValueError(
+                f"ref_date='{ref_date}' needs a date_claim column; these "
+                f"modes are for the claim-based event definitions.")
 
         # Set the reference date for the precipitation extraction. We force the time to 18:00 to
         # avoid overfitting on the time of the day.
@@ -354,20 +392,13 @@ class Impact:
             # Fill NaN values with the date of the maximum precipitation intensity
             fill_datetime = pd.to_datetime(df['i_max_date']).dt.floor('D') + pd.Timedelta(hours=18)
             df['date'] = df['date'].fillna(fill_datetime)
-        elif ref_date == 'i_max_only':
-            df.rename(columns={'i_max_date': 'date'}, inplace=True)
-            df['date'] = pd.to_datetime(df['date'])
-        else:
-            raise ValueError(f"Unknown reference date: {ref_date}. "
-                             f"Options are: 'middle', 'end', 'i_max', "
-                             f"'i_max_only'")
 
         # Transform the dates to a date without time
         df['e_start'] = pd.to_datetime(df['e_start']).dt.date
         df['e_end'] = pd.to_datetime(df['e_end']).dt.date
         return df
 
-    def split_sample(self, valid_test_size=0.3, test_size=0, ref_date='i_max_only',
+    def split_sample(self, valid_test_size=0.3, test_size=0, ref_date='auto',
                      split_mode='chronological'):
         """
         Split the sample into training, validation and test sets.
