@@ -296,6 +296,16 @@ class Impact:
 
     ANCHOR_MODES = ('auto', 'e_date', 'i_max_only', 'middle', 'end', 'i_max')
 
+    def get_reference_date_mode(self):
+        """The anchor mode to build the precipitation window on.
+
+        Training reads it from the options; inference must read it from the
+        same place or the model is applied to windows it was not trained on.
+        Models saved before the option existed carry no such attribute, and
+        'auto' is what they were trained with.
+        """
+        return getattr(self.options, 'event_ref_date', None) or 'auto'
+
     @staticmethod
     def set_reference_date(df, ref_date='auto'):
         """Set the 'date' column the precipitation window is anchored on.

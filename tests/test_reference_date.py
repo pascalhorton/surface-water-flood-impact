@@ -146,6 +146,12 @@ def test_no_caller_derives_the_anchor_for_itself():
             f"{cls.__name__} must take the anchor from the shared rule")
         assert "'i_max_date'" not in src, (
             f"{cls.__name__} derives its own anchor again")
+        # Calling the rule is not enough: it has a default, and taking the
+        # default applies a model trained with --event-ref-date i_max_only to
+        # day-anchored windows. The option has to be read.
+        assert 'get_reference_date_mode()' in src, (
+            f"{cls.__name__} calls set_reference_date without the anchor the "
+            f"model was trained with")
 
     # And the shared rule is the one place that names the column.
     assert "'i_max_date'" in inspect.getsource(Impact.set_reference_date)
@@ -156,3 +162,33 @@ def test_no_caller_derives_the_anchor_for_itself():
     assert not np.array_equal(
         out['date'].to_numpy(),
         pd.to_datetime(_simple_events()['i_max_date']).to_numpy())
+
+
+@pytest.mark.parametrize("trained_with, expected", [
+    ('auto', 'auto'),
+    ('i_max_only', 'i_max_only'),
+    ('e_date', 'e_date'),
+])
+def test_inference_reads_the_anchor_the_model_was_trained_with(trained_with,
+                                                               expected):
+    class Options:
+        event_ref_date = trained_with
+
+    class Model(Impact):
+        def __init__(self):
+            self.options = Options()
+
+    assert Model().get_reference_date_mode() == expected
+
+
+@pytest.mark.parametrize("options", [
+    type('NoAttribute', (), {})(),      # saved before the option existed
+    type('Unset', (), {'event_ref_date': None})(),
+])
+def test_a_model_without_the_option_gets_what_it_was_trained_with(options):
+    """'auto' is what every model saved before the option existed used."""
+    class Model(Impact):
+        def __init__(self):
+            self.options = options
+
+    assert Model().get_reference_date_mode() == 'auto'

@@ -3,6 +3,7 @@ import multiprocessing
 import concurrent.futures
 import os
 import pickle
+import re
 import tempfile
 from pathlib import Path
 
@@ -71,6 +72,113 @@ def detection_tag(detection_window_h=1.0, detection_threshold=None,
                 tag += f"_step{step_min // 60:g}h"
 
     return tag
+
+
+# The grammar detection_tag() writes, anchored at the end of the name because
+# the tag is always its last component.
+_DETECTION_TAG_RE = re.compile(
+    r"_det(?P<window>native|\d+(?:\.\d+)?min|\d+(?:\.\d+)?h)"
+    r"(?:_thr(?P<threshold>\d+(?:\.\d+)?)mm)?"
+    r"(?P<centered>_centered)?"
+    r"(?P<peakdays>_peakdays)?"
+    r"(?:_step(?P<step>\d+(?:\.\d+)?)(?P<step_unit>min|h))?"
+    r"$")
+
+# Enough of a tag to say one was meant, for names the grammar above rejects.
+_DETECTION_TAG_START_RE = re.compile(r"_det(?:native|\d)")
+
+
+def parse_detection_tag(name, time_step_h):
+    """Read the detection settings back out of a name written by detection_tag().
+
+    THE NAME IS THE ONLY RECORD. Nothing inside an events file says how it was
+    detected - not the parquet, not the pickle the linkage writes from it. So
+    anything that must agree with a catalogue's event definition has two
+    choices: keep its own copy of the settings, or read them off the name. The
+    copies are what drift, and a drifted copy is silent: the extraction simply
+    produces a different catalogue and every score is measured on it.
+
+    Parameters
+    ----------
+    name : str|Path
+        A file name or path written with a detection tag (an events parquet,
+        its '_ref.pkl' companion, or a parts directory).
+    time_step_h : float
+        The native time step [h] of the dataset the name belongs to. Required,
+        not defaulted: the tag's meaning depends on it (centring and peak
+        dating are omitted for a single-step window, and a detection step
+        equal to the data's own step is omitted entirely), so a wrong value
+        here would be a wrong event definition. It is also checked - see below.
+
+    Returns
+    -------
+    dict|None
+        Keyword arguments for extract_events_parallel / get_events, or None
+        when the name carries no detection tag at all (the classic method, or
+        an extraction predating the tag - in which case the defaults are what
+        built it).
+
+    Raises
+    ------
+    ValueError
+        When a tag is present but cannot be read: either it does not match
+        the grammar detection_tag() writes, or it does not round-trip, which
+        means time_step_h does not belong to this name (passing 1.0 for a
+        5-minute catalogue hides its '_step1h', for instance). Every such case
+        would build the wrong catalogue, so none is guessed at.
+    """
+    stem = Path(str(name)).name
+    for suffix in ('.parquet', '.pickle', '.pkl', '.csv'):
+        if stem.endswith(suffix):
+            stem = stem[:-len(suffix)]
+            break
+    # The reference saved beside a catalogue shares its tag.
+    if stem.endswith('_ref'):
+        stem = stem[:-len('_ref')]
+
+    match = _DETECTION_TAG_RE.search(stem)
+    if match is None:
+        if _DETECTION_TAG_START_RE.search(stem):
+            # A detection tag that does not parse must not read as "no tag":
+            # the caller would fall back to the defaults, which is the silent
+            # mismatch this function exists to prevent.
+            raise ValueError(
+                f"'{stem}' carries what looks like a detection tag, but not "
+                f"one detection_tag() can write. Pass the detection settings "
+                f"explicitly rather than having them inferred from this name.")
+        return None
+
+    window = match.group('window')
+    if window == 'native':
+        detection_window_h = None
+    elif window.endswith('min'):
+        detection_window_h = float(window[:-3]) / 60
+    else:
+        detection_window_h = float(window[:-1])
+
+    threshold = match.group('threshold')
+    step, step_unit = match.group('step'), match.group('step_unit')
+
+    settings = dict(
+        detection_window_h=detection_window_h,
+        detection_threshold=None if threshold is None else float(threshold),
+        detection_centered=match.group('centered') is not None,
+        detection_peak_days=match.group('peakdays') is not None,
+        detection_step_h=(None if step is None else
+                          float(step) / 60 if step_unit == 'min' else float(step)),
+    )
+
+    rebuilt = detection_tag(time_step_h=time_step_h, **settings)
+    if rebuilt != match.group(0):
+        raise ValueError(
+            f"Could not read the detection settings off '{stem}': they "
+            f"re-encode as '{rebuilt}' rather than '{match.group(0)}'. Either "
+            f"the name was not written by detection_tag(), or time_step_h="
+            f"{time_step_h:g} is not the step of the dataset it belongs to. "
+            f"Pass the detection settings explicitly instead of letting them "
+            f"be inferred.")
+
+    return settings
 
 
 def _get_precipitation(precip_dataset, y_start, y_end, config):

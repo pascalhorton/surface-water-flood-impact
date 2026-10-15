@@ -12,7 +12,7 @@ from swafi.impact_rf import ImpactRandomForest
 from swafi.utils.logging_setup import setup_logging
 from swafi.utils.use_common import (
     assess, get_contracts_number, get_damages, get_damages_xr,
-    get_events, create_prediction_dataset, GridPredictionWriter,
+    get_inference_events, create_prediction_dataset, GridPredictionWriter,
 )
 
 logger = logging.getLogger(__name__)
@@ -20,17 +20,14 @@ logger = logging.getLogger(__name__)
 DO_ASSESS = True
 SWEEP_THRESHOLDS = True  # also log scores across thresholds and the best operating point
 MODEL = R"C:\Users\phorton\Documents\SWF\outputs\model_rf_2025-08-29_160926.pkl"
-# Per-cell training reference (the '*_ref.pkl' saved by extract_precipitation_events
-# for the simple method). When set, the test events are normalised against the
-# training distribution instead of the test period. None keeps the old behaviour.
-REFERENCE_PATH = None
-# Event detection settings: must match the ones used to extract the training
-# events (extract_precipitation_events.py), otherwise the test events follow
-# another event definition than the model was trained on.
-DETECTION_WINDOW_H = 12
-DETECTION_THRESHOLD = 10  # e.g. 10 with DETECTION_WINDOW_H = 12 for p_12h >= 10mm
-DETECTION_CENTERED = True  # centre the detection window on the step it labels
-DETECTION_PEAK_DAYS = True  # date the events on each exceeding window's peak
+# The event definition is read off the training catalogue named by the
+# EVENTS_PATH_SIMPLE_* / EVENTS_PATH_CLASSIC config entry, which is the only
+# record of how it was detected (see use_common.get_inference_events). Keeping
+# a second copy of those settings here is what let inference drift from
+# training. USE_TRAINING_REFERENCE ranks the '*_q' features against the
+# training distribution, as the model was fitted; False re-estimates them on
+# the test period.
+USE_TRAINING_REFERENCE = True
 
 config = Config()
 
@@ -55,13 +52,8 @@ def main():
 
     year_start = config.get('YEAR_START_TEST')
     year_end = config.get('YEAR_END_TEST')
-    events = get_events(year_start, year_end, options.event_method,
-                        precip_dataset=options.precip_dataset,
-                        detection_window_h=DETECTION_WINDOW_H,
-                        detection_threshold=DETECTION_THRESHOLD,
-                        detection_centered=DETECTION_CENTERED,
-                        detection_peak_days=DETECTION_PEAK_DAYS,
-                        reference_path=REFERENCE_PATH)
+    events = get_inference_events(options, year_start, year_end,
+                                  use_training_reference=USE_TRAINING_REFERENCE)
 
     output_path = (
         Path(config.get('OUTPUT_DIR'))

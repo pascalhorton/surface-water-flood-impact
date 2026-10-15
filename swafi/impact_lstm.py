@@ -167,7 +167,9 @@ class ImpactLstm(ImpactDl):
         df.dropna(subset=['nb_contracts'], inplace=True)
         # The same rule training uses, so the window at inference is the
         # window the model was trained on (see Impact.set_reference_date).
-        df = self.set_reference_date(df)
+        # Not the default: a model trained with --event-ref-date i_max_only
+        # would otherwise be applied to day-anchored windows.
+        df = self.set_reference_date(df, self.get_reference_date_mode())
         df['date'] = pd.to_datetime(df['date'])
 
         x_static = df[self.features].to_numpy()

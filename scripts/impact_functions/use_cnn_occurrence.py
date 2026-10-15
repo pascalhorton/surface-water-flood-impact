@@ -16,7 +16,7 @@ from swafi.impact_dl import WeightedBinaryCrossEntropy, CriticalSuccessIndex
 from swafi.utils.logging_setup import setup_logging
 from swafi.utils.use_common import (
     assess, get_contracts_number, get_damages, get_damages_xr,
-    get_events, resolve_precip_reference, filter_events_to_precip_domain,
+    get_inference_events, resolve_precip_reference, filter_events_to_precip_domain,
     create_prediction_dataset, create_precipitation, ensure_precip_dataset,
     GridPredictionWriter, predict_events_in_chunks,
 )
@@ -26,6 +26,15 @@ logger = logging.getLogger(__name__)
 DO_ASSESS = True
 MODEL = R"C:\Users\phorton\Documents\SWF\outputs\model_cnn_test_30.keras"
 DATASET = 'mobiliar'  # 'mobiliar' or 'gvz'
+
+# The event definition is read off the training catalogue named by the
+# EVENTS_PATH_SIMPLE_* / EVENTS_PATH_CLASSIC config entry, which is the only
+# record of how it was detected (see use_common.get_inference_events). Keeping
+# a second copy of those settings here is what let inference drift from
+# training. USE_TRAINING_REFERENCE ranks the '*_q' features against the
+# training distribution, as the model was fitted; False re-estimates them on
+# the test period.
+USE_TRAINING_REFERENCE = True
 
 config = Config()
 
@@ -54,8 +63,8 @@ def main():
 
     year_start = config.get('YEAR_START_TEST')
     year_end = config.get('YEAR_END_TEST')
-    events = get_events(year_start, year_end, options.event_method,
-                        precip_dataset=options.precip_dataset)
+    events = get_inference_events(options, year_start, year_end,
+                                  use_training_reference=USE_TRAINING_REFERENCE)
 
     # Precipitation for CNN input, from the zarr store of the same dataset the
     # model was trained on.

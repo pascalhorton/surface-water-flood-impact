@@ -12,7 +12,11 @@ from swafi.damages_mobiliar import DamagesMobiliar
 from swafi.damages_gvz import DamagesGvz
 from swafi.precip_combiprecip import CombiPrecip
 from swafi.precip_combiprecip_5min import CombiPrecip5min
-from swafi.utils.event_extraction import detection_tag, extract_events_parallel
+from swafi.utils.event_extraction import (
+    detection_tag,
+    extract_events_parallel,
+    parse_detection_tag,
+)
 from swafi.utils.verification import (
     compute_confusion_matrix,
     print_classic_scores,
@@ -485,7 +489,8 @@ def _get_precip_grid_shape(precip):
 def get_events(year_start, year_end, event_method,
                filter_size=None, precip_dataset='hourly', detection_window_h=1.0,
                reference_path=None, detection_threshold=None,
-               detection_centered=True, detection_peak_days=True):
+               detection_centered=True, detection_peak_days=True,
+               detection_step_h=None):
     """Return events DataFrame, loading from pickle cache or extracting in parallel.
 
     reference_path: str|Path|None
@@ -494,9 +499,11 @@ def get_events(year_start, year_end, event_method,
         against the training distribution instead of the test period. None keeps
         the previous behaviour (re-estimated on the test period).
     detection_window_h / detection_threshold / detection_centered /
-    detection_peak_days:
+    detection_peak_days / detection_step_h:
         The event detection settings, which must match those used for the
         training extraction (see Precipitation._extract_events_simple).
+        get_inference_events() reads them off the training catalogue rather
+        than restating them, and is what the use_*.py scripts call.
     """
     # The simple method exists for both precipitation datasets: name the cache
     # explicitly; the classic method relies on hourly data (untagged). When a
@@ -508,7 +515,8 @@ def get_events(year_start, year_end, event_method,
     # detection became configurable are still picked up.
     time_step_h = 5 / 60 if precip_dataset == '5min' else 1.0
     det_suffix = detection_tag(detection_window_h, detection_threshold,
-                               detection_centered, detection_peak_days, time_step_h)
+                               detection_centered, detection_peak_days,
+                               time_step_h, detection_step_h)
     if event_method != 'simple' or det_suffix == detection_tag():
         det_suffix = ''
     events_path = (
@@ -523,8 +531,130 @@ def get_events(year_start, year_end, event_method,
                                          reference_path=reference_path,
                                          detection_threshold=detection_threshold,
                                          detection_centered=detection_centered,
-                                         detection_peak_days=detection_peak_days)
+                                         detection_peak_days=detection_peak_days,
+                                         detection_step_h=detection_step_h)
         events.to_pickle(events_path)
     else:
         events = pd.read_pickle(events_path)
     return events
+
+
+# The config entry naming the catalogue each (method, dataset) was trained on.
+# The simple method exists for both precipitation datasets; the classic method
+# relies on hourly data by definition.
+TRAINING_CATALOGUE_KEYS = {
+    ('simple', 'hourly'): 'EVENTS_PATH_SIMPLE_HOURLY',
+    ('simple', '5min'): 'EVENTS_PATH_SIMPLE_5MIN',
+    ('classic', 'hourly'): 'EVENTS_PATH_CLASSIC',
+}
+
+
+def get_training_catalogue_path(event_method, precip_dataset):
+    """The events parquet the models of this (method, dataset) were trained on.
+
+    Raises
+    ------
+    ValueError
+        For a combination that has no catalogue (the classic method on
+        sub-hourly data, or an unknown name).
+    """
+    key = TRAINING_CATALOGUE_KEYS.get((event_method, precip_dataset))
+    if key is None:
+        raise ValueError(
+            f"No training catalogue for event_method='{event_method}' with "
+            f"precip_dataset='{precip_dataset}'. Known combinations: "
+            f"{sorted(TRAINING_CATALOGUE_KEYS)}.")
+    return Path(config.get(key))
+
+
+def get_inference_events(options, year_start, year_end, filter_size=None,
+                         use_training_reference=True):
+    """The test events, built with the event definition the model was trained on.
+
+    WHY THIS IS NOT JUST get_events(). A trained model is a function of an event
+    definition as much as of the weather: the catalogue decides which cell-days
+    are candidates at all, and the '*_q' features say where each event sits in a
+    distribution. Both are set at extraction time and neither is recorded inside
+    the events file. Calling get_events() with only the dataset name, as these
+    scripts did, therefore took its defaults - a 1-hour detection window on the
+    per-cell q98 - and applied models trained on 12-hour, 10 mm, centred,
+    peak-dated events to a catalogue built another way. Nothing fails; the
+    scores simply describe a different question.
+
+    So the settings are read off the name of the training catalogue
+    (parse_detection_tag), which is the only place they are recorded, and the
+    per-cell reference saved beside it is applied by default. Repointing
+    EVENTS_PATH_SIMPLE_* at a re-extracted catalogue moves inference with it,
+    and there is no second copy of the settings to forget.
+
+    THE REFERENCE AND THE TEST PERIOD. The reference is the q98 and the CDFs of
+    the training extraction, which spans YEAR_START/YEAR_END of that run and so
+    usually contains the test years as well - the training catalogue is cut to
+    the training period by the linkage, not by the extraction. Ranking the test
+    events against it is still the right choice: it is the distribution the
+    model was fitted against, and the alternative re-estimates a q98 on two
+    years, which is both noisier and no more independent.
+
+    Parameters
+    ----------
+    options : ImpactBasicOptions
+        The model options; event_method and precip_dataset are read from them
+        (call ensure_precip_dataset first for options restored from a model).
+    year_start, year_end : int
+        The period to extract.
+    filter_size : int|None
+        Spatial smoothing of the precipitation before detection, as in training.
+    use_training_reference : bool
+        Whether to rank the '*_q' features against the training distribution.
+        True needs the '_ref.pkl' written beside the training catalogue. False
+        re-estimates them on the test period, which is what the scripts did
+        before the reference existed - a different input to the same model.
+
+    Returns
+    -------
+    pd.DataFrame
+        The events, cached under a name carrying the detection settings.
+    """
+    event_method = options.event_method
+    precip_dataset = options.precip_dataset
+    catalogue = get_training_catalogue_path(event_method, precip_dataset)
+    time_step_h = 5 / 60 if precip_dataset == '5min' else 1.0
+
+    detection = {}
+    if event_method == 'simple':
+        detection = parse_detection_tag(catalogue, time_step_h) or {}
+        if not detection:
+            logger.warning(
+                "'%s' carries no detection tag, so it was extracted with the "
+                "default detection (a %gh window on the per-cell q98) and the "
+                "test events will be too. Re-extract if that is not what the "
+                "model was trained on.", catalogue.name, time_step_h)
+        else:
+            logger.info("Event definition read off the training catalogue "
+                        "'%s': %s", catalogue.name, detection)
+
+    reference_path = None
+    if use_training_reference:
+        if event_method != 'simple':
+            logger.info("The classic event method defines events by absolute "
+                        "thresholds and uses no normalisation reference.")
+        else:
+            reference_path = catalogue.with_name(
+                catalogue.name.replace('.parquet', '_ref.pkl'))
+            if not reference_path.exists():
+                raise FileNotFoundError(
+                    f"No per-cell training reference at '{reference_path}'. It "
+                    f"is written beside the catalogue by "
+                    f"scripts/data_preparation/extract_precipitation_events.py, "
+                    f"so re-run that extraction, or pass "
+                    f"use_training_reference=False to rank the '*_q' features "
+                    f"on the test period instead - which is not what the model "
+                    f"was trained on.")
+            logger.info("Normalising the '*_q' features against the training "
+                        "reference '%s'.", reference_path.name)
+
+    return get_events(year_start, year_end, event_method,
+                      filter_size=filter_size,
+                      precip_dataset=precip_dataset,
+                      reference_path=reference_path,
+                      **detection)
