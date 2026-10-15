@@ -17,6 +17,7 @@ from swafi.config import Config
 from swafi.damages_mobiliar import DamagesMobiliar
 from swafi.damages_gvz import DamagesGvz
 from swafi.events import Events, get_events_filename
+from swafi.utils.event_extraction import detection_tag_in
 from swafi.utils.logging_setup import setup_logging
 from pathlib import Path
 
@@ -56,6 +57,14 @@ else:
     EVENTS_PATH = CONFIG.get('EVENTS_PATH_CLASSIC')
     PRECIP_SUFFIX = ''
 EVENTS_TAG = f'{DATASET}_{METHOD}{PRECIP_SUFFIX}'
+# How the events were detected is recorded ONLY in the name of the parquet, so
+# everything cached per event definition has to carry it or a re-extraction is
+# silently ignored. That matters most for the linked damages and the
+# events-to-remove list, because 'eid' is a POSITIONAL index into the
+# catalogue (Events._add_event_id): reusing a linkage computed on another
+# catalogue does not merely reuse old events, it maps every claim to whatever
+# event now sits at that position.
+DETECTION_TAG = detection_tag_in(EVENTS_PATH)
 TARGET_TYPE = 'occurrence'  # 'occurrence' or 'damage_ratio'
 # The method and precipitation dataset are appended by get_events_filename(),
 # which the impact scripts use to read the file back.
@@ -130,7 +139,7 @@ def get_damages_linked_to_events():
     year_start = CONFIG.get('YEAR_START')
     year_end = CONFIG.get('YEAR_END')
     label = LABEL_DAMAGE_LINK.replace(" ", "_")
-    label = label + '_' + METHOD + PRECIP_SUFFIX
+    label = label + '_' + METHOD + PRECIP_SUFFIX + DETECTION_TAG
     filename = f'damages_{DATASET}_linked_{label}.pickle'
     file_path = Path(PICKLES_DIR + '/' + filename)
 
