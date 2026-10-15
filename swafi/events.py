@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 
 from .config import Config
+from .utils.event_extraction import detection_tag_in
 
 config = Config()
 
@@ -56,11 +57,22 @@ class Events:
             The tag to add to the pickle file (e.g. damage dataset).
         """
         # Reload the tagged dump (never a generic one: another run's events
-        # would silently be reused for the wrong dataset/method).
+        # would silently be reused for the wrong dataset/method). The tag
+        # carries the damage dataset, the method and the precipitation
+        # dataset - and NOT how the events were detected, which is recorded
+        # only in the name of the parquet. So the detection tag is appended:
+        # without it, re-extracting a catalogue with new detection settings
+        # and re-running the linkage reloads the previous events from this
+        # dump and never opens the new parquet at all. The result is written
+        # under the new name while holding the old catalogue, and nothing
+        # downstream can tell.
+        dump_name = f'events_{tag}{detection_tag_in(path)}.pickle'
         if self.use_dump and self.events is None:
-            self._load_from_dump(f'events_{tag}.pickle')
+            self._load_from_dump(dump_name)
         if self.use_dump and self.events is not None:
-            logger.info("Events were reloaded from pickle file.")
+            logger.info("Events were reloaded from the pickle file '%s' "
+                        "rather than read from '%s'. Delete it to force a "
+                        "re-read.", dump_name, Path(path).name)
             return
 
         self.events = pd.read_parquet(path)
@@ -70,7 +82,7 @@ class Events:
         self.select_years_with_contracts(damages)
         self.select_locations_with_contracts(damages)
         self._add_event_id()
-        self._dump_object(f'events_{tag}.pickle')
+        self._dump_object(dump_name)
 
     def check_precip_dataset(self, expected):
         """

@@ -88,6 +88,32 @@ _DETECTION_TAG_RE = re.compile(
 _DETECTION_TAG_START_RE = re.compile(r"_det(?:native|\d)")
 
 
+def detection_tag_in(name):
+    """The detection tag substring of a file name, or '' when it carries none.
+
+    For KEYING A CACHE on the event definition, as opposed to reading it.
+    parse_detection_tag interprets the tag and so needs the dataset's time
+    step; a cache key needs no interpretation, only the property that two
+    different definitions give two different keys. Taking the substring
+    verbatim gives exactly that, and cannot refuse a name it does not
+    understand.
+
+    Parameters
+    ----------
+    name : str|Path
+        A file name or path, with or without a detection tag.
+    """
+    stem = Path(str(name)).name
+    for suffix in ('.parquet', '.pickle', '.pkl', '.csv'):
+        if stem.endswith(suffix):
+            stem = stem[:-len(suffix)]
+            break
+    if stem.endswith('_ref'):
+        stem = stem[:-len('_ref')]
+    match = _DETECTION_TAG_RE.search(stem)
+    return match.group(0) if match else ''
+
+
 def parse_detection_tag(name, time_step_h):
     """Read the detection settings back out of a name written by detection_tag().
 
