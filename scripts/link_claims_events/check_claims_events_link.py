@@ -84,9 +84,33 @@ def _config_key(event_method, precip_dataset):
     return f'EVENTS_PATH_SIMPLE_{precip_dataset.upper()}'
 
 
+def _list_siblings(dataset, event_method, precip_dataset, chosen):
+    """The other linked files for the same dataset, method and resolution.
+
+    A label is just a string the linkage was told to write under, and this
+    script takes one. Checking the wrong file is therefore one defaulted
+    argument away - and a stale file still sitting beside a fresh one is
+    exactly the situation that makes this script necessary. So say what else
+    is there.
+    """
+    pickles_dir = Path(config.get('PICKLES_DIR'))
+    suffix = f'_{precip_dataset}' if event_method == 'simple' else ''
+    pattern = f'events_{dataset}_with_target_*_{event_method}{suffix}.pickle'
+    siblings = sorted(p.name for p in pickles_dir.glob(pattern)
+                      if p.name != chosen)
+    if not siblings:
+        return
+    print(f"    other labels present for {dataset}/{event_method}"
+          f"{suffix}, NOT checked here:")
+    for name in siblings:
+        print(f"      {name}")
+    print("    pass --label to check one of those instead.")
+
+
 def _load_linked(dataset, label, event_method, precip_dataset):
     filename = get_events_filename(dataset, label, event_method, precip_dataset)
     print(f"  linked events file   {filename}")
+    _list_siblings(dataset, event_method, precip_dataset, filename)
     events = load_events_from_pickle(filename=filename).events
     print(f"    {len(events):,} events, {events['cid'].nunique():,} cells")
     if 'target' in events.columns:
@@ -328,6 +352,9 @@ def main():
     print("=" * 76)
     print("FILES")
     print("=" * 76)
+    if args.label == parser.get_default('label'):
+        print(f"  (--label not given, so the default "
+              f"'{args.label}' is checked)")
     events = _load_linked(args.dataset, args.label, args.event_method,
                           args.precip_dataset)
     print()
