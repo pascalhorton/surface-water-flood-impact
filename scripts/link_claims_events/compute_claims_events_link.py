@@ -13,6 +13,7 @@ computed using the following criteria:
 
 import logging
 import pickle
+import re
 from swafi.config import Config
 from swafi.damages_mobiliar import DamagesMobiliar
 from swafi.damages_gvz import DamagesGvz
@@ -67,8 +68,23 @@ EVENTS_TAG = f'{DATASET}_{METHOD}{PRECIP_SUFFIX}'
 DETECTION_TAG = detection_tag_in(EVENTS_PATH)
 TARGET_TYPE = 'occurrence'  # 'occurrence' or 'damage_ratio'
 # The method and precipitation dataset are appended by get_events_filename(),
-# which the impact scripts use to read the file back.
-LABEL_RESULTING_FILE = 'default_' + TARGET_TYPE
+# which the impact scripts use to read the file back - but the DETECTION TAG
+# is not, so two catalogues of the same method and dataset land on the same
+# name. The label is the only thing keeping a re-extracted catalogue from
+# overwriting the sample every previous result was measured on, which makes it
+# far too important to set by hand: a hand-set label is one someone forgets,
+# and forgetting it is silent and destructive.
+#
+# So it follows the detection step, which is what distinguishes the
+# catalogues this project actually has. The mapping reproduces the names
+# already on disk: the hourly catalogue and the pre-pinning 5-minute one carry
+# no step tag and stay 'default_occurrence'; the pinned 5-minute one is
+# 'step1h_occurrence'. Pass --event-file-label to the training scripts to
+# match.
+_DETECTION_STEP = re.search(r'_step(\d+(?:min|h))$', DETECTION_TAG)
+LABEL_RESULTING_FILE = (
+    f'step{_DETECTION_STEP.group(1)}_' if _DETECTION_STEP else 'default_'
+) + TARGET_TYPE
 SAVE_AS_CSV = True
 
 if DATASET == 'mobiliar':
