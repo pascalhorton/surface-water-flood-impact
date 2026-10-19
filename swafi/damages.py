@@ -902,7 +902,14 @@ class Damages:
             raise RuntimeError("The mask for extraction was not defined.")
 
         masked = data[:, self.mask['mask']]  # (time, n_masked_cells)
-        i_time, i_cell = np.nonzero(masked)
+        # A claim is a COUNT, so only a positive value is one. np.nonzero()
+        # would also take the rasters' nodata (-9999) as a claim: any cell
+        # that is inside the exposure mask but nodata in the claim grids then
+        # produces one phantom claim per date, with selection -9999 - or a
+        # multiple of it once select_categories_type() sums the categories.
+        # That is how 952 phantom claims entered the mobiliar set at a single
+        # cell, 9.3% of its total, and inflated every count derived from it.
+        i_time, i_cell = np.nonzero(masked > 0)
 
         if i_time.size == 0:
             df_claims = pd.DataFrame(
@@ -924,8 +931,9 @@ class Damages:
         assert data.ndim == 2, f"Data should be 2D in _extract_non_null_claims()."
         extracted = np.extract(self.mask['mask'], data[:, :])
 
-        # Get non null data
-        indices = np.nonzero(extracted)[0]
+        # Positive, not merely non-zero: nodata is negative and is not a claim
+        # (see _extract_claims_from_grids).
+        indices = np.nonzero(extracted > 0)[0]
         values = extracted[indices]
         return indices, values
 
