@@ -63,7 +63,9 @@ import pandas as pd
 import pyarrow.parquet as pq
 
 from swafi.config import Config
-from swafi.damages import SIMPLE_EVENT_HOURS_BEFORE, SIMPLE_EVENT_HOURS_AFTER
+from swafi.damages import (SIMPLE_EVENT_HOURS_AFTER, SIMPLE_EVENT_HOURS_BEFORE,
+                           SIMPLE_EVENT_RELAXED_HOURS_AFTER,
+                           SIMPLE_EVENT_RELAXED_HOURS_BEFORE)
 from swafi.events import get_events_filename, load_events_from_pickle
 from swafi.utils.event_extraction import detection_tag_in
 
@@ -171,13 +173,43 @@ def check_linking_invariant(events):
     offset_h = ((pd.to_datetime(linked['i_max_date'])
                  - pd.to_datetime(linked['date_claim']))
                 / pd.Timedelta(hours=1))
-    lo, hi = -SIMPLE_EVENT_HOURS_BEFORE, SIMPLE_EVENT_HOURS_AFTER
-    inside = offset_h.between(lo, hi)
+
+    # Each claim is judged against the window of the STAGE that matched it.
+    # With two-stage matching a relaxed match legitimately sits outside the
+    # strict window, so checking everything against the strict one would turn
+    # a correct linkage into a failure - and checking everything against the
+    # relaxed one would stop the check noticing a genuinely stale linkage.
+    lo = pd.Series(-float(SIMPLE_EVENT_HOURS_BEFORE), index=linked.index)
+    hi = pd.Series(float(SIMPLE_EVENT_HOURS_AFTER), index=linked.index)
+    n_relaxed = 0
+    if 'match_step' in linked.columns:
+        is_relaxed = linked['match_step'] == 2
+        n_relaxed = int(is_relaxed.sum())
+        lo[is_relaxed] = -float(SIMPLE_EVENT_RELAXED_HOURS_BEFORE)
+        hi[is_relaxed] = float(SIMPLE_EVENT_RELAXED_HOURS_AFTER)
+
+    inside = (offset_h >= lo) & (offset_h <= hi)
     n_out = int((~inside).sum())
 
     print(f"  events carrying a claim   {len(linked):,}")
-    print(f"  the matching window       i_max_date - date_claim in "
-          f"[{lo:+.0f}, {hi:+.0f}] h")
+    if n_relaxed:
+        print(f"  matched by the 1st stage  {len(linked) - n_relaxed:,}  "
+              f"[{-SIMPLE_EVENT_HOURS_BEFORE:+.0f}, "
+              f"{SIMPLE_EVENT_HOURS_AFTER:+.0f}] h")
+        print(f"  matched by the 2nd stage  {n_relaxed:,}  "
+              f"[{-SIMPLE_EVENT_RELAXED_HOURS_BEFORE:+.0f}, "
+              f"{SIMPLE_EVENT_RELAXED_HOURS_AFTER:+.0f}] h")
+        # A 2nd-stage match inside the 1st-stage window means the stages ran
+        # in the wrong order, or stage 2 ran on a claim stage 1 could serve.
+        misplaced = int((is_relaxed & offset_h.between(
+            -SIMPLE_EVENT_HOURS_BEFORE, SIMPLE_EVENT_HOURS_AFTER)).sum())
+        if misplaced:
+            print(f"  !! {misplaced:,} relaxed matches lie INSIDE the strict "
+                  f"window - the second stage should never have seen them")
+    else:
+        print(f"  the matching window       i_max_date - date_claim in "
+              f"[{-SIMPLE_EVENT_HOURS_BEFORE:+.0f}, "
+              f"{SIMPLE_EVENT_HOURS_AFTER:+.0f}] h")
     print(f"  observed                  {offset_h.min():+.1f} to "
           f"{offset_h.max():+.1f} h, median {offset_h.median():+.1f} h")
     print(f"  outside the window        {n_out:,} "

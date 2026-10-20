@@ -190,8 +190,17 @@ class Events:
         damages: Damages instance
             An object containing the damages properties.
         """
-        target_values = damages.claims.loc[:, ['date_claim', 'eid',
-                                               'selection', 'target']]
+        cols = ['date_claim', 'eid', 'selection', 'target']
+        # Carry the matching stage through when the linkage recorded one, so a
+        # training run can drop the relaxed positives without redoing the
+        # linkage. It is NOT a feature and must never become one: it is zero for
+        # every negative, so a model given it would score perfectly and learn
+        # nothing. Feature selection is explicit ('class:feature'), which is
+        # what keeps that from happening by accident.
+        has_step = 'match_step' in damages.claims.columns
+        if has_step:
+            cols.append('match_step')
+        target_values = damages.claims.loc[:, cols]
         target_values = target_values.rename(columns={'selection': 'nb_claims'})
 
         # Aggregate per event: several claims can be linked to the same event
@@ -202,10 +211,17 @@ class Events:
         # are summed; the target is summed then clipped to 1 — all claims of an
         # event share the same nb_contracts, so summed damage ratios give the
         # event's total ratio, and summed occurrence flags collapse to 1.
-        target_values = target_values.groupby('eid', as_index=False).agg(
-            date_claim=('date_claim', 'min'),
-            nb_claims=('nb_claims', 'sum'),
-            target=('target', 'sum'))
+        agg = dict(date_claim=('date_claim', 'min'),
+                   nb_claims=('nb_claims', 'sum'),
+                   target=('target', 'sum'))
+        if has_step:
+            # MIN, not max: one event can be the strict match of one claim and
+            # the relaxed match of another, and such an event would be a
+            # positive with the relaxed stage switched off. Taking the minimum
+            # marks it strict, so dropping match_step == 2 removes only the
+            # positives that exist BECAUSE of the relaxed stage.
+            agg['match_step'] = ('match_step', 'min')
+        target_values = target_values.groupby('eid', as_index=False).agg(**agg)
         target_values['target'] = target_values['target'].clip(upper=1)
 
         # Merge the target values with the events (one event per eid)
@@ -213,6 +229,8 @@ class Events:
                                how="left", on=['eid'], validate='m:1')
         self.events['target'] = self.events['target'].fillna(0)
         self.events['nb_claims'] = self.events['nb_claims'].fillna(0)
+        if has_step:
+            self.events['match_step'] = self.events['match_step'].fillna(0)
 
     def get_events_for_removed_claims(self, removed_claims, damages):
         """

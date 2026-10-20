@@ -17,6 +17,7 @@ import re
 from swafi.config import Config
 from swafi.damages_mobiliar import DamagesMobiliar
 from swafi.damages_gvz import DamagesGvz
+from swafi.damages import SIMPLE_EVENT_RELAXED_HOURS_BEFORE
 from swafi.events import Events, get_events_filename
 from swafi.utils.event_extraction import detection_tag_in
 from swafi.utils.logging_setup import setup_logging
@@ -40,6 +41,17 @@ PRECIP_DATASET = 'hourly'
 CRITERIA = ['prior', 'i_mean', 'i_max', 'p_sum', 'r_ts_win', 'r_ts_evt']
 LABEL_DAMAGE_LINK = 'default'
 WINDOW_DAYS = [5, 3, 1]
+
+# Second matching stage for the claims the first cannot match at all (simple
+# method only). It reaches one further day BACK, recovering claims whose date
+# is off by a day; see the constants in swafi/damages.py for the measurement
+# behind the window. It changes which events become positives, so the file name
+# records which way it ran - a linked sample that does not say how it was
+# matched is the same cache bug this project has already paid for four times.
+#
+# Set False for the strict single-stage behaviour every result before
+# 2026-10-20 was measured on.
+RELAXED_MATCHING = True
 
 # Common options
 PICKLES_DIR = CONFIG.get('PICKLES_DIR')
@@ -156,6 +168,12 @@ def get_damages_linked_to_events():
     year_end = CONFIG.get('YEAR_END')
     label = LABEL_DAMAGE_LINK.replace(" ", "_")
     label = label + '_' + METHOD + PRECIP_SUFFIX + DETECTION_TAG
+    if RELAXED_MATCHING and METHOD == 'simple':
+        # The matching window is part of what the file CONTAINS, so it belongs
+        # in the name. Without this, a relaxed sample silently overwrites the
+        # strict one and every downstream result is measured on a target set
+        # nobody can identify afterwards.
+        label += f'_relax{SIMPLE_EVENT_RELAXED_HOURS_BEFORE:.0f}'
     filename = f'damages_{DATASET}_linked_{label}.pickle'
     file_path = Path(PICKLES_DIR + '/' + filename)
 
@@ -213,7 +231,8 @@ def get_damages_linked_to_events():
         method=METHOD,
         criteria=CRITERIA,
         filename=filename,
-        window_days=WINDOW_DAYS
+        window_days=WINDOW_DAYS,
+        relaxed_matching=RELAXED_MATCHING
     )
 
     events_removed_claims = events.get_events_for_removed_claims(removed_claims, damages)

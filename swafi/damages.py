@@ -23,9 +23,33 @@ from .domain import Domain
 
 config = Config()
 
-# Temporal window for claim-event matching (hours relative to the claim day at 0 h)
+# Temporal window for claim-event matching (hours relative to the claim day at 0 h).
+# Chosen from the observed time-to-max-intensity distribution: it peaks at
+# +18..+21 h (the claim day's afternoon) with a secondary mode at -6..0 h (the
+# night before), so this covers the claim day plus the evening before it.
 SIMPLE_EVENT_HOURS_BEFORE = 8
 SIMPLE_EVENT_HOURS_AFTER = 26
+
+# Second-stage window, tried ONLY for claims the first stage cannot match at
+# all. About 9.6% (gvz) / 9.9% (mobiliar) of claims have a qualifying storm
+# within a few days but outside the window above - noisy claim dates rather
+# than a detection failure.
+#
+# Reaching back one further day is the only extension worth making. A cell sees
+# ~37 candidate events a year, so a wider window finds SOMETHING by coincidence;
+# measured against that background (see '13 Detection threshold'):
+#
+#     band              added  by chance   net   precision
+#     -32..-8 h  (gvz)     80         37   +43         53%
+#     +26..+48 h (gvz)     42         34    +8         18%   <- noise
+#     -32..-8 h  (mobi)   182         98   +84         46%
+#     +26..+48 h (mobi)   140         90   +50         36%
+#
+# The forward band is consistent with pure coincidence for gvz (+1.4 sd), and a
+# storm 26-48 h AFTER the claim cannot have caused it in any case. The backward
+# band needs no such story: damage in the evening, claim dated the next day.
+SIMPLE_EVENT_RELAXED_HOURS_BEFORE = 32
+SIMPLE_EVENT_RELAXED_HOURS_AFTER = 26
 
 logger = logging.getLogger(__name__)
 
@@ -255,7 +279,7 @@ class Damages:
         self.exposure['selection'] = self.exposure[categories].sum(axis=1)
 
     def link_with_events(self, events, method='simple', criteria=None, window_days=None,
-                         filename=None):
+                         filename=None, relaxed_matching=True):
         """
         Link the damages with the events.
 
@@ -282,6 +306,20 @@ class Damages:
             Default to [5, 3, 1]
         filename: str
             File name to save the results (pickle format)
+        relaxed_matching: bool
+            'simple' method only. Add a second matching stage for the claims the
+            first stage cannot match at all, searching back to
+            SIMPLE_EVENT_RELAXED_HOURS_BEFORE instead of
+            SIMPLE_EVENT_HOURS_BEFORE. ON by default; pass False for the strict
+            single-stage behaviour. Either way the resulting file is named to
+            say which it was, because it changes which events become positives.
+
+            Every claim records which stage matched it in 'match_step'
+            (0 unmatched, 1 first stage, 2 relaxed), so the relaxed matches can
+            be dropped or weighted at training time without redoing the linkage.
+            Roughly half of them are expected to be coincidental - see the
+            measurement in the constants above - which is exactly why the column
+            exists rather than the stages being merged.
 
         Returns
         -------
@@ -343,13 +381,24 @@ class Damages:
             self._print_matches_stats(stats)
 
         elif method == 'simple':
-            stats = dict(none=0, single=0, two=0, three=0, multiple=0)
+            stats = dict(none=0, single=0, two=0, three=0, multiple=0, relaxed=0)
 
             # The 'eid' column must exist (as int) before the loop: otherwise
             # the .at setter creates a float column where unmatched claims end
-            # up as NaN, which the eid != 0 filter below would keep.
+            # up as NaN, which the eid != 0 filter below would keep. The same
+            # applies to 'match_step'.
             self.claims.reset_index(inplace=True, drop=True)
             self.claims['eid'] = 0
+            self.claims['match_step'] = 0
+
+            if relaxed_matching:
+                logger.info(
+                    "Relaxed matching ON: claims unmatched in [-%sh, +%sh] get "
+                    "a second pass over [-%sh, +%sh]. Check 'match_step' to "
+                    "tell the two apart.",
+                    SIMPLE_EVENT_HOURS_BEFORE, SIMPLE_EVENT_HOURS_AFTER,
+                    SIMPLE_EVENT_RELAXED_HOURS_BEFORE,
+                    SIMPLE_EVENT_RELAXED_HOURS_AFTER)
 
             # Group the events per cell (sorted by i_max_date) for fast lookup
             events_by_cid = self._group_events_by_cid(events.events, 'i_max_date')
@@ -359,6 +408,21 @@ class Damages:
 
                 # Get potential events
                 pot_events = self._get_potential_simple_events(claim, events_by_cid)
+                match_step = 1
+
+                # Second stage, only for claims the first found nothing for.
+                # The relaxed window contains the first one, so anything it
+                # finds here lies in the extension band alone - the two stages
+                # cannot select the same event.
+                if pot_events is None and relaxed_matching:
+                    pot_events = self._get_potential_simple_events(
+                        claim, events_by_cid,
+                        hours_before=SIMPLE_EVENT_RELAXED_HOURS_BEFORE,
+                        hours_after=SIMPLE_EVENT_RELAXED_HOURS_AFTER)
+                    if pot_events is not None:
+                        match_step = 2
+                        stats['relaxed'] += 1
+
                 self._record_stat_candidates(stats, pot_events)
 
                 if pot_events is None:
@@ -366,6 +430,7 @@ class Damages:
 
                 best_match = self._get_best_candidate_simple(pot_events, claim)
                 self.claims.at[i_claim, 'eid'] = best_match.eid
+                self.claims.at[i_claim, 'match_step'] = match_step
 
                 # Remove the events that have been matched
                 if len(pot_events) > 1:
@@ -739,6 +804,9 @@ class Damages:
         logger.info("- %s claims had 2 candidate events", stats['two'])
         logger.info("- %s claims had 3 candidate events", stats['three'])
         logger.info("- %s claims had more candidate event", stats['multiple'])
+        if stats.get('relaxed'):
+            logger.info("- %s of those were matched by the RELAXED second "
+                        "stage (match_step == 2)", stats['relaxed'])
         if 'conflicts' in stats:
             logger.info("- %s claims had conflicts", stats['conflicts'])
             logger.info("- %s matching were unresolved (first event taken)", stats['unresolved'])
@@ -826,10 +894,24 @@ class Damages:
         return potential_events
 
     @staticmethod
-    def _get_potential_simple_events(claim, events_by_cid):
+    def _get_potential_simple_events(claim, events_by_cid,
+                                     hours_before=SIMPLE_EVENT_HOURS_BEFORE,
+                                     hours_after=SIMPLE_EVENT_HOURS_AFTER):
         """
         Get all potential events based on the CID and the date. The events must
         be grouped per cell and sorted by i_max_date (see _group_events_by_cid).
+
+        Parameters
+        ----------
+        claim: pd.Series
+            The claim to match.
+        events_by_cid: dict
+            The events grouped per cell, sorted by i_max_date.
+        hours_before: float
+            How far before the claim date to search. Defaults to the first-stage
+            window; the second stage passes the relaxed value.
+        hours_after: float
+            How far after the claim date to search.
         """
         cid_events = events_by_cid.get(claim['cid'])
         if cid_events is None:
@@ -838,8 +920,8 @@ class Damages:
         date_claim = claim['date_claim']
 
         # Define the starting and ending dates of the temporal window
-        date_window_start = date_claim - timedelta(hours=SIMPLE_EVENT_HOURS_BEFORE)
-        date_window_end = date_claim + timedelta(hours=SIMPLE_EVENT_HOURS_AFTER)
+        date_window_start = date_claim - timedelta(hours=hours_before)
+        date_window_end = date_claim + timedelta(hours=hours_after)
 
         # Select all events with i_max_date in the window (inclusive bounds)
         dates = cid_events['i_max_date'].to_numpy()
