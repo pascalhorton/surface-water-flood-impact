@@ -43,6 +43,8 @@ def main():
     # Load events
     events = load_events_from_pickle(filename=options.get_events_filename())
     events.check_precip_dataset(options.precip_dataset)
+    if options.exclude_relaxed_positives:
+        events.drop_relaxed_positives()
 
     if not options.optimize_with_optuna:
         ann = _setup_model(options, events)

@@ -158,3 +158,147 @@ def test_match_step_is_never_a_default_feature():
     assert "match_step" not in src[i:], (
         "match_step appears in the feature definitions - it is a perfect "
         "leak and must not be selectable")
+
+
+# ---------------------------------------------------------------------------
+# Switching the relaxed positives back off at training time
+# ---------------------------------------------------------------------------
+
+def _sample(match_steps, targets=None, nb_claims=None):
+    """A minimal linked sample: one event per match_step given."""
+    from swafi.events import Events
+    n = len(match_steps)
+    if targets is None:
+        targets = [1 if s else 0 for s in match_steps]
+    if nb_claims is None:
+        nb_claims = [1 if s else 0 for s in match_steps]
+    ev = Events()
+    ev.events = pd.DataFrame({
+        'eid': range(1, n + 1),
+        'cid': 7,
+        'target': [float(t) for t in targets],
+        'nb_claims': [float(c) for c in nb_claims],
+        'match_step': match_steps,
+    })
+    return ev
+
+
+def test_dropping_relaxed_positives_demotes_only_stage_two():
+    ev = _sample([1, 2, 0, 2, 1])
+    assert ev.drop_relaxed_positives() == 2
+    assert ev.events['target'].tolist() == [1, 0, 0, 0, 1]
+    assert ev.events['match_step'].tolist() == [1, 0, 0, 0, 1]
+
+
+def test_demoted_positives_stay_in_the_sample_as_negatives():
+    """The whole point: a strict linkage keeps that storm as a NEGATIVE, so
+    zeroing the label is right and dropping the row is not - the two samples
+    must differ by their labels alone."""
+    ev = _sample([1, 2])
+    n_before = len(ev.events)
+    ev.drop_relaxed_positives()
+    assert len(ev.events) == n_before
+    assert (ev.events['target'] == 0).sum() == 1
+
+
+def test_demoted_positives_survive_the_min_nb_claims_filter():
+    """nb_claims is zeroed, and Impact spares nb_claims == 0 explicitly. If it
+    were left at 1 a --min-nb-claims 2 run would drop the row instead of
+    keeping it as a negative, and the comparison would be against a different
+    sample rather than different labels."""
+    import inspect
+    import swafi.impact as impact_module
+
+    ev = _sample([2])
+    ev.drop_relaxed_positives()
+    assert ev.events['nb_claims'].tolist() == [0.0]
+
+    src = inspect.getsource(impact_module)
+    assert "self.df['nb_claims'] == 0" in src, (
+        "Impact no longer spares nb_claims == 0 from the min_nb_claims "
+        "filter; demoting a positive by zeroing nb_claims would now drop it "
+        "from the sample instead of keeping it as a negative")
+
+
+def test_dropping_without_the_column_fails_loudly():
+    """A sample linked with relaxed matching off has nothing to drop. Silently
+    doing nothing would make the two legs of the experiment identical and the
+    result meaningless."""
+    ev = _sample([1])
+    ev.events = ev.events.drop(columns='match_step')
+    with pytest.raises(ValueError, match='match_step'):
+        ev.drop_relaxed_positives()
+
+
+def test_remove_duplicates_keeps_the_strict_stage():
+    """The kept row is the one with most claims, which need not be the strict
+    one. If the group's stage came from that row alone, a positive the strict
+    linkage would also have produced could end up marked relaxed - and then
+    dropped."""
+    from swafi.events import Events
+    ev = Events()
+    ev.events = pd.DataFrame({
+        'eid': [1, 2],
+        'cid': [7, 7],
+        'i_max_date': [pd.Timestamp('2015-07-10 18:00')] * 2,
+        'target': [1.0, 1.0],
+        'nb_claims': [3.0, 1.0],
+        'match_step': [2, 1],
+    })
+    ev.remove_duplicates()
+    assert len(ev.events) == 1
+    assert ev.events['match_step'].iloc[0] == 1
+    assert ev.events['nb_claims'].iloc[0] == 4.0
+
+
+def test_remove_duplicates_does_not_collapse_a_positive_to_zero():
+    """Masking the zeros matters: a group of one positive and several
+    negatives must keep the positive's stage, since 0 means 'not a
+    positive'."""
+    from swafi.events import Events
+    ev = Events()
+    ev.events = pd.DataFrame({
+        'eid': [1, 2],
+        'cid': [7, 7],
+        'i_max_date': [pd.Timestamp('2015-07-10 18:00')] * 2,
+        'target': [1.0, 0.0],
+        'nb_claims': [2.0, 0.0],
+        'match_step': [2, 0],
+    })
+    ev.remove_duplicates()
+    assert ev.events['match_step'].iloc[0] == 2, (
+        'the surviving positive lost its stage and can no longer be dropped')
+
+
+def test_every_training_script_honours_the_option():
+    """A flag that works in some scripts and silently does nothing in others
+    is worse than no flag: the run would look like the experiment and not be
+    it. This pins the wiring rather than trusting it."""
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1] / 'scripts' / 'impact_functions'
+    scripts = sorted(root.glob('train_*_occurrence.py'))
+    assert scripts, 'no training scripts found - has the layout moved?'
+    for path in scripts:
+        src = path.read_text(encoding='utf-8')
+        assert 'options.exclude_relaxed_positives' in src, (
+            f'{path.name} does not honour --exclude-relaxed-positives')
+        assert 'drop_relaxed_positives()' in src, (
+            f'{path.name} reads the option but never acts on it')
+
+
+def test_the_relax_tag_reaches_the_events_sample_name():
+    """The relaxed sample must not be able to overwrite the strict one: the
+    label that names the events file has to carry the window, exactly as the
+    intermediate linked-damages pickle does. This was a real defect - the tag
+    was on the pickle only."""
+    from pathlib import Path
+
+    path = (Path(__file__).resolve().parents[1] / 'scripts' /
+            'link_claims_events' / 'compute_claims_events_link.py')
+    src = path.read_text(encoding='utf-8')
+    i = src.index('LABEL_RESULTING_FILE = ')
+    tail = src[i:src.index('\n\n', i)]
+    assert '_RELAX_TAG' in tail, (
+        'LABEL_RESULTING_FILE does not carry the relaxed-matching tag, so a '
+        'relaxed run overwrites the strict sample under its own name')

@@ -84,6 +84,8 @@ def main():
 
     events = load_events_from_pickle(filename=options.get_events_filename())
     events.check_precip_dataset(options.precip_dataset)
+    if options.exclude_relaxed_positives:
+        events.drop_relaxed_positives()
 
     precip = CombiPrecip(year_start, year_end)
 

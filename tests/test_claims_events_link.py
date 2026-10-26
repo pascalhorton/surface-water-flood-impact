@@ -167,8 +167,14 @@ def test_simple_link_end_to_end_matches_reference():
     damages = _bare_damages()
     damages.claims = claims.copy()
     events_obj = SimpleNamespace(events=events_df)
+    # relaxed_matching is OFF here on purpose: _brute_simple_candidates is a
+    # reference implementation of the STRICT window only, so leaving the
+    # default on would compare the two-stage result against a single-stage
+    # reference and fail on every claim the second stage recovers. The relaxed
+    # path has its own reference tests in test_relaxed_matching.py.
     events_to_remove = damages.link_with_events(events_obj, method='simple',
-                                                filename='unused.pickle')
+                                                filename='unused.pickle',
+                                                relaxed_matching=False)
 
     # Unmatched claims must be dropped (regression: eid stayed NaN before)
     assert len(damages.claims) == len(expected_eid)

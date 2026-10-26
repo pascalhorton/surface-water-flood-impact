@@ -232,6 +232,61 @@ class Events:
         if has_step:
             self.events['match_step'] = self.events['match_step'].fillna(0)
 
+    def drop_relaxed_positives(self):
+        """Demote the positives that exist only because of the relaxed stage.
+
+        The relaxed second stage of the claim linkage matches a claim to a
+        storm one day further back than the strict window allows, on the
+        reasoning that the claim date is wrong rather than the storm absent.
+        The placebo measurement puts that at roughly even odds (see the
+        constants in swafi/damages.py), so whether those positives help or
+        hurt is an empirical question - and this is the switch that asks it.
+
+        The target is ZEROED rather than the row dropped, because that is what
+        the strict linkage produces: a claim the strict window cannot match is
+        discarded, while the storm it would have been matched to stays in the
+        catalogue as a negative. Dropping the row would remove a candidate the
+        strict run keeps, and the two samples would then differ by more than
+        their labels.
+
+        One residual difference from a true strict run cannot be undone here:
+        where a stage-2 claim had several candidates in the extension band,
+        the linkage removed the ones it did not pick, and a strict run would
+        have kept them all as negatives. That is a few hundred events against
+        a negative pool of order a million.
+
+        Returns
+        -------
+        int
+            The number of positives demoted.
+        """
+        if 'match_step' not in self.events.columns:
+            raise ValueError(
+                "This events file has no 'match_step' column, so it cannot "
+                "say which positives came from the relaxed stage. Either it "
+                "was linked before the two-stage matching existed, or it was "
+                "linked with relaxed matching off - in which case there is "
+                "nothing to drop and the option should not be set.")
+
+        n_pos = int((self.events['target'] > 0).sum())
+        is_relaxed = self.events['match_step'] == 2
+        n = int(is_relaxed.sum())
+
+        # nb_claims goes to zero too: Impact keeps rows with nb_claims == 0
+        # unconditionally (the min_nb_claims filter spares them explicitly),
+        # so a demoted event stays in the sample as a negative rather than
+        # being filtered out of it. match_step follows, keeping the invariant
+        # that 0 means 'not a positive'.
+        self.events.loc[is_relaxed, 'target'] = 0
+        self.events.loc[is_relaxed, 'nb_claims'] = 0
+        self.events.loc[is_relaxed, 'match_step'] = 0
+
+        logger.info(
+            "Relaxed positives demoted to negatives: %s of %s positives "
+            "(%.1f%%); %s positives remain.",
+            n, n_pos, 100 * n / n_pos if n_pos else 0.0, n_pos - n)
+        return n
+
     def get_events_for_removed_claims(self, removed_claims, damages):
         """
         Get the events for the removed claims.
@@ -346,6 +401,21 @@ class Events:
         grouped = self.events.groupby(['cid', 'i_max_date'], sort=False)
         keep_idx = grouped['nb_claims'].idxmax()
         claims_sum = grouped['nb_claims'].transform('sum')
+        # MIN over the POSITIVES of the group, for the same reason as in
+        # set_target_values_from_damages: the kept row is the one with most
+        # claims, which need not be the one the strict stage matched, while
+        # the summed nb_claims covers the whole group. Taking the minimum
+        # keeps a group holding any strict match marked strict, so dropping
+        # match_step == 2 never removes a positive the strict linkage would
+        # also have produced. The zeros are masked out first - a group of one
+        # positive and several negatives must keep the positive's stage, not
+        # collapse to 0, which means 'not a positive'.
+        if 'match_step' in self.events.columns:
+            step = self.events['match_step'].replace(0, np.nan)
+            step_min = step.groupby(
+                [self.events['cid'], self.events['i_max_date']],
+                sort=False).transform('min')
+            self.events['match_step'] = step_min.fillna(0)
         self.events['nb_claims'] = claims_sum
         self.events = self.events.loc[keep_idx].reset_index(drop=True)
         logger.info("Duplicate events removed: %s", len_before - len(self.events))

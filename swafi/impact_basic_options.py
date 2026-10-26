@@ -36,6 +36,11 @@ class ImpactBasicOptions:
         The precipitation dataset the events were extracted from. Options:
         'hourly', '5min'. Default: 'hourly'. The classic event method relies on
         hourly data by definition.
+    exclude_relaxed_positives: bool
+        Whether to demote the positives that only the relaxed second matching
+        stage produced (match_step == 2) back to negatives. Default: False,
+        i.e. train on whatever the linked sample contains. Requires a sample
+        linked with relaxed matching on; see Events.drop_relaxed_positives.
     target_type : str
         The target type. Options are: 'occurrence', 'damage_ratio'
     random_state: int|None
@@ -78,6 +83,7 @@ class ImpactBasicOptions:
         self.event_method = None
         self.event_ref_date = 'auto'
         self.precip_dataset = None
+        self.exclude_relaxed_positives = None
         self.min_nb_claims = None
         self.target_type = None
         self.random_state = 42
@@ -194,6 +200,13 @@ class ImpactBasicOptions:
                  "('hourly' or '5min'). The classic event method relies on "
                  "hourly data.")
         self.parser.add_argument(
+            '--exclude-relaxed-positives', action='store_true',
+            help="Demote the positives that only the relaxed second matching "
+                 "stage produced (match_step == 2) back to negatives. Needs a "
+                 "sample linked with relaxed matching on (the '_relax32' "
+                 "label); on any other sample it fails loudly rather than "
+                 "silently doing nothing.")
+        self.parser.add_argument(
             '--min-nb-claims', type=int, default=1,
             help='The minimum number of claims for an event to be considered.')
         self.parser.add_argument(
@@ -259,6 +272,7 @@ class ImpactBasicOptions:
         self.event_method = args.event_method
         self.event_ref_date = args.event_ref_date
         self.precip_dataset = args.precip_dataset
+        self.exclude_relaxed_positives = args.exclude_relaxed_positives
         self.min_nb_claims = args.min_nb_claims
         self.target_type = args.target_type
         self.random_state = args.random_state
@@ -301,6 +315,8 @@ class ImpactBasicOptions:
         logger.info("- event_method:  %s", self.event_method)
         logger.info("- event_ref_date:  %s", self.event_ref_date)
         logger.info("- precip_dataset:  %s", self.precip_dataset)
+        logger.info("- exclude_relaxed_positives:  %s",
+                    self.exclude_relaxed_positives)
         logger.info("- min_nb_claims:  %s", self.min_nb_claims)
         logger.info("- target_type:  %s", self.target_type)
         logger.info("- random_state:  %s", self.random_state)

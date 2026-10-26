@@ -94,9 +94,17 @@ TARGET_TYPE = 'occurrence'  # 'occurrence' or 'damage_ratio'
 # 'step1h_occurrence'. Pass --event-file-label to the training scripts to
 # match.
 _DETECTION_STEP = re.search(r'_step(\d+(?:min|h))$', DETECTION_TAG)
+# The relaxed stage changes WHICH events carry a target, so it belongs in the
+# name of the events sample as well, not only in the intermediate
+# linked-damages pickle. Without it a relaxed run overwrites the sample every
+# result before 2026-10-20 was measured on, under a name indistinguishable
+# from it - and the strict and relaxed samples could not be trained against
+# each other at all, since only one of them could exist on disk.
+_RELAX_TAG = (f'relax{SIMPLE_EVENT_RELAXED_HOURS_BEFORE:.0f}_'
+              if RELAXED_MATCHING and METHOD == 'simple' else '')
 LABEL_RESULTING_FILE = (
     f'step{_DETECTION_STEP.group(1)}_' if _DETECTION_STEP else 'default_'
-) + TARGET_TYPE
+) + _RELAX_TAG + TARGET_TYPE
 SAVE_AS_CSV = True
 
 if DATASET == 'mobiliar':
