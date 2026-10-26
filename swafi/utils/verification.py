@@ -42,6 +42,19 @@ def prepare_full_domain_assessment(ds_pred, ds_damages, ignore_removed=True, rel
 
     # Relax the predictions by a number of days (to account for timing uncertainties)
     # We move the predictions if there was a claim within the relax_days window
+    #
+    # The DAY BEFORE is tried first. When both neighbours carry a prediction and
+    # no claim of their own, only one of them can donate it, and the backward
+    # one is the better bet: the claim-dating measurement found 58% of mis-dated
+    # GVZ claims (55% for mobiliar) with their storm BEFORE the recorded date,
+    # median offset -0.83 d, and a storm that falls after a claim cannot have
+    # caused it. This preference used to run the other way round, which handed
+    # the move to the side the placebo attributes to coincidence.
+    #
+    # Note this does not change the recall ceiling either way: the claim day
+    # gets a prediction whichever neighbour donates it. What it changes is
+    # WHICH day is left at zero, so it moves the false alarms and hence the
+    # operating points, not the ceiling.
     if relax_days:
         for i in range(y_true.shape[1]):
             for j in range(y_true.shape[2]):
@@ -52,12 +65,12 @@ def prepare_full_domain_assessment(ds_pred, ds_damages, ignore_removed=True, rel
                     start_day = max(0, day - 1)
                     end_day = min(y_true.shape[0], day + 1 + 1)
                     if np.any(y_pred[start_day:end_day, i, j] > 0):
-                        if y_true[end_day - 1, i, j] == 0 and y_pred[end_day - 1, i, j] > 0:
-                            y_pred[day, i, j] = y_pred[end_day - 1, i, j]
-                            y_pred[end_day - 1, i, j] = 0
-                        elif y_true[start_day, i, j] == 0 and y_pred[start_day, i, j] > 0:
+                        if y_true[start_day, i, j] == 0 and y_pred[start_day, i, j] > 0:
                             y_pred[day, i, j] = y_pred[start_day, i, j]
                             y_pred[start_day, i, j] = 0
+                        elif y_true[end_day - 1, i, j] == 0 and y_pred[end_day - 1, i, j] > 0:
+                            y_pred[day, i, j] = y_pred[end_day - 1, i, j]
+                            y_pred[end_day - 1, i, j] = 0
 
     # Flatten the results and remove NaN values
     if flatten:

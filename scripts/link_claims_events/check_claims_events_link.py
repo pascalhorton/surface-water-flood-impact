@@ -366,9 +366,15 @@ def main():
     parser.add_argument('--event-method', default='simple',
                         choices=['simple', 'classic'],
                         help="the event extraction method")
-    parser.add_argument('--label', default='default_occurrence',
+    # default=None, not the label itself: the notice below must distinguish
+    # "not given" from "given, and equal to the default". Comparing against
+    # parser.get_default() cannot tell those apart, and told a user who had
+    # passed --label explicitly that they had not.
+    parser.add_argument('--label', default=None,
                         help="the event file label the linkage wrote "
-                             "(LABEL_RESULTING_FILE, e.g. step1h_occurrence)")
+                             "(LABEL_RESULTING_FILE, e.g. step1h_occurrence); "
+                             "defaults to 'default_occurrence', which is what "
+                             "an untagged hourly linkage writes")
     parser.add_argument('--against', nargs='+', default=None, metavar='PARQUET',
                         help="the catalogue(s) to check against; default is "
                              "the one the config names. Give two to find out "
@@ -384,7 +390,8 @@ def main():
     print("=" * 76)
     print("FILES")
     print("=" * 76)
-    if args.label == parser.get_default('label'):
+    if args.label is None:
+        args.label = 'default_occurrence'
         print(f"  (--label not given, so the default "
               f"'{args.label}' is checked)")
     events = _load_linked(args.dataset, args.label, args.event_method,

@@ -393,3 +393,76 @@ def test_cnn_full_domain_scoring_matches_the_other_models():
     assert 'IGNORE_REMOVED = True' in src
     assert 'relax_days=False' not in src, (
         'a hard-coded relax_days=False is back in the CNN inference script')
+
+
+# ---------------------------------------------------------------------------
+# Which neighbour donates the prediction, when the claim date is relaxed
+# ---------------------------------------------------------------------------
+
+def _grid(n_days, pred, true):
+    """One cell, n_days long: (1, 1) spatial shape as the assessment expects."""
+    import numpy as np
+    import xarray as xr
+
+    def ds(name, values):
+        arr = np.array(values, dtype=float).reshape(n_days, 1, 1)
+        return xr.Dataset({name: (('time', 'y', 'x'), arr)})
+
+    return ds('predict', pred), ds('claims', true)
+
+
+def test_relaxation_prefers_the_day_before():
+    """With both neighbours available, the BACKWARD one donates: 58% of
+    mis-dated GVZ claims have their storm before the recorded date, and a storm
+    after a claim cannot have caused it."""
+    from swafi.utils.verification import prepare_full_domain_assessment
+
+    #        day:   0    1    2
+    # claim on day 1; a prediction on each side, neither carrying a claim
+    ds_pred, ds_dam = _grid(3, [0.7, 0.0, 0.9], [0, 1, 0])
+    y_true, y_pred = prepare_full_domain_assessment(
+        ds_pred, ds_dam, ignore_removed=False, relax_days=True, flatten=False)
+
+    assert y_pred[1, 0, 0] == 0.7, 'the day-after donated instead of the day-before'
+    assert y_pred[0, 0, 0] == 0.0, 'the donor day was not cleared'
+    assert y_pred[2, 0, 0] == 0.9, 'the day-after was consumed as well'
+
+
+def test_relaxation_still_uses_the_day_after_when_alone():
+    """The preference is an ordering, not an exclusion: a claim dated one day
+    early still gets its prediction."""
+    from swafi.utils.verification import prepare_full_domain_assessment
+
+    ds_pred, ds_dam = _grid(3, [0.0, 0.0, 0.9], [0, 1, 0])
+    _y_true, y_pred = prepare_full_domain_assessment(
+        ds_pred, ds_dam, ignore_removed=False, relax_days=True, flatten=False)
+
+    assert y_pred[1, 0, 0] == 0.9
+    assert y_pred[2, 0, 0] == 0.0
+
+
+def test_relaxation_leaves_a_neighbour_that_carries_its_own_claim():
+    """A neighbour with a claim of its own needs its prediction: taking it
+    would turn one hit into another and invent a miss."""
+    from swafi.utils.verification import prepare_full_domain_assessment
+
+    ds_pred, ds_dam = _grid(3, [0.7, 0.0, 0.0], [1, 1, 0])
+    _y_true, y_pred = prepare_full_domain_assessment(
+        ds_pred, ds_dam, ignore_removed=False, relax_days=True, flatten=False)
+
+    assert y_pred[0, 0, 0] == 0.7, 'a neighbour with its own claim was robbed'
+    assert y_pred[1, 0, 0] == 0.0
+
+
+def test_relaxation_does_not_change_the_ceiling_by_preference():
+    """The donor preference moves false alarms, not the ceiling: the claim day
+    gets a prediction whichever side donates it."""
+    from swafi.utils.verification import prepare_full_domain_assessment
+
+    for pred in ([0.7, 0.0, 0.9], [0.9, 0.0, 0.7]):
+        ds_pred, ds_dam = _grid(3, pred, [0, 1, 0])
+        y_true, y_pred = prepare_full_domain_assessment(
+            ds_pred, ds_dam, ignore_removed=False, relax_days=True,
+            flatten=True)
+        unreachable = int(((y_true > 0) & (y_pred <= 0)).sum())
+        assert unreachable == 0
