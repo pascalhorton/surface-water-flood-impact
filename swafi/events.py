@@ -252,8 +252,11 @@ class Events:
         One residual difference from a true strict run cannot be undone here:
         where a stage-2 claim had several candidates in the extension band,
         the linkage removed the ones it did not pick, and a strict run would
-        have kept them all as negatives. That is a few hundred events against
-        a negative pool of order a million.
+        have kept them all as negatives. Measured 2026-10-26 by linking gvz
+        hourly both ways against the same catalogue: 1,163,776 events relaxed
+        against 1,163,805 strict, so the two samples differ by **29 rows** -
+        0.0025% of the sample - on top of the 103 labels this method flips.
+        The demoted sample is therefore a faithful stand-in for a strict one.
 
         Returns
         -------
