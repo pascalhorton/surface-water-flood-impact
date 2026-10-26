@@ -234,6 +234,50 @@ class Impact:
                 logger.info("Saving dataframe to %s", tmp_filename)
                 self.df.to_pickle(tmp_filename)
 
+    def _demote_relaxed_positives(self, df, split_name):
+        """Zero the target of the relaxed positives in one split.
+
+        WHY THIS IS NOT Events.drop_relaxed_positives. That one acts on the
+        whole sample, which demotes the relaxed positives in the TRAINING and
+        the HELD-OUT splits alike - so a run with it and a run without it are
+        scored against different target sets, with different positive counts
+        and different base rates, and their PR-AUCs cannot be compared. That
+        is a comparison of two pipelines, which is a fair question, but it is
+        not the question 'do the relaxed positives make a better model'.
+
+        Answering that needs one fixed ground truth, and the defensible one is
+        the strict label set: the placebo put the relaxed matches at about even
+        odds, so they are the labels we are least sure of. Demoting them in
+        the held-out splits only leaves the training labels alone, so
+
+            (default)                      -> relaxed in training, relaxed in eval
+            --exclude-relaxed-positives     -> strict in training, strict in eval
+            --eval-on-strict-positives      -> relaxed in training, strict in eval
+
+        and the last two share an evaluation target, which makes them
+        comparable. A model trained on relaxed positives that fires on the
+        coincidental ones is then charged for it as a false alarm, which is
+        exactly the cost being measured.
+        """
+        if 'match_step' not in df.columns:
+            raise ValueError(
+                "This sample has no 'match_step' column, so the relaxed "
+                "positives cannot be identified and --eval-on-strict-"
+                "positives would silently do nothing. Use a sample linked "
+                "with relaxed matching on (the '_relax32' label).")
+
+        df = df.copy()
+        is_relaxed = (df['match_step'] == 2) & (df['target'] > 0)
+        n = int(is_relaxed.sum())
+        df.loc[is_relaxed, 'target'] = 0
+        df.loc[is_relaxed, 'nb_claims'] = 0
+        if len(df) > 0:
+            logger.info(
+                "Split %s evaluated on STRICT positives: %s relaxed positives "
+                "demoted, %s positives remain.", split_name, n,
+                int((df['target'] > 0).sum()))
+        return df
+
     def set_events(self, events):
         """
         Set the events dataframe.
@@ -553,6 +597,10 @@ class Impact:
         else:
             raise ValueError(f"Unknown split mode: {split_mode}. Options are: "
                              f"'chronological', 'random_days', 'random_months'")
+
+        if getattr(self.options, 'eval_on_strict_positives', False):
+            val_df = self._demote_relaxed_positives(val_df, 'valid')
+            test_df = self._demote_relaxed_positives(test_df, 'test')
 
         self.x_train = train_df[self.features].to_numpy()
         self.x_valid = val_df[self.features].to_numpy()
@@ -1022,9 +1070,20 @@ class Impact:
         """
         # Create unique hash for the data dataframe
         if self.df is not None:
+            # The TARGET belongs in the key. Two runs that differ only in which
+            # events are positive - exactly what --exclude-relaxed-positives
+            # produces - have the same shape, the same columns and the same
+            # first row, so without this the second run would silently reload
+            # the first one's labels and the comparison would be between a
+            # model and itself. use_pickle is False everywhere today, which is
+            # the only reason this has never fired.
             tag_data = (pickle.dumps(feature_files) + pickle.dumps(self.df.shape) +
                         pickle.dumps(self.df.columns) + pickle.dumps(self.df.iloc[0]) +
                         pickle.dumps(self.features))
+            for col in ('target', 'nb_claims', 'match_step'):
+                if col in self.df.columns:
+                    tag_data += pd.util.hash_pandas_object(
+                        self.df[col], index=False).values.tobytes()
         else:
             tag_data = pickle.dumps(feature_files) + pickle.dumps(self.features)
 

@@ -77,7 +77,23 @@ def assess(result_path, ds_damages, ignore_removed=True, relax_days=True,
         ds_pred, ds_damages, ignore_removed, relax_days, flatten=True
     )
     y_true = (y_true > 0).astype(int)
-    _log_recall_ceiling(y_true, y_pred)
+    _log_recall_ceiling(y_true, y_pred, relax_days)
+
+    # The ceiling under the OTHER relax_days setting, always, because the two
+    # bracket the answer and the choice between them is a judgement call this
+    # project has made inconsistently: the CNN script scored strict while the
+    # LR, RF, ANN and threshold scripts scored relaxed, which made their
+    # full-domain numbers quietly incomparable. The gap between the two
+    # ceilings is the share of the miss that is a claim-dating error - about
+    # half of it on GVZ 2023-2024 - so reporting one alone overstates either
+    # the catalogue's fault or the model's reach. Reopened because
+    # prepare_full_domain_assessment moves predictions in place.
+    ds_other = xr.open_dataset(result_path)
+    y_true_o, y_pred_o = prepare_full_domain_assessment(
+        ds_other, ds_damages, ignore_removed, not relax_days, flatten=True
+    )
+    _log_recall_ceiling((y_true_o > 0).astype(int), y_pred_o, not relax_days)
+    ds_other.close()
 
     if sweep_thresholds is not False:
         thresholds = None if sweep_thresholds is True else sweep_thresholds
@@ -94,22 +110,32 @@ def assess(result_path, ds_damages, ignore_removed=True, relax_days=True,
     ds_pred.close()
 
 
-def _log_recall_ceiling(y_true, y_pred):
+def _log_recall_ceiling(y_true, y_pred, relax_days=None):
     """Log how many observed positives no threshold can ever hit.
 
     A cell-day left at exactly 0 carries no prediction at all: either the event
     selection produced no candidate there, or the model scored it 0 (the grid
     writer skips zeros). Those are unreachable whatever the threshold, so they
     bound the recall and separate an event-selection problem from a model one.
+
+    relax_days says which tolerance produced these arrays, because the ceiling
+    means something different under each: strict counts a positive as
+    unreachable when nothing was predicted on its own day, which conflates 'no
+    candidate in that cell' with 'candidate dated to the neighbouring day'.
     """
     n_pos = int(y_true.sum())
     if n_pos == 0:
         return
     unreachable = int(((y_true > 0) & (y_pred <= 0)).sum())
+    if relax_days is None:
+        tol = ""
+    else:
+        tol = " [+/-1 day]" if relax_days else " [same day]"
     logger.info(
-        "Observed positives: %d, of which %d (%.1f%%) carry no prediction "
+        "Observed positives%s: %d, of which %d (%.1f%%) carry no prediction "
         "(no candidate event, or scored exactly 0) -> recall ceiling %.3f",
-        n_pos, unreachable, 100 * unreachable / n_pos, 1 - unreachable / n_pos)
+        tol, n_pos, unreachable, 100 * unreachable / n_pos,
+        1 - unreachable / n_pos)
 
 
 def _sweep_thresholds(y_true, y_pred, thresholds=None):

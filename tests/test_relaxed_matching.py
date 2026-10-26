@@ -302,3 +302,94 @@ def test_the_relax_tag_reaches_the_events_sample_name():
     assert '_RELAX_TAG' in tail, (
         'LABEL_RESULTING_FILE does not carry the relaxed-matching tag, so a '
         'relaxed run overwrites the strict sample under its own name')
+
+
+# ---------------------------------------------------------------------------
+# Evaluating the two legs against ONE target set
+# ---------------------------------------------------------------------------
+
+def _split_df(match_steps, targets=None):
+    n = len(match_steps)
+    if targets is None:
+        targets = [1 if s else 0 for s in match_steps]
+    return pd.DataFrame({
+        'target': [float(t) for t in targets],
+        'nb_claims': [1.0 if s else 0.0 for s in match_steps],
+        'match_step': match_steps,
+    })
+
+
+class _Opts:
+    def __init__(self, **kw):
+        self.__dict__.update(kw)
+
+
+def test_eval_on_strict_positives_demotes_only_the_relaxed_ones():
+    from swafi.impact import Impact
+    imp = Impact.__new__(Impact)
+    imp.options = _Opts(eval_on_strict_positives=True)
+    out = imp._demote_relaxed_positives(_split_df([1, 2, 0, 2]), 'valid')
+    assert out['target'].tolist() == [1.0, 0.0, 0.0, 0.0]
+    assert out['nb_claims'].tolist() == [1.0, 0.0, 0.0, 0.0]
+
+
+def test_eval_on_strict_positives_does_not_mutate_the_caller():
+    """val_df is a slice of self.df; writing through it would demote the
+    TRAINING labels too and silently turn this leg into the other one."""
+    from swafi.impact import Impact
+    imp = Impact.__new__(Impact)
+    imp.options = _Opts(eval_on_strict_positives=True)
+    df = _split_df([1, 2])
+    imp._demote_relaxed_positives(df, 'valid')
+    assert df['target'].tolist() == [1.0, 1.0], 'the input was modified in place'
+
+
+def test_eval_on_strict_positives_needs_the_column():
+    from swafi.impact import Impact
+    imp = Impact.__new__(Impact)
+    imp.options = _Opts(eval_on_strict_positives=True)
+    df = _split_df([1, 2]).drop(columns='match_step')
+    with pytest.raises(ValueError, match='match_step'):
+        imp._demote_relaxed_positives(df, 'valid')
+
+
+def test_feature_cache_key_separates_the_two_legs():
+    """The two legs differ ONLY in which events are positive: same shape, same
+    columns, same first row. Without the target in the key the second run
+    reloads the first one's labels and the comparison is a model against
+    itself. use_pickle is False everywhere today, so this is a latent trap -
+    pinned so it stays shut."""
+    from pathlib import Path
+
+    from swafi.impact import Impact
+
+    def key_for(targets):
+        imp = Impact.__new__(Impact)
+        imp.df = pd.DataFrame({
+            'cid': [1, 2, 3],
+            'target': targets,
+            'nb_claims': [0.0, 0.0, 0.0],
+            'match_step': [0, 1, 2],
+        })
+        imp.features = ['cid']
+        imp.tmp_dir = Path('.')
+        return imp._create_data_tmp_file_name(['f.csv']).name
+
+    a = key_for([0.0, 1.0, 1.0])   # relaxed positive kept
+    b = key_for([0.0, 1.0, 0.0])   # relaxed positive demoted
+    assert a != b, 'the feature cache cannot tell the two legs apart'
+
+
+def test_cnn_full_domain_scoring_matches_the_other_models():
+    """use_cnn_occurrence.py scored strict while use_lr/rf/ann/thr scored
+    relaxed, so CNN full-domain numbers were measured under a harsher rule
+    than the baselines'. Any table putting them side by side understated the
+    CNN. Pinned so it cannot drift apart again unnoticed."""
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1] / 'scripts' / 'impact_functions'
+    src = (root / 'use_cnn_occurrence.py').read_text(encoding='utf-8')
+    assert 'RELAX_DAYS = True' in src
+    assert 'IGNORE_REMOVED = True' in src
+    assert 'relax_days=False' not in src, (
+        'a hard-coded relax_days=False is back in the CNN inference script')

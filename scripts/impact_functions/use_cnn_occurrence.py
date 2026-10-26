@@ -24,6 +24,27 @@ from swafi.utils.use_common import (
 logger = logging.getLogger(__name__)
 
 DO_ASSESS = True
+
+# Full-domain scoring settings. These were False/False while every other
+# use_*_occurrence.py script used True/True, which made the CNN's full-domain
+# numbers quietly incomparable with the baselines' - the CNN was scored under
+# the harsher rule.
+#
+# RELAX_DAYS moves a neighbouring day's prediction onto the claim day when that
+# neighbour carries no claim of its own. It is justified: claim-date noise is
+# measured, twice (9.6% of GVZ claims over 2005-2022, and half the unreachable
+# cell-days on 2023-2024). But it is the GENEROUS bound - each move turns a
+# false alarm and a miss into a hit and a correct negative, while the placebo
+# puts only ~47% of +/-1 day associations down to a real storm. assess() now
+# logs the ceiling under BOTH settings, so the bracket is always visible and
+# this constant no longer hides half the answer.
+#
+# IGNORE_REMOVED excludes cell-days whose claim was dropped by the category
+# selection. Those are not clean negatives: there WAS water damage, of another
+# category, so scoring a prediction there as a false alarm charges the model
+# for being roughly right.
+RELAX_DAYS = True
+IGNORE_REMOVED = True
 MODEL = R"C:\Users\phorton\Documents\SWF\outputs\model_cnn_test_30.keras"
 DATASET = 'mobiliar'  # 'mobiliar' or 'gvz'
 
@@ -79,7 +100,8 @@ def main():
     if output_path.exists():
         if DO_ASSESS:
             assess(output_path, get_damages_xr(options.dataset, year_start, year_end),
-                   ignore_removed=False, relax_days=False, prob_threshold=0.5)
+                   ignore_removed=IGNORE_REMOVED, relax_days=RELAX_DAYS,
+                   prob_threshold=0.5)
         return
 
     damages, _ = get_damages(options.dataset, year_start, year_end)
@@ -141,7 +163,8 @@ def main():
 
     if DO_ASSESS:
         assess(output_path, get_damages_xr(options.dataset, year_start, year_end),
-               ignore_removed=False, relax_days=False, prob_threshold=0.5)
+               ignore_removed=IGNORE_REMOVED, relax_days=RELAX_DAYS,
+               prob_threshold=0.5)
 
 
 if __name__ == '__main__':
