@@ -6,6 +6,79 @@ from sklearn.metrics import average_precision_score, roc_auc_score
 logger = logging.getLogger(__name__)
 
 
+def relax_prediction_days(y_true, y_pred):
+    """Move a neighbouring day's prediction onto a claim day, in place.
+
+    Both arrays are 1-D over time and describe ONE cell or ONE region. This is
+    the single implementation of the +/-1 day tolerance: the pixel-level path
+    in `prepare_full_domain_assessment` and the region-level path in
+    `swafi.utils.aggregation.aggregate_by_regions` both call it, because they
+    used to hold two copies that silently disagreed about which neighbour to
+    prefer.
+
+    A move is made only when the claim day itself carries no prediction and a
+    neighbouring day carries one AND no claim of its own. Each move converts a
+    false alarm and a miss into a hit and a correct negative, which is the most
+    generous possible reading of claim-date noise.
+
+    The DAY BEFORE is tried first. When both neighbours could donate, the
+    backward one is the better bet: the claim-dating measurement found 58% of
+    mis-dated GVZ claims (55% for mobiliar) with their storm BEFORE the
+    recorded date, median offset -0.83 d, and a storm falling after a claim
+    cannot have caused it.
+
+    This does not change the recall ceiling either way - the claim day gets a
+    prediction whichever neighbour donates it. What it changes is WHICH day is
+    left at zero, so it moves the false alarms and hence the operating points.
+    Verified on a real grid: 55 unreachable of 329 under either preference.
+
+    IT INTERACTS WITH ignore_removed, which is not obvious. A day whose
+    y_true is NaN fails `y_true[neighbour] == 0`, so it cannot donate. When
+    `prepare_full_domain_assessment` runs with ignore_removed=True it NaNs the
+    cell-days whose claim the category selection dropped, and those days stop
+    being eligible donors - which lowers the recall CEILING without changing
+    the positive count. Measured on the gvz 2023-2024 grid: 329 positives
+    either way, but 55 unreachable at ignore_removed=False against 57 at True.
+    The behaviour is right - a removed cell-day saw water damage of another
+    category, so it is not a clean negative and a prediction sitting on it may
+    be correct where it is - but it means the two flags cannot be read
+    independently, and a ceiling quoted without both of them is ambiguous.
+
+    Parameters
+    ----------
+    y_true: np.ndarray
+        The observed values over time, for one cell or region.
+    y_pred: np.ndarray
+        The predicted values over time, modified in place.
+
+    Returns
+    -------
+    int
+        The number of predictions moved.
+    """
+    n_moved = 0
+    for day in np.where(y_true > 0)[0]:
+        # A NaN prediction means the cell was never a candidate, so there is
+        # nothing to rescue and donating onto it would invent a sample.
+        if np.isnan(y_pred[day]) or y_pred[day] > 0:
+            continue
+        start_day = max(0, day - 1)
+        end_day = min(len(y_true), day + 1 + 1)
+        if not np.any(y_pred[start_day:end_day] > 0):
+            continue
+        if y_true[start_day] == 0 and y_pred[start_day] > 0:
+            donor = start_day
+        elif y_true[end_day - 1] == 0 and y_pred[end_day - 1] > 0:
+            donor = end_day - 1
+        else:
+            continue
+        y_pred[day] = y_pred[donor]
+        y_pred[donor] = 0
+        n_moved += 1
+
+    return n_moved
+
+
 def prepare_full_domain_assessment(ds_pred, ds_damages, ignore_removed=True, relax_days=True, flatten=True):
     """
     Prepare the data for the full domain assessment.
@@ -40,37 +113,20 @@ def prepare_full_domain_assessment(ds_pred, ds_damages, ignore_removed=True, rel
         removed = ds_damages['removed_claims'].to_numpy()
         y_true[removed == 1] = np.nan
 
-    # Relax the predictions by a number of days (to account for timing uncertainties)
-    # We move the predictions if there was a claim within the relax_days window
+    # Relax the predictions by one day either way, to account for the timing
+    # uncertainty in the claim dates. The rule, the day-before preference and
+    # why none of it moves the recall ceiling are documented once, on
+    # `relax_prediction_days` above.
     #
-    # The DAY BEFORE is tried first. When both neighbours carry a prediction and
-    # no claim of their own, only one of them can donate it, and the backward
-    # one is the better bet: the claim-dating measurement found 58% of mis-dated
-    # GVZ claims (55% for mobiliar) with their storm BEFORE the recorded date,
-    # median offset -0.83 d, and a storm that falls after a claim cannot have
-    # caused it. This preference used to run the other way round, which handed
-    # the move to the side the placebo attributes to coincidence.
-    #
-    # Note this does not change the recall ceiling either way: the claim day
-    # gets a prediction whichever neighbour donates it. What it changes is
-    # WHICH day is left at zero, so it moves the false alarms and hence the
-    # operating points, not the ceiling.
+    # NOTE this modifies ds_pred['predict'] IN PLACE: `.to_numpy()` on a loaded
+    # DataArray hands back the array itself, not a copy. A caller that scores
+    # the same open dataset twice - two relax settings, or several spatial
+    # aggregations - gets the second answer from already-moved predictions.
+    # Reopen the dataset between passes.
     if relax_days:
         for i in range(y_true.shape[1]):
             for j in range(y_true.shape[2]):
-                claim_days = np.where(y_true[:, i, j] > 0)[0]
-                for day in claim_days:
-                    if y_pred[day, i, j] > 0:
-                        continue
-                    start_day = max(0, day - 1)
-                    end_day = min(y_true.shape[0], day + 1 + 1)
-                    if np.any(y_pred[start_day:end_day, i, j] > 0):
-                        if y_true[start_day, i, j] == 0 and y_pred[start_day, i, j] > 0:
-                            y_pred[day, i, j] = y_pred[start_day, i, j]
-                            y_pred[start_day, i, j] = 0
-                        elif y_true[end_day - 1, i, j] == 0 and y_pred[end_day - 1, i, j] > 0:
-                            y_pred[day, i, j] = y_pred[end_day - 1, i, j]
-                            y_pred[end_day - 1, i, j] = 0
+                relax_prediction_days(y_true[:, i, j], y_pred[:, i, j])
 
     # Flatten the results and remove NaN values
     if flatten:

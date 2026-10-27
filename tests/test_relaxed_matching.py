@@ -466,3 +466,120 @@ def test_relaxation_does_not_change_the_ceiling_by_preference():
             flatten=True)
         unreachable = int(((y_true > 0) & (y_pred <= 0)).sum())
         assert unreachable == 0
+
+
+def test_a_removed_cell_day_cannot_donate_its_prediction():
+    """ignore_removed lowers the recall CEILING, not only the sample.
+
+    It NaNs the cell-days whose claim the category selection dropped, and a day
+    whose y_true is NaN fails `y_true[neighbour] == 0`, so it stops being an
+    eligible donor. Measured on the gvz 2023-2024 grid: 329 positives either
+    way, 55 unreachable at ignore_removed=False against 57 at True. That is
+    right - a removed cell-day saw water damage of another category, so it is
+    not a clean negative - but it means a ceiling is ambiguous unless BOTH
+    flags are quoted with it.
+    """
+    import numpy as np
+    import xarray as xr
+    from swafi.utils.verification import prepare_full_domain_assessment
+
+    #         day:    0    1
+    # The claim is on day 1 and carries no prediction. Day 0 holds the only
+    # prediction that could be moved onto it, and day 0 is a removed cell-day.
+    def ds(pairs):
+        out = {}
+        for name, values in pairs.items():
+            out[name] = (('time', 'y', 'x'),
+                         np.array(values, dtype=float).reshape(2, 1, 1))
+        return xr.Dataset(out)
+
+    ds_pred = ds({'predict': [0.8, 0.0]})
+    ds_dam = ds({'claims': [0, 1], 'removed_claims': [1, 0]})
+
+    _, y_pred = prepare_full_domain_assessment(
+        ds_pred, ds_dam, ignore_removed=True, relax_days=True, flatten=False)
+    assert y_pred[1, 0, 0] == 0, (
+        "a removed cell-day must not donate its prediction")
+
+    # With the same grid and ignore_removed off, day 0 is a clean negative and
+    # the move goes through - so the difference is the flag, not the geometry.
+    ds_pred = ds({'predict': [0.8, 0.0]})
+    ds_dam = ds({'claims': [0, 1], 'removed_claims': [1, 0]})
+    _, y_pred = prepare_full_domain_assessment(
+        ds_pred, ds_dam, ignore_removed=False, relax_days=True, flatten=False)
+    assert y_pred[1, 0, 0] == 0.8
+
+
+def test_the_region_path_uses_the_same_relaxation_as_the_pixel_path():
+    """They used to hold two copies that preferred opposite neighbours.
+
+    `assess_aggregation.py` carried its own relaxation loop, whose comment
+    claimed to "emulate pixel-level logic" while trying the day AFTER first -
+    so when the pixel-level preference was flipped to the day before, the
+    region-level numbers in `Scores gvz.xlsx` silently stopped matching. Both
+    now call `relax_prediction_days`, and this pins that there is one
+    implementation rather than two that happen to agree today.
+    """
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parents[1] / 'swafi' / 'utils'
+           / 'aggregation.py').read_text(encoding='utf-8')
+    assert 'relax_prediction_days' in src, (
+        "the region path must call the shared relaxation helper")
+    assert 'end_day - 1' not in src and 'start_day' not in src, (
+        "the region path must not carry its own copy of the donor logic")
+
+    agg = (Path(__file__).resolve().parents[1] / 'scripts'
+           / 'impact_functions' / 'assess_aggregation.py').read_text(
+        encoding='utf-8')
+    assert '_aggregate_by_regions' not in agg, (
+        "assess_aggregation must use the library helper, not a local copy")
+    assert 'from swafi.utils.aggregation import' in agg
+
+
+def test_relax_days_and_ignore_removed_are_separate_settings():
+    """One constant used to drive both in assess_aggregation.py.
+
+    That is why the score table's block labels only ever read both-False or
+    both-True, although the flags answer different questions.
+    """
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parents[1] / 'scripts'
+           / 'impact_functions' / 'assess_aggregation.py').read_text(
+        encoding='utf-8')
+    assert 'RELAX_DAYS' in src and 'IGNORE_REMOVED' in src
+    assert 'ignore_removed=RELAX,' not in src, (
+        "the two flags must not be driven by one constant")
+
+
+def test_scoring_reopens_the_datasets_between_passes():
+    """prepare_full_domain_assessment moves predictions IN PLACE.
+
+    `.to_numpy()` on a loaded DataArray hands back the array itself, so a
+    caller that scores one open dataset under several settings scores the later
+    ones against already-moved predictions. Measured on a real grid: the sum of
+    `predict` changes after one pass. Both scoring scripts must therefore open
+    the datasets inside their own loop.
+    """
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1] / 'scripts' / 'impact_functions'
+    for name in ('assess_aggregation.py', 'score_prediction_grids.py'):
+        src = (root / name).read_text(encoding='utf-8')
+        assert 'xr.open_dataset' in src, name
+        # The open must not sit before the loop that varies the setting.
+        before_loop = src.split('for aggregation in')[0]
+        assert 'ds_pred = xr.open_dataset(result_path)' not in before_loop, (
+            f"{name} opens the prediction grid outside its aggregation loop, "
+            f"so later passes read predictions an earlier pass moved")
+
+
+def test_the_in_place_hazard_is_recorded_where_it_bites():
+    """A future reader must not have to rediscover it."""
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parents[1] / 'swafi' / 'utils'
+           / 'verification.py').read_text(encoding='utf-8')
+    assert 'IN PLACE' in src, (
+        "prepare_full_domain_assessment must document that it mutates ds_pred")
