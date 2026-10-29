@@ -14,9 +14,11 @@ from swafi.impact_cnn import ImpactCnn
 from swafi.impact_cnn_options import ImpactCnnOptions
 from swafi.impact_dl import WeightedBinaryCrossEntropy, CriticalSuccessIndex
 from swafi.utils.logging_setup import setup_logging
+from swafi.utils.event_extraction import detection_tag_in
 from swafi.utils.use_common import (
     assess, get_contracts_number, get_damages, get_damages_xr,
-    get_inference_events, resolve_precip_reference, filter_events_to_precip_domain,
+    get_inference_events, get_training_catalogue_path,
+    resolve_precip_reference, filter_events_to_precip_domain,
     create_prediction_dataset, create_precipitation, ensure_precip_dataset,
     GridPredictionWriter, predict_events_in_chunks,
 )
@@ -91,10 +93,23 @@ def main():
     # model was trained on.
     cpc = create_precipitation(options.precip_dataset, year_start, year_end)
 
+    # The detection tag belongs in the NAME. The catalogue decides which
+    # cell-days become candidates at all, so the same model against two
+    # catalogues gives two different grids - and nothing inside a .nc records
+    # which catalogue produced it. Without the tag the second run silently
+    # reuses the first one's cached grid, which is the defect
+    # `../12 Catalogue at inference/` was built to fix in its own script and
+    # which was never carried back here. Six caches in this project have been
+    # keyed on less than determines their contents; this would have been the
+    # seventh.
+    catalogue = get_training_catalogue_path(options.event_method,
+                                            options.precip_dataset)
+    det_tag = detection_tag_in(catalogue) or '_detdefault'
     output_path = (
         Path(config.get('OUTPUT_DIR'))
         / f'pred_cnn_{options.dataset}_{options.event_method}'
-          f'_{options.precip_dataset}_{options.run_name}_{year_start}-{year_end}.nc'
+          f'_{options.precip_dataset}_{options.run_name}{det_tag}'
+          f'_{year_start}-{year_end}.nc'
     )
 
     if output_path.exists():

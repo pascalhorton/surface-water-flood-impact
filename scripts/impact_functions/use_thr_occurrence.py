@@ -8,9 +8,10 @@ from swafi.config import Config
 from swafi.impact_basic_options import ImpactBasicOptions
 from swafi.impact_thr import ImpactThresholds
 from swafi.utils.logging_setup import setup_logging
+from swafi.utils.event_extraction import detection_tag_in
 from swafi.utils.use_common import (
-    assess, get_damages_xr, get_inference_events, create_prediction_dataset,
-    GridPredictionWriter,
+    assess, get_damages_xr, get_inference_events, get_training_catalogue_path,
+    create_prediction_dataset, GridPredictionWriter,
 )
 
 logger = logging.getLogger(__name__)
@@ -42,11 +43,20 @@ def main():
     events = get_inference_events(options, year_start, year_end,
                                   use_training_reference=USE_TRAINING_REFERENCE)
 
+    # The detection tag belongs in the NAME: the catalogue decides which
+    # cell-days become candidates at all, and nothing inside a .nc records
+    # which catalogue produced it, so without the tag a run against a second
+    # catalogue silently reuses the first one's cached grid.
+    catalogue = get_training_catalogue_path(options.event_method,
+                                            options.precip_dataset)
+    det_tag = detection_tag_in(catalogue) or '_detdefault'
+
     for method in ['union', 'intersection']:
         output_path = (
             Path(config.get('OUTPUT_DIR'))
             / f'pred_thr_{options.dataset}_{options.event_method}'
-              f'_{options.precip_dataset}_{method}_{year_start}-{year_end}.nc'
+              f'_{options.precip_dataset}_{method}{det_tag}'
+              f'_{year_start}-{year_end}.nc'
         )
 
         logger.info("Processing %s...", method)

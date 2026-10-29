@@ -387,19 +387,31 @@ def main():
                 logger.info("Scoring %s | %s | relax_days=%s "
                             "ignore_removed=%s", name, aggregation,
                             bool(relax), ignore_removed)
-                row = score_one(
-                    path, damages_path, damages_reader, aggregation,
-                    shapefiles, ignore_removed, bool(relax), args.threshold,
-                    region_cache)
-                rows.append({
+                common = {
                     'model': args.model_name or name,
                     'grid': Path(path).name,
                     'aggregation': aggregation,
                     'relax_days': bool(relax),
                     'ignore_removed': ignore_removed,
                     'threshold': args.threshold,
-                    **row,
-                })
+                }
+                # One unusable grid must not discard the whole run: scoring a
+                # folder of thirty grids takes half an hour, and a grid on
+                # another domain or time axis is a reason to skip a row, not
+                # to lose the other twenty-nine. The failure is recorded in
+                # the row so it cannot pass for a missing model.
+                try:
+                    row = score_one(
+                        path, damages_path, damages_reader, aggregation,
+                        shapefiles, ignore_removed, bool(relax),
+                        args.threshold, region_cache)
+                except (AssertionError, ValueError, KeyError, OSError) as err:
+                    logger.error("  FAILED: %s: %s",
+                                 type(err).__name__, err)
+                    rows.append({**common,
+                                 'error': f"{type(err).__name__}: {err}"})
+                    continue
+                rows.append({**common, **row})
 
     df = pd.DataFrame(rows)
 
@@ -413,10 +425,19 @@ def main():
     print("=" * 76)
     print("SCORES")
     print("=" * 76)
-    show = ['grid', 'aggregation', 'relax_days', 'TP', 'FP', 'FN',
-            'Critical Success Index (CSI)', 'F1', 'PR-AUC', 'ROC-AUC',
-            'best F1', 'best CSI', 'no prediction', 'recall ceiling']
-    print(df[[c for c in show if c in df.columns]].to_string(index=False))
+    show = ['grid', 'aggregation', 'relax_days', 'samples', 'positives',
+            'TP', 'FP', 'FN', 'Critical Success Index (CSI)', 'F1', 'PR-AUC',
+            'ROC-AUC', 'best F1', 'best CSI', 'no prediction',
+            'recall ceiling']
+    ok = df[df['error'].isna()] if 'error' in df.columns else df
+    print(ok[[c for c in show if c in ok.columns]].to_string(index=False))
+
+    if 'error' in df.columns and df['error'].notna().any():
+        print()
+        print("GRIDS THAT COULD NOT BE SCORED")
+        print("-" * 76)
+        failed = df[df['error'].notna()][['grid', 'relax_days', 'error']]
+        print(failed.to_string(index=False))
     print()
     print("HOW TO READ THIS")
     print("-" * 76)

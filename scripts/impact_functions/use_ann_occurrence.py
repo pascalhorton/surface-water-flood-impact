@@ -11,6 +11,7 @@ from pathlib import Path
 from swafi.config import Config
 from swafi.impact_cnn import ImpactCnn
 from swafi.utils.logging_setup import setup_logging
+from swafi.utils.event_extraction import detection_tag_in
 from swafi.utils.use_common import (
     assess, get_contracts_number, get_damages, get_damages_xr,
     get_inference_events, create_prediction_dataset, ensure_precip_dataset,
@@ -68,10 +69,18 @@ def main():
     events = get_inference_events(options, year_start, year_end,
                                   use_training_reference=USE_TRAINING_REFERENCE)
 
+    # The detection tag belongs in the NAME: the catalogue decides which
+    # cell-days become candidates at all, and nothing inside a .nc records
+    # which catalogue produced it, so without the tag a run against a second
+    # catalogue silently reuses the first one's cached grid.
+    catalogue = get_training_catalogue_path(options.event_method,
+                                            options.precip_dataset)
+    det_tag = detection_tag_in(catalogue) or '_detdefault'
     output_path = (
         Path(config.get('OUTPUT_DIR'))
         / f'pred_ann_{options.dataset}_{options.event_method}'
-          f'_{options.precip_dataset}_{options.run_name}_{year_start}-{year_end}.nc'
+          f'_{options.precip_dataset}_{options.run_name}{det_tag}'
+          f'_{year_start}-{year_end}.nc'
     )
 
     if output_path.exists():

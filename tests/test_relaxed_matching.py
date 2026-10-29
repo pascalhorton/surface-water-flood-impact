@@ -583,3 +583,47 @@ def test_the_in_place_hazard_is_recorded_where_it_bites():
            / 'verification.py').read_text(encoding='utf-8')
     assert 'IN PLACE' in src, (
         "prepare_full_domain_assessment must document that it mutates ds_pred")
+
+
+def test_every_inference_script_keys_its_grid_on_the_detection_tag():
+    """A prediction grid's name must carry the catalogue it was made against.
+
+    The catalogue decides which cell-days become candidates at all, so the
+    same model against two catalogues gives two different grids - and nothing
+    inside a .nc records which catalogue produced it. Every use_* script
+    short-circuits on `output_path.exists()`, so without the tag the second
+    run silently returns the first one's grid. `12 Catalogue at inference/`
+    fixed this in its own comparison script; the fix was never carried back
+    into the inference scripts until 2026-10-29.
+    """
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1] / 'scripts' / 'impact_functions'
+    scripts = sorted(root.glob('use_*_occurrence.py'))
+    assert scripts, "no inference scripts found"
+    for path in scripts:
+        src = path.read_text(encoding='utf-8')
+        assert 'detection_tag_in' in src, (
+            f"{path.name} does not derive a detection tag")
+        assert 'det_tag' in src, (
+            f"{path.name} does not put the detection tag in the grid name")
+        # The tag must reach the file name, not merely be computed.
+        assert '{det_tag}' in src, (
+            f"{path.name} computes a detection tag but leaves it out of the "
+            f"output path")
+
+
+def test_the_random_forest_grid_name_carries_the_run_name():
+    """Without it every RF wrote to one file name.
+
+    That is why the grids in '09 Independent predictions' carry hand-added
+    '_v1'/'_v2'/'_v10' suffixes: the script overwrote, so the only way to keep
+    two models' predictions was to rename them outside it.
+    """
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parents[1] / 'scripts'
+           / 'impact_functions' / 'use_rf_occurrence.py').read_text(
+        encoding='utf-8')
+    assert '{options.run_name}' in src, (
+        "use_rf_occurrence.py must put run_name in the grid name")
