@@ -342,17 +342,25 @@ def main():
     if not damages_path.exists():
         raise FileNotFoundError(f"Damages file {damages_path} does not exist.")
 
-    # Imported here so the script can be read without the damages classes'
-    # dependencies, and so --help works anywhere.
-    if args.dataset == 'mobiliar':
-        from swafi.damages_mobiliar import DamagesMobiliar as DamagesClass
-    else:
-        from swafi.damages_gvz import DamagesGvz as DamagesClass
-
+    # The damages grid is read with xarray directly, NOT through
+    # DamagesGvz/DamagesMobiliar. Those load the pickled domain from
+    # PICKLES_DIR - a network share - and `Damages.from_nc_file` is then
+    # `xr.open_dataset` plus a few attributes set on an object this script
+    # never looks at again. Going through them made a comparison of two local
+    # netCDFs fail with
+    #     FileNotFoundError: ...\pickles\domain.pickle
+    # whenever the share was unreachable, which is most of the time from a
+    # machine off the institute network. Only 'claims' and 'removed_claims'
+    # are used, and both are in the file.
     def damages_reader(path):
-        damages = DamagesClass(year_start=config.get('YEAR_START_TEST'),
-                               year_end=config.get('YEAR_END_TEST'))
-        return damages.from_nc_file(path)
+        ds = xr.open_dataset(path)
+        missing = {'claims'} - set(ds.variables)
+        if missing:
+            ds.close()
+            raise ValueError(
+                f"{Path(path).name} has no {missing} variable, so it is not a "
+                f"damages grid.")
+        return ds
 
     shapefiles = {'zip': args.zip_shapefile,
                   'catchments': args.catchments_shapefile}
@@ -454,6 +462,13 @@ def main():
     print("  fixed threshold only to fill the existing table.")
     print()
     print(f"  Written to {output}")
+
+    # A run that scored nothing must not look like a success: the CSV would be
+    # all error rows and the exit code would say everything was fine.
+    if 'error' in df.columns and df['error'].notna().all():
+        print()
+        print("NOTHING WAS SCORED - every row is an error.")
+        raise SystemExit(1)
 
 
 if __name__ == '__main__':

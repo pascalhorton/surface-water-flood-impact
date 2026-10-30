@@ -627,3 +627,259 @@ def test_the_random_forest_grid_name_carries_the_run_name():
         encoding='utf-8')
     assert '{options.run_name}' in src, (
         "use_rf_occurrence.py must put run_name in the grid name")
+
+
+def test_cnn_inference_takes_the_model_as_an_argument():
+    """Ten models cannot be run from a hard-coded constant.
+
+    use_cnn_occurrence.py drove MODEL and DATASET from module constants, so a
+    batch of seeds meant editing the file between runs - which is how a server
+    array job silently runs the same model ten times. --model and --dataset now
+    override them, and --check-inputs resolves every path without computing.
+    """
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parents[1] / 'scripts'
+           / 'impact_functions' / 'use_cnn_occurrence.py').read_text(
+        encoding='utf-8')
+    assert "'--model'" in src and "'--dataset'" in src, (
+        "the model and dataset must be settable from the command line")
+    assert "'--check-inputs'" in src, (
+        "a pre-flight check is what keeps an array job from failing an hour "
+        "in on a missing path")
+    assert 'keras.models.load_model(args.model)' in src, (
+        "the loaded model must come from the argument, not the constant")
+    assert 'USE_TRAINING_REFERENCE' not in src, (
+        "the constant was replaced by --no-training-reference; leaving it "
+        "behind invites editing a value that no longer has any effect")
+
+
+def _brute_aggregate(ds_pred, ds_damages, region_map, region_ids,
+                     ignore_removed, relax_days):
+    """Reference implementation of aggregate_by_regions: a plain loop.
+
+    The library version groups the cells once and reduces with `reduceat`,
+    because a per-region numpy call inside the day loop is 731 x 3952 small
+    operations for the ZIP aggregation and does not finish. This is the
+    obvious implementation it replaced, kept here so the fast one is checked
+    against something written independently of it.
+    """
+    import numpy as np
+    from swafi.utils.verification import relax_prediction_days
+
+    n_time = len(ds_pred['time'].values)
+    n_regions = len(region_ids)
+    flat_region = region_map.ravel()
+    region_to_idx = {rid: np.where(flat_region == rid)[0] for rid in region_ids}
+
+    y_true = np.full((n_time, n_regions), np.nan, dtype=np.float32)
+    y_pred = np.full((n_time, n_regions), np.nan, dtype=np.float32)
+    has_removed = 'removed_claims' in ds_damages.variables
+
+    for t in range(n_time):
+        pflat = ds_pred['predict'].isel(time=t).to_numpy().ravel()
+        cflat = ds_damages['claims'].isel(time=t).to_numpy().astype(float).ravel()
+        if has_removed and ignore_removed:
+            rem = ds_damages['removed_claims'].isel(time=t).to_numpy().ravel()
+            cflat[rem == 1] = np.nan
+        cbin = ((~np.isnan(cflat)) & (cflat > 0)).astype(np.uint8)
+
+        for r, rid in enumerate(region_ids):
+            idxs = region_to_idx[rid]
+            pvals = pflat[idxs]
+            y_pred[t, r] = (np.nan if np.isnan(pvals).all()
+                            else np.nanmax(pvals))
+            # A region-day with no insured cell is NaN, not a negative: no
+            # claim is possible there, which is why the pixel path drops it.
+            if np.isnan(cflat[idxs]).all():
+                y_true[t, r] = np.nan
+            else:
+                y_true[t, r] = 1 if np.any(cbin[idxs] == 1) else 0
+
+    if relax_days:
+        for r in range(n_regions):
+            relax_prediction_days(y_true[:, r], y_pred[:, r])
+
+    return y_true, y_pred
+
+
+def test_vectorised_region_aggregation_matches_the_plain_loop():
+    """The reduceat version must produce the identical arrays.
+
+    It replaced a per-region loop purely for speed, on numbers that are going
+    into a published comparison table, so equivalence is not something to take
+    on faith.
+    """
+    import numpy as np
+    import xarray as xr
+    from swafi.utils.aggregation import aggregate_by_regions
+
+    rng = np.random.default_rng(7)
+    n_time, ny, nx = 9, 4, 5
+
+    pred = rng.random((n_time, ny, nx)).astype(np.float32)
+    # NaNs in the predictions, including one region that is entirely NaN.
+    pred[:, 0, 0] = np.nan
+    pred[3, 2, :] = np.nan
+
+    claims = np.zeros((n_time, ny, nx), dtype=np.float32)
+    claims[2, 1, 1] = 1
+    claims[4, 3, 4] = 2
+    claims[6, 0, 2] = 1
+    claims[:, 2, 2] = np.nan            # outside the insured domain
+
+    removed = np.zeros((n_time, ny, nx), dtype=np.float32)
+    removed[2, 1, 2] = 1
+
+    def ds(**arrays):
+        return xr.Dataset(
+            {k: (('time', 'y', 'x'), v) for k, v in arrays.items()},
+            coords={'time': np.arange(n_time)})
+
+    # Four regions, one cell left outside every polygon (-1).
+    region_map = np.array([[0, 0, 1, 1, -1],
+                           [0, 0, 1, 1, 2],
+                           [3, 3, 3, 2, 2],
+                           [3, 3, 3, 2, 2]], dtype=np.int32)
+    region_ids = [0, 1, 2, 3]
+
+    for ignore_removed in (False, True):
+        for relax_days in (False, True):
+            got = aggregate_by_regions(
+                ds(predict=pred.copy()),
+                ds(claims=claims.copy(), removed_claims=removed.copy()),
+                region_map, region_ids,
+                ignore_removed=ignore_removed, relax_days=relax_days)
+            want = _brute_aggregate(
+                ds(predict=pred.copy()),
+                ds(claims=claims.copy(), removed_claims=removed.copy()),
+                region_map, region_ids, ignore_removed, relax_days)
+            for name, a, b in (('y_true', got[0], want[0]),
+                               ('y_pred', got[1], want[1])):
+                assert np.allclose(a, b, equal_nan=True), (
+                    f"{name} differs at ignore_removed={ignore_removed}, "
+                    f"relax_days={relax_days}")
+
+
+def test_region_ids_need_not_be_contiguous():
+    """The region ids come from a shapefile index, not from range(n).
+
+    `reduceat` works on positions, so the ids have to be mapped to positions
+    first; using them as positions would index out of bounds or silently mix
+    regions up.
+    """
+    import numpy as np
+    import xarray as xr
+    from swafi.utils.aggregation import aggregate_by_regions
+
+    n_time = 3
+    region_map = np.array([[700, 700, 1205],
+                           [9, 9, 1205]], dtype=np.int32)
+    region_ids = [9, 700, 1205]
+
+    pred = np.zeros((n_time, 2, 3), dtype=np.float32)
+    pred[1, 1, 0] = 0.9          # region 9
+    pred[1, 0, 2] = 0.4          # region 1205
+    claims = np.zeros((n_time, 2, 3), dtype=np.float32)
+
+    def ds(**arrays):
+        return xr.Dataset(
+            {k: (('time', 'y', 'x'), v) for k, v in arrays.items()},
+            coords={'time': np.arange(n_time)})
+
+    _, y_pred = aggregate_by_regions(
+        ds(predict=pred), ds(claims=claims), region_map, region_ids,
+        ignore_removed=False, relax_days=False)
+
+    # Columns follow the ORDER of region_ids: 9, 700, 1205.
+    assert y_pred[1, 0] == np.float32(0.9), "region 9 should hold its own max"
+    assert y_pred[1, 1] == 0.0, "region 700 has no prediction that day"
+    assert y_pred[1, 2] == np.float32(0.4)
+
+
+def test_a_region_with_no_insured_cell_is_not_a_negative():
+    """It cannot produce a claim, so it is not evidence of a correct negative.
+
+    NaN in `claims` means the cell carries no insurance. The pixel path drops
+    those cell-days with `~np.isnan(y_true)`; the region path used to score
+    them as 0. At the scales in use that was not a detail: the ZIP shapefile
+    covers Switzerland while GVZ covers one canton, so 3,618 of the 3,952 ZIP
+    regions overlapping the grid (92%) hold no insured cell, and counting them
+    put 2.8 M samples into a comparison whose pixel twin has 1.29 M.
+    """
+    import numpy as np
+    import xarray as xr
+    from swafi.utils.aggregation import aggregate_by_regions
+
+    n_time = 4
+    # Region 0 is insured, region 1 is entirely outside the insured domain.
+    region_map = np.array([[0, 0, 1, 1]], dtype=np.int32)
+    region_ids = [0, 1]
+
+    claims = np.zeros((n_time, 1, 4), dtype=np.float32)
+    claims[:, 0, 2:] = np.nan          # region 1: never insured
+    claims[2, 0, 0] = 1                # region 0: a claim on day 2
+
+    pred = np.full((n_time, 1, 4), 0.3, dtype=np.float32)
+
+    def ds(**arrays):
+        return xr.Dataset(
+            {k: (('time', 'y', 'x'), v) for k, v in arrays.items()},
+            coords={'time': np.arange(n_time)})
+
+    y_true, y_pred = aggregate_by_regions(
+        ds(predict=pred), ds(claims=claims), region_map, region_ids,
+        ignore_removed=False, relax_days=False)
+
+    assert np.all(np.isnan(y_true[:, 1])), (
+        "an uninsured region must be NaN on every day, not a correct negative")
+    assert y_true[2, 0] == 1
+    assert np.array_equal(y_true[[0, 1, 3], 0], [0, 0, 0]), (
+        "the insured region keeps its real negatives")
+
+    # And the prediction is still there, so the NaN comes from the truth side
+    # only - a model is not credited or penalised for the region either way.
+    assert not np.isnan(y_pred[0, 1])
+
+
+def test_grid_scoring_does_not_need_the_pickled_domain():
+    """Comparing two local netCDFs must not depend on a network share.
+
+    `Damages.from_nc_file` is `xr.open_dataset` plus a few attributes set on
+    an object the scorer never reads, but constructing DamagesGvz first loads
+    the pickled domain out of PICKLES_DIR. That made every row of a 136-row
+    run fail with
+        FileNotFoundError: <PICKLES_DIR>/domain.pickle
+    when the share was unreachable - which it is from any machine off the
+    institute network. Only 'claims' and 'removed_claims' are used and both
+    are in the grid file.
+    """
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parents[1] / 'scripts'
+           / 'impact_functions' / 'score_prediction_grids.py').read_text(
+        encoding='utf-8')
+    # Usage, not mention: the comment in the script explains why those names
+    # are absent, so a plain substring test matches its own documentation.
+    for forbidden in ('swafi.damages', '.from_nc_file('):
+        assert forbidden not in src, (
+            f"score_prediction_grids.py must not use {forbidden}: it drags in "
+            f"PICKLES_DIR for a file it then ignores")
+    assert 'xr.open_dataset(path)' in src
+
+
+def test_a_run_that_scored_nothing_exits_non_zero():
+    """136 error rows used to exit 0.
+
+    The CSV was written, the summary printed, and the shell saw success - so a
+    scheduled or backgrounded run would have been read as having produced
+    numbers.
+    """
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parents[1] / 'scripts'
+           / 'impact_functions' / 'score_prediction_grids.py').read_text(
+        encoding='utf-8')
+    assert "df['error'].notna().all()" in src, (
+        "a run where every row failed must not report success")
+    assert 'raise SystemExit(1)' in src

@@ -1,6 +1,21 @@
 """
 Test script for loading and evaluating a pre-trained CNN model.
+
+MODEL and DATASET below are defaults; --model and --dataset override them, so
+a batch of models can be run without editing the file. Everything else about
+the run - the precipitation product, the window, the anchor, the features - is
+read off the saved model, which is what keeps inference from drifting from
+training.
+
+Note there is NO --event-file-label here and none is needed: inference builds
+its test events from the training CATALOGUE named by EVENTS_PATH_SIMPLE_*
+(plus its '_ref.pkl' for the quantile features), never from a linked sample.
+
+Use --check-inputs first when submitting an array job: it resolves and tests
+every input, prints the output path the run would write, and exits without
+touching the GPU.
 """
+import argparse
 import logging
 import keras
 import random
@@ -54,20 +69,155 @@ DATASET = 'mobiliar'  # 'mobiliar' or 'gvz'
 # EVENTS_PATH_SIMPLE_* / EVENTS_PATH_CLASSIC config entry, which is the only
 # record of how it was detected (see use_common.get_inference_events). Keeping
 # a second copy of those settings here is what let inference drift from
-# training. USE_TRAINING_REFERENCE ranks the '*_q' features against the
-# training distribution, as the model was fitted; False re-estimates them on
-# the test period.
-USE_TRAINING_REFERENCE = True
+# training. The '*_q' features are ranked against the training distribution,
+# as the model was fitted; --no-training-reference re-estimates them on the
+# test period instead, which needs no '_ref.pkl' but is not what the model
+# saw.
 
 config = Config()
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument('--model', default=MODEL,
+                        help="the .keras model to run inference with")
+    parser.add_argument('--dataset', default=DATASET,
+                        choices=['gvz', 'mobiliar'],
+                        help="the damage dataset to predict for")
+    parser.add_argument('--no-assess', action='store_true',
+                        help="write the grid without scoring it")
+    parser.add_argument('--no-training-reference', action='store_true',
+                        help="re-estimate the '*_q' features on the test "
+                             "period instead of ranking them against the "
+                             "training distribution the model was fitted on")
+    parser.add_argument('--check-inputs', action='store_true',
+                        help="resolve and test every input, print the output "
+                             "path, and exit; nothing is computed")
+    return parser.parse_args()
+
+
+def check_inputs(args):
+    """Verify everything a run needs, and report what it would write.
+
+    An array job that fails on a missing file after loading the precipitation
+    has wasted an hour per task for something a path test answers in a second.
+    Each line is printed with its own OK/MISSING, so a failure names the file
+    rather than the stage.
+    """
+    problems = []
+
+    def report(label, path, needed=True):
+        exists = path is not None and Path(path).exists()
+        state = 'OK     ' if exists else ('MISSING' if needed else 'absent ')
+        print(f"  [{state}] {label:24} {path}")
+        if needed and not exists:
+            problems.append(f"{label}: {path}")
+        return exists
+
+    print("=" * 76)
+    print("INPUTS")
+    print("=" * 76)
+    if not report('model', args.model):
+        print()
+        print("The model could not be read, so the rest cannot be resolved "
+              "from it.")
+        return 1
+
+    cnn_model = keras.models.load_model(args.model)
+    options = cnn_model.options
+    options.dataset = args.dataset
+    ensure_precip_dataset(options)
+
+    print()
+    print(f"  run name        {options.run_name}")
+    print(f"  dataset         {options.dataset}")
+    print(f"  event method    {options.event_method}")
+    print(f"  precip dataset  {options.precip_dataset}")
+    # event_ref_date IS the anchor (Impact.set_reference_date): 'auto' is the
+    # calendar day, 'i_max_only' the storm peak. It is the whole difference
+    # between the two configurations these runs compare, so it is printed
+    # first - a check pass that did not show it could pass ten identical runs.
+    for attr in ('event_ref_date', 'precip_window_size', 'precip_time_step',
+                 'precip_hours_before', 'precip_hours_after',
+                 'random_state'):
+        if hasattr(options, attr):
+            print(f"  {attr:20} {getattr(options, attr)}")
+    print()
+
+    # Every config lookup is guarded. A missing entry is exactly what this
+    # pass exists to report: raising here would hide the other nine tasks'
+    # problems behind a traceback for the first one.
+    def from_config(key):
+        try:
+            return config.get(key)
+        except (RuntimeError, KeyError) as err:
+            print(f"  [MISSING] config entry {key}: {err}")
+            problems.append(f"config entry {key}")
+            return None
+
+    catalogue = None
+    key = ('EVENTS_PATH_SIMPLE_' if options.event_method == 'simple'
+           else 'EVENTS_PATH_CLASSIC_') + (
+        '5MIN' if options.precip_dataset == '5min' else 'HOURLY')
+    raw = from_config(key)
+    if raw is not None:
+        catalogue = Path(raw)
+        report(f'catalogue ({key})', catalogue)
+        ref = catalogue.with_name(
+            catalogue.name.replace('.parquet', '_ref.pkl'))
+        report('training reference', ref,
+               needed=not args.no_training_reference)
+
+    out_dir = from_config('OUTPUT_DIR')
+    out_dir = Path(out_dir) if out_dir else None
+    if out_dir is not None:
+        report('OUTPUT_DIR', out_dir)
+
+    year_start = from_config('YEAR_START_TEST')
+    year_end = from_config('YEAR_END_TEST')
+    if catalogue is None or out_dir is None or year_start is None:
+        print()
+        print("MISSING:")
+        for problem in problems:
+            print(f"  {problem}")
+        return 1
+    det_tag = detection_tag_in(catalogue) or '_detdefault'
+    output_path = (
+        out_dir
+        / f'pred_cnn_{options.dataset}_{options.event_method}'
+          f'_{options.precip_dataset}_{options.run_name}{det_tag}'
+          f'_{year_start}-{year_end}.nc'
+    )
+    print()
+    print(f"  test period     {year_start}-{year_end}")
+    print(f"  detection tag   {det_tag}")
+    print(f"  would write     {output_path}")
+    if output_path.exists():
+        print("                  (EXISTS: the run would only re-score it)")
+
+    print()
+    if problems:
+        print("MISSING:")
+        for problem in problems:
+            print(f"  {problem}")
+        return 1
+    print("All inputs present.")
+    return 0
+
+
 def main():
     setup_logging(script_name='use_cnn_occurrence')
-    cnn_model = keras.models.load_model(MODEL)
+    args = parse_args()
+
+    if args.check_inputs:
+        raise SystemExit(check_inputs(args))
+
+    cnn_model = keras.models.load_model(args.model)
 
     options = cnn_model.options
-    options.dataset = DATASET
+    options.dataset = args.dataset
     # Before print_options(): both it and is_ok() read the precipitation dataset.
     ensure_precip_dataset(options)
     options.print_options()
@@ -86,8 +236,9 @@ def main():
 
     year_start = config.get('YEAR_START_TEST')
     year_end = config.get('YEAR_END_TEST')
-    events = get_inference_events(options, year_start, year_end,
-                                  use_training_reference=USE_TRAINING_REFERENCE)
+    events = get_inference_events(
+        options, year_start, year_end,
+        use_training_reference=not args.no_training_reference)
 
     # Precipitation for CNN input, from the zarr store of the same dataset the
     # model was trained on.
@@ -113,7 +264,7 @@ def main():
     )
 
     if output_path.exists():
-        if DO_ASSESS:
+        if DO_ASSESS and not args.no_assess:
             assess(output_path, get_damages_xr(options.dataset, year_start, year_end),
                    ignore_removed=IGNORE_REMOVED, relax_days=RELAX_DAYS,
                    prob_threshold=0.5)
@@ -176,7 +327,7 @@ def main():
     logger.info("Results saved to %s", output_path)
     ds_pred.close()
 
-    if DO_ASSESS:
+    if DO_ASSESS and not args.no_assess:
         assess(output_path, get_damages_xr(options.dataset, year_start, year_end),
                ignore_removed=IGNORE_REMOVED, relax_days=RELAX_DAYS,
                prob_threshold=0.5)

@@ -137,15 +137,30 @@ def aggregate_by_regions(ds_pred, ds_damages, region_map, region_ids,
         Shape (time, n_regions).
     """
     time = ds_pred['time'].values
-    assert np.array_equal(time, ds_damages['time'].values), \
-        "Prediction and damages time axes differ"
+    assert np.array_equal(time, ds_damages['time'].values),         "Prediction and damages time axes differ"
 
     n_time = len(time)
     n_regions = len(region_ids)
 
-    # Precompute flat indices per region for fast reduction
+    # Map each cell to a region POSITION (0..n_regions-1), -1 outside, then
+    # sort the inside cells by it once. A per-region numpy call inside the day
+    # loop is 731 x 3952 = 2.9 M small operations for the ZIP aggregation,
+    # which does not finish in reasonable time; grouping the cells once and
+    # reducing with `reduceat` makes it two calls per day instead.
     flat_region = region_map.ravel()
-    region_to_idx = {rid: np.where(flat_region == rid)[0] for rid in region_ids}
+    lookup = {rid: i for i, rid in enumerate(region_ids)}
+    region_pos = np.full(flat_region.shape, -1, dtype=np.int64)
+    for rid, i in lookup.items():
+        region_pos[flat_region == rid] = i
+
+    inside = np.where(region_pos >= 0)[0]
+    order = inside[np.argsort(region_pos[inside], kind='stable')]
+    sorted_pos = region_pos[order]
+    # Every region in region_ids has at least one cell by construction (they
+    # were derived from the grid), so searchsorted gives one start per region
+    # and no group is empty - which reduceat could not express if it were.
+    starts = np.searchsorted(sorted_pos, np.arange(n_regions), side='left')
+    assert len(starts) == n_regions
 
     y_true_reg = np.full((n_time, n_regions), np.nan, dtype=np.float32)
     y_pred_reg = np.full((n_time, n_regions), np.nan, dtype=np.float32)
@@ -165,24 +180,34 @@ def aggregate_by_regions(ds_pred, ds_damages, region_map, region_ids,
         pflat = pred2d.ravel()
         cflat = clm2d.ravel()
 
-        # Binary occurrence per cell
-        cbin = np.zeros_like(cflat, dtype=np.uint8)
-        valid = ~np.isnan(cflat)
-        cbin[valid & (cflat > 0)] = 1
+        # Prediction: the max probability in the region. The max is the right
+        # reducer for an occurrence question - the region is warned if any cell
+        # in it is warned - and a mean would penalise a correct, localised
+        # prediction for the size of the polygon it happens to sit in.
+        # np.fmax ignores NaN and yields NaN only where every cell is NaN,
+        # which is the "region the model could not speak to" case.
+        y_pred_reg[t] = np.fmax.reduceat(pflat[order], starts)
 
-        for r_idx, rid in enumerate(region_ids):
-            idxs = region_to_idx[rid]
-            if idxs.size == 0:
-                continue
-            # Prediction: max prob in region (ignore NaNs)
-            pvals = pflat[idxs]
-            if pvals.size == 0 or np.isnan(pvals).all():
-                pred_val = np.nan
-            else:
-                pred_val = np.nanmax(pvals)
-            # Truth: any claim in region that day
-            y_pred_reg[t, r_idx] = pred_val
-            y_true_reg[t, r_idx] = 1 if np.any(cbin[idxs] == 1) else 0
+        # Truth: 1 if any cell in the region carries a claim that day.
+        #
+        # A region-day where EVERY cell has NaN claims is NaN, not 0. NaN in
+        # `claims` means the cell carries no insurance, so no claim is
+        # possible there and the cell-day is not a legitimate negative - which
+        # is exactly why the pixel path drops it with
+        # `~np.isnan(y_true)`. Scoring such a region as a correct negative
+        # fabricates samples, and at the scales used here it fabricates almost
+        # all of them: the ZIP shapefile covers Switzerland while GVZ covers
+        # one canton, so 3,618 of the 3,952 ZIP regions overlapping the grid
+        # (92%) hold no insured cell at all. Counting them put 2.8 M samples
+        # in a comparison whose pixel-based twin has 1.29 M, and dropped the
+        # base rate from 0.0255% to 0.0094% - which moves every rate-based
+        # metric in the table.
+        cvals = cflat[order]
+        valid = (~np.isnan(cvals)).astype(np.float32)
+        has_claim = np.maximum.reduceat(
+            (valid > 0) & (cvals > 0), starts).astype(np.float32)
+        n_insured = np.add.reduceat(valid, starts)
+        y_true_reg[t] = np.where(n_insured > 0, has_claim, np.nan)
 
     if relax_days:
         n_moved = 0
